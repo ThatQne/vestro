@@ -5,7 +5,7 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "build": "echo 'No build step needed'",
+    "build": "npm install",
     "dev": "cross-env NODE_ENV=development nodemon server/server.js",
     "publish": "node publish.js"
   },
