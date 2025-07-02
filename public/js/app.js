@@ -3,6 +3,11 @@ let currentUser = null;
 let socket = null;
 let currentPage = 'login';
 
+// API Base URL - use Render backend for both dev and prod
+const API_BASE_URL = window.location.hostname === 'localhost' 
+    ? 'https://vestro-lz81.onrender.com' 
+    : '';
+
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -19,7 +24,11 @@ function initializeApp() {
 
     // Initialize socket connection
     if (typeof io !== 'undefined') {
-        socket = io();
+        // Connect to Render backend for socket connection
+        const socketUrl = window.location.hostname === 'localhost' 
+            ? 'https://vestro-lz81.onrender.com' 
+            : '';
+        socket = io(socketUrl);
         
         socket.on('connect', () => {
             console.log('Connected to server');
@@ -68,7 +77,7 @@ async function checkUserExists() {
     }
 
     try {
-        const response = await fetch('/api/auth/check-user', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/check-user`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -88,6 +97,9 @@ async function checkUserExists() {
         }
     } catch (error) {
         console.error('Error checking user:', error);
+        statusIndicator.classList.remove('hidden');
+        statusIndicator.className = 'text-center text-sm py-2 rounded-lg bg-red-500/20 text-red-400';
+        statusText.textContent = '⚠ Connection error - please try again';
     }
 }
 
@@ -103,7 +115,7 @@ async function handleLogin(e) {
     button.disabled = true;
 
     try {
-        const response = await fetch('/api/auth/login', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -135,7 +147,7 @@ async function fetchUserProfile() {
     if (!token) return;
 
     try {
-        const response = await fetch('/api/auth/profile', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/profile`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -227,7 +239,7 @@ async function playCoinFlip(choice) {
     }
 
     try {
-        const response = await fetch('/api/games/play', {
+        const response = await fetch(`${API_BASE_URL}/api/games/play`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -250,7 +262,7 @@ async function playCoinFlip(choice) {
             showError(data.message || 'Game failed');
         }
     } catch (error) {
-        showError('Connection error');
+        showError('Connection error. Please try again.');
         console.error('Game error:', error);
     }
 }
@@ -268,7 +280,7 @@ async function playDice(choice) {
     }
 
     try {
-        const response = await fetch('/api/games/play', {
+        const response = await fetch(`${API_BASE_URL}/api/games/play`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -291,47 +303,42 @@ async function playDice(choice) {
             showError(data.message || 'Game failed');
         }
     } catch (error) {
-        showError('Connection error');
+        showError('Connection error. Please try again.');
         console.error('Game error:', error);
     }
 }
 
 function showGameResult(result) {
-    const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
-    modal.innerHTML = `
-        <div class="glass-effect p-8 rounded-xl max-w-md w-full mx-4">
-            <div class="text-center">
-                <div class="text-6xl mb-4">${result.won ? '🎉' : '😔'}</div>
-                <h3 class="text-2xl font-bold mb-2">${result.won ? 'You Won!' : 'You Lost!'}</h3>
-                <p class="text-gray-400 mb-2">Result: ${result.gameResult}</p>
-                <p class="text-gray-400 mb-6">
-                    ${result.won ? `+$${result.winAmount}` : `-$${result.betAmount}`}
-                </p>
-                <button onclick="this.parentElement.parentElement.parentElement.remove()" 
-                        class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg hover:shadow-lg transform hover:scale-105 transition-all">
-                    Continue
-                </button>
-            </div>
-        </div>
-    `;
+    const resultModal = document.getElementById('game-result-modal');
+    const resultText = document.getElementById('result-text');
+    const resultAmount = document.getElementById('result-amount');
     
-    document.body.appendChild(modal);
+    if (result.won) {
+        resultText.textContent = `🎉 You Won!`;
+        resultAmount.textContent = `+$${result.winAmount}`;
+        resultAmount.className = 'text-2xl font-bold text-green-400';
+    } else {
+        resultText.textContent = `😞 You Lost`;
+        resultAmount.textContent = `-$${result.betAmount}`;
+        resultAmount.className = 'text-2xl font-bold text-red-400';
+    }
     
-    // Auto-remove after 5 seconds
+    resultModal.classList.remove('hidden');
+    
+    // Auto-hide after 3 seconds
     setTimeout(() => {
-        if (modal.parentNode) {
-            modal.remove();
-        }
-    }, 5000);
+        resultModal.classList.add('hidden');
+    }, 3000);
 }
 
 function showError(message) {
     const errorDiv = document.createElement('div');
-    errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white p-4 rounded-lg z-50';
+    errorDiv.className = 'fixed top-4 right-4 bg-red-500/20 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg z-50';
     errorDiv.textContent = message;
+    
     document.body.appendChild(errorDiv);
     
+    // Auto-remove after 3 seconds
     setTimeout(() => {
         errorDiv.remove();
     }, 3000);
@@ -347,7 +354,6 @@ function logout() {
 }
 
 async function loadProfileData() {
-    // This function would load additional profile data like game history
-    // For now, it just updates the existing interface
+    // This function can be expanded to load additional profile data
     updateUserInterface();
 } 
