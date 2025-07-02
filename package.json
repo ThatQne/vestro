@@ -5,6 +5,7 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
+    "build": "echo 'No build step needed'",
     "dev": "cross-env NODE_ENV=development nodemon server/server.js",
     "publish": "node publish.js"
   },
@@ -24,6 +25,9 @@
   "devDependencies": {
     "nodemon": "^3.0.1",
     "cross-env": "^7.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "keywords": ["gambling", "games", "websocket", "mongodb"],
   "author": "ThatQne",
