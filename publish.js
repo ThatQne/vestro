@@ -52,9 +52,9 @@ async function main() {
       await runCommand('git add .', 'Failed to stage changes');
       await runCommand(`git commit -m "Update: ${timestamp}"`, 'Failed to commit changes');
       
-      // Push changes
+      // Push changes to main branch
       log('📤 Pushing changes to GitHub...', colors.blue);
-      await runCommand('git push', 'Failed to push changes');
+      await runCommand('git push origin main', 'Failed to push changes');
       
       log('✅ Changes pushed successfully!', colors.green);
       log('🔄 GitHub Actions will handle the deployment automatically', colors.blue);
