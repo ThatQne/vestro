@@ -8,6 +8,17 @@ const API_BASE_URL = window.location.hostname === 'localhost'
     ? 'https://vestro-lz81.onrender.com' 
     : '';
 
+// Global variables for chart
+let chartOffset = 0;
+let pointsToShow = 50;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartOffset = 0;
+let dragVelocity = 0;
+let lastDragTime = 0;
+let lastDragX = 0;
+let activePoint = null;
+
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -67,6 +78,8 @@ function initializeApp() {
             }, 100);
         }
     });
+
+    initializeChart();
 }
 
 function showLoginPage() {
@@ -224,7 +237,10 @@ function updateUserInterface() {
         'profile-balance': `$${formatNumber(currentUser.balance)}`,
         'profile-games-played': currentUser.gamesPlayed,
         'profile-total-won': `$${formatNumber(currentUser.totalWon)}`,
-        'profile-avatar': currentUser.username.charAt(0).toUpperCase()
+        'profile-avatar': currentUser.username.charAt(0).toUpperCase(),
+        'profile-win-rate': `${((currentUser.wins / (currentUser.wins + currentUser.losses || 1)) * 100).toFixed(1)}%`,
+        'profile-best-win': `$${formatNumber(currentUser.bestWin)}`,
+        'profile-best-streak': currentUser.bestWinStreak
     };
 
     Object.entries(elements).forEach(([id, value]) => {
@@ -234,13 +250,20 @@ function updateUserInterface() {
         }
     });
 
-    // Update XP bar
+    // Update XP bars
     updateXPBar();
+    updateProfileXPBar();
 
-    // No need to save to localStorage anymore
+    // Update badges
+    updateBadges();
 
     // Update chart data with animations
     updateChart();
+}
+
+function getRequiredXP(level) {
+    // Exponential XP curve: each level requires 20% more XP than the last
+    return Math.floor(100 * Math.pow(1.2, level - 1));
 }
 
 function updateXPBar() {
@@ -249,18 +272,77 @@ function updateXPBar() {
     const xpFillElement = document.getElementById('xp-fill');
     
     if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
-        const currentXP = currentUser.experience || 0;
-        const requiredXP = currentUser.level * 100; // 100 XP per level
-        const xpProgress = currentXP % 100; // XP progress in current level
-        const xpPercentage = (xpProgress / 100) * 100;
+        const requiredXP = getRequiredXP(currentUser.level);
+        const totalXPForNextLevel = getRequiredXP(currentUser.level + 1);
+        const xpProgress = currentUser.experience - requiredXP;
+        const xpNeeded = totalXPForNextLevel - requiredXP;
+        const xpPercentage = (xpProgress / xpNeeded) * 100;
         
         currentXPElement.textContent = xpProgress;
-        requiredXPElement.textContent = 100;
+        requiredXPElement.textContent = xpNeeded;
         xpFillElement.style.width = xpPercentage + '%';
     }
 }
 
-// Remove localStorage functions as we're using MongoDB now
+function updateProfileXPBar() {
+    const currentXPElement = document.getElementById('profile-current-xp');
+    const requiredXPElement = document.getElementById('profile-required-xp');
+    const xpFillElement = document.getElementById('profile-xp-fill');
+    
+    if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
+        const requiredXP = getRequiredXP(currentUser.level);
+        const totalXPForNextLevel = getRequiredXP(currentUser.level + 1);
+        const xpProgress = currentUser.experience - requiredXP;
+        const xpNeeded = totalXPForNextLevel - requiredXP;
+        const xpPercentage = (xpProgress / xpNeeded) * 100;
+        
+        currentXPElement.textContent = xpProgress;
+        requiredXPElement.textContent = xpNeeded;
+        xpFillElement.style.width = xpPercentage + '%';
+    }
+}
+
+function updateBadges() {
+    const badgesGrid = document.getElementById('badges-grid');
+    if (!badgesGrid || !currentUser || !currentUser.badges) return;
+
+    badgesGrid.innerHTML = '';
+    
+    // Sort badges by earned status and then by name
+    const sortedBadges = currentUser.badges
+        .sort((a, b) => {
+            if (a.badgeId && b.badgeId) {
+                return a.badgeId.name.localeCompare(b.badgeId.name);
+            }
+            return 0;
+        });
+
+    sortedBadges.forEach(badge => {
+        if (!badge.badgeId) return;
+
+        const badgeElement = document.createElement('div');
+        badgeElement.className = `badge-item${badge.badgeId.secret ? ' secret' : ''}`;
+        
+        const earnedDate = new Date(badge.earnedAt);
+        const earnedText = `Earned ${earnedDate.toLocaleDateString()}`;
+        
+        badgeElement.innerHTML = `
+            <div class="badge-icon" style="background: ${badge.badgeId.color}20;">
+                <i data-lucide="${badge.badgeId.icon}" style="color: ${badge.badgeId.color};"></i>
+            </div>
+            <div class="badge-name">${badge.badgeId.name}</div>
+            <div class="badge-description">${badge.badgeId.description}</div>
+            <div class="badge-earned">${earnedText}</div>
+        `;
+        
+        badgesGrid.appendChild(badgeElement);
+    });
+
+    // Initialize Lucide icons for the new badge elements
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
 
 function showPage(pageId) {
     // Hide all pages
@@ -330,43 +412,40 @@ function drawBalanceChart() {
     const width = canvas.width = canvas.parentElement.clientWidth;
     const height = canvas.height = 400;
     const padding = 40;
-    const dataPoints = currentUser.balanceHistory;
+    
+    // Get data points with offset
+    const allDataPoints = currentUser.balanceHistory;
+    const maxOffset = Math.max(0, allDataPoints.length - pointsToShow);
+    chartOffset = Math.max(0, Math.min(chartOffset, maxOffset)); // Clamp offset
+    
+    const startIndex = Math.max(0, allDataPoints.length - pointsToShow - chartOffset);
+    const endIndex = allDataPoints.length - chartOffset;
+    const dataPoints = allDataPoints.slice(startIndex, endIndex);
     
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
     
     // Set up scales
-    const xScale = (width - padding * 2) / (dataPoints.length - 1);
+    const xScale = (width - padding * 2) / Math.max(1, dataPoints.length - 1);
     const minBalance = Math.min(...dataPoints);
     const maxBalance = Math.max(...dataPoints);
-    const balanceRange = maxBalance - minBalance;
+    const balanceRange = Math.max(1, maxBalance - minBalance);
     const yScale = (height - padding * 2) / balanceRange;
+
+    // Store point coordinates for hover detection
+    canvas.dataPoints = dataPoints.map((value, i) => ({
+        x: padding + i * xScale,
+        y: height - padding - (value - minBalance) * yScale,
+        value: value
+    }));
     
-    // Draw grid
-    ctx.strokeStyle = '#30363d';
-    ctx.lineWidth = 1;
-    
-    // Vertical grid lines
-    for (let i = 0; i <= 10; i++) {
-        const x = padding + (width - padding * 2) * (i / 10);
-        ctx.beginPath();
-        ctx.moveTo(x, padding);
-        ctx.lineTo(x, height - padding);
-        ctx.stroke();
-    }
-    
-    // Horizontal grid lines and labels
+    // Draw horizontal grid lines and labels
     ctx.fillStyle = '#8b949e';
     ctx.font = '12px Inter';
     ctx.textAlign = 'right';
     for (let i = 0; i <= 5; i++) {
         const y = padding + (height - padding * 2) * (i / 5);
         const value = maxBalance - (balanceRange * (i / 5));
-        
-        ctx.beginPath();
-        ctx.moveTo(padding, y);
-        ctx.lineTo(width - padding, y);
-        ctx.stroke();
         
         // Format value with K/M for thousands/millions
         let label = value;
@@ -380,36 +459,319 @@ function drawBalanceChart() {
         ctx.fillText('$' + label, padding - 5, y + 4);
     }
     
-    // Draw line
-    ctx.beginPath();
-    ctx.strokeStyle = '#58a6ff';
-    ctx.lineWidth = 2;
-    
-    for (let i = 0; i < dataPoints.length; i++) {
-        const x = padding + i * xScale;
-        const y = height - padding - (dataPoints[i] - minBalance) * yScale;
+    // Draw lines between points with win/loss colors
+    for (let i = 1; i < dataPoints.length; i++) {
+        const x1 = padding + (i - 1) * xScale;
+        const y1 = height - padding - (dataPoints[i - 1] - minBalance) * yScale;
+        const x2 = padding + i * xScale;
+        const y2 = height - padding - (dataPoints[i] - minBalance) * yScale;
         
-        if (i === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
-        }
+        // Determine if this segment represents a win or loss
+        const isWin = dataPoints[i] > dataPoints[i - 1];
+        
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = isWin ? '#3fb950' : '#f85149';
+        ctx.lineWidth = 2;
+        ctx.stroke();
     }
-    ctx.stroke();
     
     // Draw points
     for (let i = 0; i < dataPoints.length; i++) {
         const x = padding + i * xScale;
         const y = height - padding - (dataPoints[i] - minBalance) * yScale;
         const isWin = i > 0 && dataPoints[i] > dataPoints[i-1];
+        const isActive = activePoint === i;
         
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(x, y, isActive ? 6 : 4, 0, Math.PI * 2);
         ctx.fillStyle = isWin ? '#3fb950' : '#f85149';
         ctx.fill();
         ctx.strokeStyle = '#0d1117';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = isActive ? 2 : 1;
         ctx.stroke();
+
+        if (isActive) {
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.strokeStyle = isWin ? '#3fb95080' : '#f8514980';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    }
+    
+    // Add drag indicator if there are more games
+    if (allDataPoints.length > pointsToShow) {
+        const navY = height - 15;
+        ctx.fillStyle = '#8b949e';
+        ctx.textAlign = 'center';
+        ctx.font = '11px Inter';
+        
+        // Game range indicator - use rounded values for display
+        const displayStartIndex = Math.max(0, allDataPoints.length - pointsToShow - Math.round(chartOffset));
+        const displayEndIndex = allDataPoints.length - Math.round(chartOffset);
+        
+        ctx.fillText(
+            `Games ${allDataPoints.length - displayEndIndex + 1} - ${allDataPoints.length - displayStartIndex} of ${allDataPoints.length}`,
+            width/2,
+            navY
+        );
+        
+        // Drag hint
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '10px Inter';
+        ctx.fillText('← Drag to scroll →', width/2, navY + 15);
+        
+        // Progress indicator
+        const progressWidth = width - padding * 2;
+        const progressHeight = 3;
+        const progressY = height - 35;
+        
+        // Background
+        ctx.fillStyle = '#374151';
+        ctx.fillRect(padding, progressY, progressWidth, progressHeight);
+        
+        // Progress
+        const progress = chartOffset / maxOffset;
+        const progressBarWidth = progressWidth * (pointsToShow / allDataPoints.length);
+        const progressBarX = padding + (progressWidth - progressBarWidth) * (1 - progress);
+        
+        ctx.fillStyle = '#10b981';
+        ctx.fillRect(progressBarX, progressY, progressBarWidth, progressHeight);
+    }
+}
+
+// Handle mouse/touch events for dragging
+function handleChartMouseDown(event) {
+    const canvas = document.getElementById('balance-chart');
+    if (!canvas || !currentUser || !currentUser.balanceHistory) return;
+    
+    isDragging = true;
+    const rect = canvas.getBoundingClientRect();
+    dragStartX = event.clientX - rect.left;
+    dragStartOffset = chartOffset;
+    dragVelocity = 0;
+    lastDragTime = Date.now();
+    lastDragX = dragStartX;
+    
+    canvas.style.cursor = 'grabbing';
+    event.preventDefault();
+}
+
+function handleChartMouseMove(event) {
+    const canvas = document.getElementById('balance-chart');
+    if (!canvas || !currentUser || !currentUser.balanceHistory) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    // Handle dragging
+    if (isDragging) {
+        const currentX = mouseX;
+        const deltaX = currentX - dragStartX;
+        const currentTime = Date.now();
+        
+        // Calculate velocity for momentum
+        const timeDelta = currentTime - lastDragTime;
+        if (timeDelta > 0) {
+            dragVelocity = (currentX - lastDragX) / timeDelta;
+        }
+        lastDragTime = currentTime;
+        lastDragX = currentX;
+        
+        // Calculate new offset based on drag distance
+        const maxOffset = Math.max(0, currentUser.balanceHistory.length - pointsToShow);
+        const sensitivity = maxOffset / (canvas.width - 80); // Adjust sensitivity
+        const newOffset = dragStartOffset - (deltaX * sensitivity);
+        
+        chartOffset = Math.max(0, Math.min(newOffset, maxOffset));
+        drawBalanceChart();
+        
+        event.preventDefault();
+        return;
+    }
+
+    // Handle hover effects
+    const tooltip = document.querySelector('.price-tooltip');
+    if (!canvas.dataPoints) return;
+
+    // Find the closest point
+    let minDistance = Infinity;
+    let closestPoint = -1;
+    
+    canvas.dataPoints.forEach((point, index) => {
+        const distance = Math.sqrt(
+            Math.pow(mouseX - point.x, 2) + 
+            Math.pow(mouseY - point.y, 2)
+        );
+        if (distance < minDistance && distance < 20) {
+            minDistance = distance;
+            closestPoint = index;
+        }
+    });
+
+    if (closestPoint !== -1) {
+        const point = canvas.dataPoints[closestPoint];
+        activePoint = closestPoint;
+        
+        // Show and position tooltip
+        tooltip.style.opacity = '1';
+        tooltip.style.left = `${point.x + rect.left}px`;
+        tooltip.style.top = `${point.y + rect.top - 30}px`;
+        
+        // Format the value
+        let displayValue = point.value;
+        if (displayValue >= 1000000) {
+            displayValue = (displayValue / 1000000).toFixed(2) + 'M';
+        } else if (displayValue >= 1000) {
+            displayValue = (displayValue / 1000).toFixed(2) + 'K';
+        } else {
+            displayValue = displayValue.toFixed(2);
+        }
+        
+        tooltip.textContent = '$' + displayValue;
+        drawBalanceChart();
+    } else {
+        tooltip.style.opacity = '0';
+        if (activePoint !== null) {
+            activePoint = null;
+            drawBalanceChart();
+        }
+    }
+}
+
+function handleChartMouseUp(event) {
+    const canvas = document.getElementById('balance-chart');
+    if (!canvas || !isDragging) return;
+    
+    isDragging = false;
+    canvas.style.cursor = 'grab';
+    
+    // Apply momentum and snap to nearest data point
+    if (Math.abs(dragVelocity) > 0.1) {
+        animateChartMomentum();
+    } else {
+        snapToNearestPoint();
+    }
+    
+    event.preventDefault();
+}
+
+function animateChartMomentum() {
+    const friction = 0.95;
+    const minVelocity = 0.1;
+    
+    function animate() {
+        if (Math.abs(dragVelocity) < minVelocity) {
+            snapToNearestPoint();
+            return;
+        }
+        
+        const maxOffset = Math.max(0, currentUser.balanceHistory.length - pointsToShow);
+        const sensitivity = maxOffset / 300; // Adjust momentum sensitivity
+        chartOffset -= dragVelocity * sensitivity * 10;
+        chartOffset = Math.max(0, Math.min(chartOffset, maxOffset));
+        
+        dragVelocity *= friction;
+        drawBalanceChart();
+        
+        requestAnimationFrame(animate);
+    }
+    
+    animate();
+}
+
+function snapToNearestPoint() {
+    const maxOffset = Math.max(0, currentUser.balanceHistory.length - pointsToShow);
+    const targetOffset = Math.round(chartOffset);
+    
+    if (Math.abs(targetOffset - chartOffset) > 0.1) {
+        const startOffset = chartOffset;
+        const startTime = Date.now();
+        const duration = 200;
+        
+        function animate() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const easeProgress = 1 - Math.pow(1 - progress, 3); // Ease out cubic
+            
+            chartOffset = startOffset + (targetOffset - startOffset) * easeProgress;
+            drawBalanceChart();
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            }
+        }
+        
+        animate();
+    }
+}
+
+// Touch events for mobile
+function handleChartTouchStart(event) {
+    if (event.touches.length === 1) {
+        const touch = event.touches[0];
+        const mouseEvent = new MouseEvent('mousedown', {
+            clientX: touch.clientX,
+            clientY: touch.clientY
+        });
+        handleChartMouseDown(mouseEvent);
+    }
+}
+
+function handleChartTouchMove(event) {
+    if (event.touches.length === 1) {
+        const touch = event.touches[0];
+        const mouseEvent = new MouseEvent('mousemove', {
+            clientX: touch.clientX,
+            clientY: touch.clientY
+        });
+        handleChartMouseMove(mouseEvent);
+    }
+}
+
+function handleChartTouchEnd(event) {
+    const mouseEvent = new MouseEvent('mouseup', {});
+    handleChartMouseUp(mouseEvent);
+}
+
+function handleChartMouseLeave() {
+    const tooltip = document.querySelector('.price-tooltip');
+    tooltip.style.opacity = '0';
+    if (activePoint !== null) {
+        activePoint = null;
+        drawBalanceChart();
+    }
+}
+
+// Initialize chart controls
+function initializeChart() {
+    const canvas = document.getElementById('balance-chart');
+    if (canvas) {
+        canvas.style.cursor = 'grab';
+        
+        // Create tooltip element if it doesn't exist
+        if (!document.querySelector('.price-tooltip')) {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'price-tooltip';
+            document.body.appendChild(tooltip);
+        }
+        
+        // Mouse events
+        canvas.addEventListener('mousedown', handleChartMouseDown);
+        document.addEventListener('mousemove', handleChartMouseMove);
+        document.addEventListener('mouseup', handleChartMouseUp);
+        canvas.addEventListener('mouseleave', handleChartMouseLeave);
+        
+        // Touch events
+        canvas.addEventListener('touchstart', handleChartTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleChartTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleChartTouchEnd, { passive: false });
+        
+        // Prevent context menu on right click
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 }
 
@@ -521,15 +883,42 @@ function setRollType(type) {
     updateDiceStats();
 }
 
+// Bet amount functions
+function setBetAmount(action) {
+    const betInput = document.getElementById('dice-bet-amount');
+    if (!betInput) return;
+
+    const currentBalance = currentUser ? Math.ceil(currentUser.balance * 100) / 100 : 0;
+    let currentBet = Math.ceil(parseFloat(betInput.value || 0) * 100) / 100;
+    
+    switch(action) {
+        case 'half':
+            const halved = Math.ceil((currentBet / 2) * 100) / 100;
+            betInput.value = Math.max(0.01, halved).toFixed(2);
+            break;
+        case 'double':
+            const doubled = Math.ceil((currentBet * 2) * 100) / 100;
+            betInput.value = Math.min(doubled, currentBalance).toFixed(2);
+            break;
+        case 'max':
+            betInput.value = currentBalance.toFixed(2);
+            break;
+        case 'clear':
+            betInput.value = '';
+            break;
+    }
+}
+
 // Roll dice function
 async function rollDice() {
     if (!currentUser || isRolling) return;
     
-    const betAmount = parseFloat(document.getElementById('dice-bet-amount').value);
+    const betInput = document.getElementById('dice-bet-amount');
+    let betAmount = Math.ceil(parseFloat(betInput.value) * 100) / 100;
     const targetValue = parseFloat(document.getElementById('dice-target').value);
     
-    if (isNaN(betAmount) || betAmount <= 0) {
-        showError('Please enter a valid bet amount');
+    if (isNaN(betAmount) || betAmount < 0.01) {
+        showError('Minimum bet amount is $0.01');
         return;
     }
     
@@ -537,6 +926,10 @@ async function rollDice() {
         showError('Insufficient balance');
         return;
     }
+    
+    // Round bet to 2 decimal places
+    betAmount = Math.ceil(betAmount * 100) / 100;
+    betInput.value = betAmount.toFixed(2);
     
     isRolling = true;
     const rollButton = document.getElementById('roll-dice-btn');
@@ -680,73 +1073,179 @@ function continueAutoBet(wasWin, profit) {
     }, 1000);
 }
 
-function showGameNotification(isWin, amount, customMessage = null) {
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(20, 20, 20, 0.95);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 16px;
-        padding: 2rem;
-        text-align: center;
-        z-index: 3000;
-        min-width: 300px;
-        animation: slideIn 0.3s ease-out;
-    `;
-    
-    if (customMessage) {
-        notification.innerHTML = `
-            <div style="font-size: 1.5rem; margin-bottom: 1rem;">🎲</div>
-            <div style="font-size: 1.2rem; font-weight: 600; color: #f1f1f1; margin-bottom: 0.5rem;">${customMessage}</div>
-        `;
-    } else {
-        const icon = isWin ? '🎉' : '😞';
-        const title = isWin ? 'You Won!' : 'You Lost';
-        const color = isWin ? '#10b981' : '#ef4444';
-        const sign = amount >= 0 ? '+' : '';
-        
-        notification.innerHTML = `
-            <div style="font-size: 2rem; margin-bottom: 1rem;">${icon}</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: ${color}; margin-bottom: 0.5rem;">${title}</div>
-            <div style="font-size: 1.2rem; font-weight: 600; color: ${color};">${sign}$${formatNumber(Math.abs(amount))}</div>
-        `;
+// Notification System
+class NotificationManager {
+    constructor() {
+        this.container = document.getElementById('notification-container');
+        this.notifications = [];
+        this.maxNotifications = 3;
     }
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.style.animation = 'fadeOut 0.3s ease-in';
-        setTimeout(() => notification.remove(), 300);
-    }, 2000);
+
+    show(options) {
+        const {
+            type = 'info',
+            title,
+            message,
+            amount = null,
+            duration = 5000,
+            persistent = false
+        } = options;
+
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        
+        // Create notification content
+        const header = document.createElement('div');
+        header.className = 'notification-header';
+        
+        const titleElement = document.createElement('div');
+        titleElement.className = 'notification-title';
+        
+        const icon = document.createElement('div');
+        icon.className = 'notification-icon';
+        icon.textContent = this.getIcon(type);
+        
+        const titleText = document.createElement('span');
+        titleText.textContent = title;
+        
+        titleElement.appendChild(icon);
+        titleElement.appendChild(titleText);
+        header.appendChild(titleElement);
+        notification.appendChild(header);
+        
+        if (message) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'notification-message';
+            messageElement.textContent = message;
+            notification.appendChild(messageElement);
+        }
+        
+        if (amount !== null) {
+            const amountElement = document.createElement('div');
+            amountElement.className = 'notification-amount';
+            const sign = amount >= 0 ? '+' : '';
+            amountElement.textContent = `${sign}$${formatNumber(Math.abs(amount))}`;
+            notification.appendChild(amountElement);
+        }
+        
+        // Add progress bar for auto-dismiss
+        if (!persistent && duration > 0) {
+            const progressBar = document.createElement('div');
+            progressBar.className = 'notification-progress';
+            progressBar.style.width = '100%';
+            notification.appendChild(progressBar);
+            
+            // Animate progress bar
+            requestAnimationFrame(() => {
+                progressBar.style.transition = `width ${duration}ms linear`;
+                progressBar.style.width = '0%';
+            });
+        }
+        
+        // Add click to dismiss
+        notification.onclick = () => this.dismiss(notification);
+        
+        // Add to container
+        this.container.appendChild(notification);
+        this.notifications.push(notification);
+        
+        // Remove excess notifications
+        while (this.notifications.length > this.maxNotifications) {
+            const oldest = this.notifications.shift();
+            this.dismiss(oldest);
+        }
+        
+        // Animate in
+        requestAnimationFrame(() => {
+            notification.classList.add('show');
+        });
+        
+        // Auto dismiss
+        if (!persistent && duration > 0) {
+            setTimeout(() => {
+                this.dismiss(notification);
+            }, duration);
+        }
+        
+        return notification;
+    }
+
+    dismiss(notification) {
+        if (!notification || !notification.parentNode) return;
+        
+        notification.classList.add('hide');
+        
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+            const index = this.notifications.indexOf(notification);
+            if (index > -1) {
+                this.notifications.splice(index, 1);
+            }
+        }, 300);
+    }
+
+    getIcon(type) {
+        const icons = {
+            success: '✓',
+            error: '!',
+            warning: '!',
+            info: 'i',
+            'level-up': '↑'
+        };
+        return icons[type] || 'i';
+    }
+
+    // Convenience methods
+    success(title, message, amount = null) {
+        return this.show({ type: 'success', title, message, amount });
+    }
+
+    error(title, message) {
+        return this.show({ type: 'error', title, message, duration: 7000 });
+    }
+
+    warning(title, message) {
+        return this.show({ type: 'warning', title, message });
+    }
+
+    info(title, message) {
+        return this.show({ type: 'info', title, message });
+    }
+
+    levelUp(title, message, amount = null) {
+        return this.show({ type: 'level-up', title, message, amount, duration: 8000 });
+    }
 }
 
+// Initialize notification manager
+const notifications = new NotificationManager();
+
+// Replace old notification functions
 function showError(message) {
-    const errorDiv = document.createElement('div');
-    errorDiv.className = 'fixed top-4 right-4 bg-red-500/20 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg z-50';
-    errorDiv.style.cssText = `
-        position: fixed;
-        top: 1rem;
-        right: 1rem;
-        background: rgba(239, 68, 68, 0.1);
-        border: 1px solid rgba(239, 68, 68, 0.3);
-        color: #f87171;
-        padding: 1rem;
-        border-radius: 12px;
-        z-index: 3000;
-        backdrop-filter: blur(8px);
-    `;
-    errorDiv.textContent = message;
-    
-    document.body.appendChild(errorDiv);
-    
-    // Auto-remove after 3 seconds
-    setTimeout(() => {
-        errorDiv.remove();
-    }, 3000);
+    notifications.error('Error', message);
+}
+
+function showGameNotification(isWin, amount, customMessage = null) {
+    if (customMessage) {
+        if (customMessage.includes('Level Up')) {
+            notifications.levelUp('Level Up!', customMessage);
+        } else if (customMessage.includes('completed')) {
+            notifications.info('Auto Bet', customMessage);
+        } else if (customMessage.includes('reached')) {
+            notifications.warning('Auto Bet', customMessage);
+        } else {
+            notifications.info('Game', customMessage);
+        }
+    } else {
+        if (isWin) {
+            notifications.success('You Won!', 'Congratulations on your win!', amount);
+        } else {
+            notifications.error('You Lost', 'Better luck next time!', amount);
+        }
+    }
 }
 
 function logout() {

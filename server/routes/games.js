@@ -1,5 +1,6 @@
 const express = require('express');
 const User = require('../models/User');
+const Badge = require('../models/Badge');
 const GameHistory = require('../models/GameHistory');
 const { authenticateToken } = require('../middleware/auth');
 const { getRandomNumber } = require('../utils/random');
@@ -81,7 +82,14 @@ router.post('/play', authenticateToken, async (req, res) => {
         user.balanceHistory.push(user.balance); // Add balance after bet
 
         if (won) {
-            winAmount = Math.floor(betAmount * multiplier);
+            // Calculate raw win amount
+            const rawWinAmount = betAmount * multiplier;
+            // Split into dollars and cents
+            const dollars = Math.floor(rawWinAmount);
+            const cents = (rawWinAmount - dollars) * 100;
+            // Only round up cents if they exist
+            winAmount = dollars + (cents > 0 ? Math.ceil(cents) : Math.round(cents)) / 100;
+            
             user.balance += winAmount;
             user.balanceHistory.push(user.balance); // Add balance after win
         }
@@ -90,8 +98,8 @@ router.post('/play', authenticateToken, async (req, res) => {
         const experienceGained = won ? 10 : 5;
         const levelUpResult = user.addExperience(experienceGained);
 
-        // Update game statistics
-        user.updateGameStats(betAmount, won ? winAmount : 0);
+        // Update game statistics and check for badges
+        const earnedBadges = await user.updateGameStats(betAmount, won ? winAmount : 0);
 
         // Save user
         await user.save();
@@ -112,6 +120,14 @@ router.post('/play', authenticateToken, async (req, res) => {
         });
         await gameHistory.save();
 
+        // Populate badge details
+        if (earnedBadges.length > 0) {
+            await User.populate(user, {
+                path: 'badges.badgeId',
+                model: 'Badge'
+            });
+        }
+
         res.json({
             success: true,
             result: {
@@ -122,7 +138,14 @@ router.post('/play', authenticateToken, async (req, res) => {
                 betAmount,
                 winAmount: won ? winAmount : 0,
                 experienceGained,
-                levelUp: levelUpResult
+                levelUp: levelUpResult,
+                earnedBadges: earnedBadges.map(badge => ({
+                    name: badge.name,
+                    description: badge.description,
+                    icon: badge.icon,
+                    color: badge.color,
+                    secret: badge.secret
+                }))
             },
             user: user.toJSON()
         });

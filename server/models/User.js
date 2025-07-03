@@ -34,6 +34,24 @@ const userSchema = new mongoose.Schema({
         default: 0,
         min: 0
     },
+    badges: [{
+        badgeId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Badge'
+        },
+        earnedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    currentWinStreak: {
+        type: Number,
+        default: 0
+    },
+    bestWinStreak: {
+        type: Number,
+        default: 0
+    },
     gamesPlayed: {
         type: Number,
         default: 0,
@@ -92,40 +110,98 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
 };
 
+// Calculate required XP for a given level
+function getRequiredXP(level) {
+    // Exponential XP curve: each level requires 20% more XP than the last
+    return Math.floor(100 * Math.pow(1.2, level - 1));
+}
+
 // Add experience and handle level ups
 userSchema.methods.addExperience = function(amount) {
     this.experience += amount;
     
-    // Check for level up (100 XP per level)
-    const newLevel = Math.floor(this.experience / 100) + 1;
+    // Calculate new level based on total XP
+    let newLevel = this.level;
+    let totalXPRequired = getRequiredXP(newLevel);
+    
+    while (this.experience >= totalXPRequired) {
+        newLevel++;
+        totalXPRequired += getRequiredXP(newLevel);
+    }
+    
     if (newLevel > this.level) {
         const levelsGained = newLevel - this.level;
         this.level = newLevel;
-        this.balance += levelsGained * 50; // $50 bonus per level
-        this.balanceHistory.push(this.balance); // Add balance to history after level up bonus
-        return { leveledUp: true, levelsGained, bonusAmount: levelsGained * 50 };
+        return { leveledUp: true, levelsGained };
     }
     
     return { leveledUp: false };
 };
 
-// Update game statistics
-userSchema.methods.updateGameStats = function(betAmount, winAmount) {
+// Update game statistics and check for badges
+userSchema.methods.updateGameStats = async function(betAmount, winAmount) {
+    const Badge = mongoose.model('Badge');
+    const earnedBadges = [];
+    
+    // Update basic stats
     this.gamesPlayed += 1;
     this.totalWagered += betAmount;
     
     if (winAmount > 0) {
         this.wins += 1;
         this.totalWon += winAmount;
+        this.currentWinStreak += 1;
+        this.bestWinStreak = Math.max(this.bestWinStreak, this.currentWinStreak);
+        
         if (winAmount > this.bestWin) {
             this.bestWin = winAmount;
         }
     } else {
         this.losses += 1;
+        this.currentWinStreak = 0;
     }
 
-    // Add current balance to history after updating stats
+    // Add current balance to history
     this.balanceHistory.push(this.balance);
+
+    // Check for badges
+    const badges = await Badge.find();
+    for (const badge of badges) {
+        // Skip if user already has this badge
+        if (this.badges.some(b => b.badgeId.equals(badge._id))) continue;
+
+        let earned = false;
+        switch (badge.criteria.type) {
+            case 'level':
+                earned = this.level >= badge.criteria.value;
+                break;
+            case 'wins':
+                earned = this.wins >= badge.criteria.value;
+                break;
+            case 'balance':
+                earned = this.balance >= badge.criteria.value;
+                break;
+            case 'games':
+                earned = this.gamesPlayed >= badge.criteria.value;
+                break;
+            case 'bet':
+                earned = betAmount >= badge.criteria.value;
+                break;
+            case 'winstreak':
+                earned = this.currentWinStreak >= badge.criteria.value;
+                break;
+            case 'specific':
+                earned = betAmount === badge.criteria.value;
+                break;
+        }
+
+        if (earned) {
+            this.badges.push({ badgeId: badge._id });
+            earnedBadges.push(badge);
+        }
+    }
+
+    return earnedBadges;
 };
 
 // Remove sensitive data when converting to JSON

@@ -413,6 +413,12 @@
                     </div>
                     <h2 id="profile-username">Player</h2>
                     <p>Level <span id="profile-level">1</span></p>
+                    <div class="profile-xp-bar">
+                        <div class="xp-fill" id="profile-xp-fill" style="width: 0%"></div>
+                        <div class="xp-text">
+                            <span id="profile-current-xp">0</span> / <span id="profile-required-xp">100</span> XP
+                        </div>
+                    </div>
                 </div>
                 <div class="profile-stats">
                     <h3>Statistics</h3>
@@ -427,6 +433,24 @@
                     <div class="stat-row">
                         <span>Current Balance:</span>
                         <span id="profile-balance">$0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Win Rate:</span>
+                        <span id="profile-win-rate">0%</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Best Win:</span>
+                        <span id="profile-best-win">$0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Best Win Streak:</span>
+                        <span id="profile-best-streak">0</span>
+                    </div>
+                </div>
+                <div class="profile-badges">
+                    <h3>Badges & Achievements</h3>
+                    <div class="badges-grid" id="badges-grid">
+                        <!-- Badges will be added here dynamically -->
                     </div>
                 </div>
             </div>
@@ -443,6 +467,9 @@
             </button>
         </div>
     </div>
+
+    <!-- Notification Container -->
+    <div id="notification-container" class="notification-container"></div>
 
     <script src="js/app.js"></script>
     <script>
