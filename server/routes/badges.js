@@ -2,10 +2,10 @@ const express = require('express');
 const router = express.Router();
 const Badge = require('../models/Badge');
 const User = require('../models/User');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 // Get all badges
-router.get('/', auth, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         // Get all badges
         const badges = await Badge.find({});
