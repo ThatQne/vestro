@@ -9,7 +9,7 @@ const router = express.Router();
 // Play a game
 router.post('/play', authenticateToken, async (req, res) => {
     try {
-        const { gameType, betAmount, playerChoice } = req.body;
+        const { gameType, betAmount, playerChoice, targetNumber } = req.body;
         
         // Validation
         if (!gameType || !betAmount || !playerChoice) {
@@ -55,15 +55,19 @@ router.post('/play', authenticateToken, async (req, res) => {
             won = gameResult === playerChoice.toLowerCase();
             multiplier = 2; // 2x payout for coin flip
         } else if (gameType === 'dice') {
-            const dice = await getRandomNumber(1, 6);
-            gameResult = dice.toString();
+            // Generate a random number between 0 and 100 with 2 decimal places
+            const roll = Math.round((await getRandomNumber(0, 10000)) / 100);
+            gameResult = roll.toFixed(2);
             
-            if (playerChoice.toLowerCase() === 'higher') {
-                won = dice >= 4; // 4, 5, 6
-            } else if (playerChoice.toLowerCase() === 'lower') {
-                won = dice <= 3; // 1, 2, 3
+            if (playerChoice === 'higher') {
+                won = roll > targetNumber;
+                // Calculate multiplier (99% RTP)
+                multiplier = 0.99 / ((100 - targetNumber) / 100);
+            } else if (playerChoice === 'lower') {
+                won = roll < targetNumber;
+                // Calculate multiplier (99% RTP)
+                multiplier = 0.99 / (targetNumber / 100);
             }
-            multiplier = 1.8; // 1.8x payout for dice
         } else {
             return res.status(400).json({
                 success: false,

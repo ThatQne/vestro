@@ -454,126 +454,80 @@ function animateNumber(element, newValue, duration = 600, prefix = '') {
     requestAnimationFrame(updateNumber);
 }
 
-// Dice Game Variables
+// Global variables for dice game
 let isRolling = false;
-let autoBetActive = false;
+let rollType = 'over';
+let isAutoBetting = false;
 let autoBetCount = 0;
-let autoBetSettings = {
-    count: 0,
-    stopWin: 0,
-    stopLoss: 0,
-    increaseLoss: 0
-};
 
-let rollType = 'over'; // 'over' or 'under'
-
-// Initialize dice game
 function initializeDiceGame() {
+    // Set initial roll type
+    setRollType('over');
+    
+    // Add slider event listener
     const targetSlider = document.getElementById('dice-target');
-    const targetValue = document.getElementById('dice-target-value');
+    if (targetSlider) {
+        targetSlider.addEventListener('input', function() {
+            updateDiceStats();
+        });
+    }
+}
+
+function updateDiceStats() {
+    const targetValue = parseFloat(document.getElementById('dice-target').value);
+    const targetDisplay = document.getElementById('dice-target-value');
     const multiplierDisplay = document.getElementById('dice-multiplier');
     const chanceDisplay = document.getElementById('dice-chance');
     const rollTypeText = document.getElementById('roll-type-text');
+    const track = document.querySelector('.dice-track');
     
-    function updateDiceStats() {
-        const target = parseFloat(targetSlider.value);
-        let chance, multiplier;
-        
-        if (rollType === 'over') {
-            chance = (100 - target) / 100;
-            if (rollTypeText) rollTypeText.textContent = 'Roll Over';
-        } else {
-            chance = (target - 1) / 100;
-            if (rollTypeText) rollTypeText.textContent = 'Roll Under';
-        }
-        
-        multiplier = 0.99 / chance;
-        
-        if (targetValue) targetValue.textContent = target.toFixed(2);
-        if (multiplierDisplay) multiplierDisplay.textContent = multiplier.toFixed(2) + 'x';
-        if (chanceDisplay) chanceDisplay.textContent = (chance * 100).toFixed(2) + '%';
+    if (targetDisplay) targetDisplay.textContent = targetValue.toFixed(2);
+    
+    let chance, multiplier;
+    if (rollType === 'over') {
+        chance = (100 - targetValue) / 100;
+        rollTypeText.textContent = 'Roll Over';
+        track.classList.remove('under');
+    } else {
+        chance = targetValue / 100;
+        rollTypeText.textContent = 'Roll Under';
+        track.classList.add('under');
     }
     
-    if (targetSlider) {
-        targetSlider.addEventListener('input', updateDiceStats);
-        updateDiceStats();
-    }
+    // Calculate multiplier (99% RTP)
+    multiplier = (0.99 / chance).toFixed(2);
+    
+    if (multiplierDisplay) multiplierDisplay.textContent = multiplier + 'x';
+    if (chanceDisplay) chanceDisplay.textContent = (chance * 100).toFixed(2) + '%';
 }
 
 function setRollType(type) {
     rollType = type;
+    
+    // Update button states
     const overBtn = document.getElementById('roll-over-btn');
     const underBtn = document.getElementById('roll-under-btn');
-    const sliderTrack = document.querySelector('.slider-track');
-    const diceTrack = document.querySelector('.dice-track');
     
     if (overBtn && underBtn) {
         if (type === 'over') {
             overBtn.classList.add('active');
             underBtn.classList.remove('active');
-            if (sliderTrack) sliderTrack.classList.remove('under');
-            if (diceTrack) diceTrack.classList.remove('under');
         } else {
-            underBtn.classList.add('active');
             overBtn.classList.remove('active');
-            if (sliderTrack) sliderTrack.classList.add('under');
-            if (diceTrack) diceTrack.classList.add('under');
+            underBtn.classList.add('active');
         }
     }
     
-    // Update stats display
-    const targetSlider = document.getElementById('dice-target');
-    const targetValue = document.getElementById('dice-target-value');
-    const multiplierDisplay = document.getElementById('dice-multiplier');
-    const chanceDisplay = document.getElementById('dice-chance');
-    const rollTypeText = document.getElementById('roll-type-text');
-    
-    if (targetSlider) {
-        const target = parseFloat(targetSlider.value);
-        let chance, multiplier;
-        
-        if (rollType === 'over') {
-            chance = (100 - target) / 100;
-            if (rollTypeText) rollTypeText.textContent = 'Roll Over';
-        } else {
-            chance = (target - 1) / 100;
-            if (rollTypeText) rollTypeText.textContent = 'Roll Under';
-        }
-        
-        multiplier = 0.99 / chance;
-        
-        if (multiplierDisplay) multiplierDisplay.textContent = multiplier.toFixed(2) + 'x';
-        if (chanceDisplay) chanceDisplay.textContent = (chance * 100).toFixed(2) + '%';
-    }
-}
-
-// Bet amount functions
-function setBetAmount(action) {
-    const betInput = document.getElementById('dice-bet-amount');
-    const currentBalance = currentUser ? currentUser.balance : 1000;
-    let currentBet = parseFloat(betInput.value) || 0;
-    
-    switch(action) {
-        case 'half':
-            betInput.value = (currentBet / 2).toFixed(2);
-            break;
-        case 'double':
-            betInput.value = (currentBet * 2).toFixed(2);
-            break;
-        case 'max':
-            betInput.value = currentBalance.toFixed(2);
-            break;
-        case 'clear':
-            betInput.value = '';
-            break;
-    }
+    updateDiceStats();
 }
 
 // Roll dice function
 async function rollDice() {
     if (!currentUser || isRolling) return;
     
-    const betAmount = parseFloat(document.getElementById('bet-amount').value);
+    const betAmount = parseFloat(document.getElementById('dice-bet-amount').value);
+    const targetValue = parseFloat(document.getElementById('dice-target').value);
+    
     if (isNaN(betAmount) || betAmount <= 0) {
         showError('Please enter a valid bet amount');
         return;
@@ -585,8 +539,8 @@ async function rollDice() {
     }
     
     isRolling = true;
-    const rollButton = document.getElementById('roll-button');
-    const buttonText = rollButton.querySelector('span');
+    const rollButton = document.getElementById('roll-dice-btn');
+    const buttonText = document.getElementById('roll-btn-text');
     const originalText = buttonText.textContent;
     buttonText.textContent = 'Rolling...';
     rollButton.disabled = true;
@@ -611,6 +565,18 @@ async function rollDice() {
         if (data.success) {
             currentUser = data.user;
             updateUserInterface();
+            
+            // Update dice pointer and result
+            const pointer = document.getElementById('dice-pointer');
+            const result = document.getElementById('dice-result');
+            const resultNumber = parseFloat(data.result.gameResult);
+            
+            if (pointer) pointer.style.left = resultNumber + '%';
+            if (result) {
+                result.textContent = resultNumber.toFixed(2);
+                result.classList.add('show', data.result.won ? 'win' : 'lose');
+            }
+            
             showGameNotification(data.result.won, data.result.winAmount);
             
             if (data.result.levelUp.leveledUp) {
@@ -642,11 +608,11 @@ function toggleAutoBet() {
     const autoBetBtn = document.getElementById('auto-bet-btn');
     const autoBetSettings = document.getElementById('auto-bet-settings');
     
-    if (!autoBetActive) {
+    if (!isAutoBetting) {
         // Start auto bet
         const count = parseInt(document.getElementById('auto-bet-count').value) || 10;
         autoBetCount = count;
-        autoBetActive = true;
+        isAutoBetting = true;
         
         autoBetBtn.classList.add('active');
         autoBetBtn.textContent = `Stop (${autoBetCount})`;
@@ -661,7 +627,7 @@ function toggleAutoBet() {
 }
 
 function stopAutoBet() {
-    autoBetActive = false;
+    isAutoBetting = false;
     autoBetCount = 0;
     
     const autoBetBtn = document.getElementById('auto-bet-btn');
@@ -676,7 +642,7 @@ function stopAutoBet() {
 }
 
 function continueAutoBet(wasWin, profit) {
-    if (!autoBetActive) return;
+    if (!isAutoBetting) return;
     
     autoBetCount--;
     
@@ -708,7 +674,7 @@ function continueAutoBet(wasWin, profit) {
     
     // Continue with next roll after delay
     setTimeout(() => {
-        if (autoBetActive) {
+        if (isAutoBetting) {
             rollDice();
         }
     }, 1000);
