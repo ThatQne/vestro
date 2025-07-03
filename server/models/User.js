@@ -116,18 +116,25 @@ function getRequiredXP(level) {
     return 50 + (level * 10);
 }
 
+// Calculate total XP needed to reach a specific level
+function getTotalXPForLevel(level) {
+    let totalXP = 0;
+    for (let i = 1; i <= level; i++) {
+        totalXP += getRequiredXP(i);
+    }
+    return totalXP;
+}
+
 // Add experience and handle level ups
 userSchema.methods.addExperience = function(amount) {
     this.experience += amount;
     
-    // Calculate total XP needed for each level until we find the right one
+    // Find the highest level we can achieve with current XP
     let newLevel = 1;
-    while (this.experience >= getRequiredXP(newLevel)) {
+    while (getTotalXPForLevel(newLevel) <= this.experience) {
         newLevel++;
     }
-    
-    // Now newLevel is one more than what we actually achieved
-    newLevel--;
+    newLevel--; // Back off one level since we went one too far
     
     if (newLevel > this.level) {
         const levelsGained = newLevel - this.level;

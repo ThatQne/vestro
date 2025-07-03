@@ -261,16 +261,25 @@ function getRequiredXP(level) {
     return 50 + (level * 10);
 }
 
+// Calculate total XP needed to reach a specific level
+function getTotalXPForLevel(level) {
+    let totalXP = 0;
+    for (let i = 1; i <= level; i++) {
+        totalXP += getRequiredXP(i);
+    }
+    return totalXP;
+}
+
 function updateXPBar() {
     const currentXPElement = document.getElementById('current-xp');
     const requiredXPElement = document.getElementById('required-xp');
     const xpFillElement = document.getElementById('xp-fill');
     
     if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
-        const xpForCurrentLevel = getRequiredXP(currentUser.level - 1); // XP needed for current level
-        const xpForNextLevel = getRequiredXP(currentUser.level); // XP needed for next level
-        const xpProgress = currentUser.experience - xpForCurrentLevel;
-        const xpNeeded = xpForNextLevel - xpForCurrentLevel;
+        const totalXPForCurrentLevel = getTotalXPForLevel(currentUser.level - 1); // XP needed to reach current level
+        const totalXPForNextLevel = getTotalXPForLevel(currentUser.level); // XP needed to reach next level
+        const xpProgress = currentUser.experience - totalXPForCurrentLevel;
+        const xpNeeded = totalXPForNextLevel - totalXPForCurrentLevel;
         const xpPercentage = Math.min(100, Math.max(0, (xpProgress / xpNeeded) * 100));
         
         currentXPElement.textContent = Math.max(0, xpProgress);
@@ -285,10 +294,10 @@ function updateProfileXPBar() {
     const xpFillElement = document.getElementById('profile-xp-fill');
     
     if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
-        const xpForCurrentLevel = getRequiredXP(currentUser.level - 1); // XP needed for current level
-        const xpForNextLevel = getRequiredXP(currentUser.level); // XP needed for next level
-        const xpProgress = currentUser.experience - xpForCurrentLevel;
-        const xpNeeded = xpForNextLevel - xpForCurrentLevel;
+        const totalXPForCurrentLevel = getTotalXPForLevel(currentUser.level - 1); // XP needed to reach current level
+        const totalXPForNextLevel = getTotalXPForLevel(currentUser.level); // XP needed to reach next level
+        const xpProgress = currentUser.experience - totalXPForCurrentLevel;
+        const xpNeeded = totalXPForNextLevel - totalXPForCurrentLevel;
         const xpPercentage = Math.min(100, Math.max(0, (xpProgress / xpNeeded) * 100));
         
         currentXPElement.textContent = Math.max(0, xpProgress);
@@ -1046,8 +1055,8 @@ async function rollDice() {
             showGameNotification(data.result.won, data.result.winAmount);
             
             if (data.result.levelUp.leveledUp) {
-                showGameNotification(true, data.result.levelUp.bonusAmount, 
-                    `Level Up! +${data.result.levelUp.levelsGained} level(s) and $${data.result.levelUp.bonusAmount} bonus!`);
+                showGameNotification(true, null, 
+                    `Level Up! +${data.result.levelUp.levelsGained} level(s)!`);
             }
             
             // Update chart immediately after game result
