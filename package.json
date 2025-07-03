@@ -9,9 +9,7 @@
     "build": "npm install",
     "dev": "browser-sync start --server public --files 'public/**/*' --port 3000 --no-open",
     "dev:server": "cross-env NODE_ENV=development nodemon server/server.js",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d public",
-    "publish": "node publish.js"
+    "publish": "git add . && git commit -m \"Update site\" && git push origin main"
   },
   "dependencies": {
     "axios": "^1.5.1",
@@ -29,7 +27,6 @@
   "devDependencies": {
     "browser-sync": "^3.0.4",
     "cross-env": "^7.0.3",
-    "gh-pages": "^6.1.1",
     "nodemon": "^3.0.1"
   },
   "engines": {
