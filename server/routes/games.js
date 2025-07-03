@@ -193,4 +193,21 @@ router.get('/history', authenticateToken, async (req, res) => {
     }
 });
 
+// Get all badges
+router.get('/badges', authenticateToken, async (req, res) => {
+    try {
+        const badges = await Badge.find();
+        res.json({
+            success: true,
+            badges
+        });
+    } catch (error) {
+        console.error('Error fetching badges:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+});
+
 module.exports = router; 

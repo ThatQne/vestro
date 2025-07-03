@@ -2,6 +2,7 @@
 
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const ghpages = require('gh-pages');
 const execAsync = promisify(exec);
 
 // Colors for console output
@@ -30,14 +31,38 @@ async function runCommand(command, errorMessage) {
   }
 }
 
+function publishToGitHubPages() {
+  return new Promise((resolve, reject) => {
+    log('📦 Publishing to GitHub Pages...', colors.blue);
+    ghpages.publish('public', {
+      branch: 'gh-pages',
+      message: `Update: ${new Date().toLocaleString('en-US', {
+        timeZone: 'UTC',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      })}`,
+    }, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
 async function main() {
   try {
     log('🚀 Starting publish process...', colors.blue);
 
-    // Check for changes
-    const { stdout: status } = await execAsync('git status --porcelain');
+    // Check for changes in public directory
+    const { stdout: status } = await execAsync('git status --porcelain public/');
     if (status) {
-      log('📦 Changes detected, committing...', colors.blue);
+      log('📦 Changes detected in public directory, committing...', colors.blue);
       const timestamp = new Date().toLocaleString('en-US', {
         timeZone: 'UTC',
         year: 'numeric',
@@ -49,19 +74,24 @@ async function main() {
       });
 
       // Add and commit changes
-      await runCommand('git add .', 'Failed to stage changes');
-      await runCommand(`git commit -m "Update: ${timestamp}"`, 'Failed to commit changes');
+      await runCommand('git add public/', 'Failed to stage changes');
+      await runCommand(`git commit -m "Update public: ${timestamp}"`, 'Failed to commit changes');
       
       // Push changes to main branch
       log('📤 Pushing changes to GitHub...', colors.blue);
       await runCommand('git push origin main', 'Failed to push changes');
       
       log('✅ Changes pushed successfully!', colors.green);
-      log('🔄 GitHub Actions will handle the deployment automatically', colors.blue);
-      log('🌎 Your site will be available at: https://vestro-lz81.onrender.com', colors.green);
     } else {
-      log('✨ No changes to commit', colors.green);
+      log('✨ No changes to commit in public directory', colors.green);
     }
+
+    // Deploy to GitHub Pages
+    await publishToGitHubPages();
+    log('✅ Successfully published to GitHub Pages!', colors.green);
+    log('🌎 Your site will be available at: https://[username].github.io/gamble-site', colors.green);
+    log('Note: It may take a few minutes for the changes to be visible', colors.yellow);
+
   } catch (error) {
     log('❌ Publish process failed', colors.red);
     log(error.message, colors.red);
