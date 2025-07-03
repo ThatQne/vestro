@@ -14,6 +14,7 @@ require('dotenv').config({
 const authRoutes = require('./routes/auth');
 const gameRoutes = require('./routes/games');
 const randomRoutes = require('./routes/random');
+const badgeRoutes = require('./routes/badges');
 
 const app = express();
 const server = http.createServer(app);
@@ -85,6 +86,7 @@ if (process.env.NODE_ENV === 'development') {
     app.use('/api/auth', authRoutes);
     app.use('/api/games', gameRoutes);
     app.use('/api/random', randomRoutes);
+    app.use('/api/badges', badgeRoutes);
 
     // Socket.IO connection handling
     io.on('connection', (socket) => {

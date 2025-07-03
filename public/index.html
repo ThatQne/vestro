@@ -7,7 +7,12 @@
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <link rel="stylesheet" href="./css/style.css">
-    <base href="/vestro/">
+    <script>
+        // Set base href only for GitHub Pages deployment
+        if (window.location.hostname === 'thatqne.github.io') {
+            document.write('<base href="/vestro/">');
+        }
+    </script>
 </head>
 <body>
     <!-- Sidebar -->
