@@ -4,185 +4,372 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vestro - Modern Gambling</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="css/style.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        
-        * {
-            font-family: 'Inter', sans-serif;
-        }
-        
-        .sidebar-expanded {
-            width: 240px;
-        }
-        
-        .sidebar-collapsed {
-            width: 64px;
-        }
-        
-        .fade-in {
-            animation: fadeIn 0.3s ease-in;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .glass-effect {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        .game-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-        }
-        
-        .balance-glow {
-            text-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
-        }
-    </style>
 </head>
-<body class="bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 min-h-screen text-white">
+<body>
     <!-- Sidebar -->
-    <div id="sidebar" class="fixed left-0 top-0 h-full bg-black/50 glass-effect transition-all duration-300 z-50 sidebar-collapsed hover:sidebar-expanded group">
-        <div class="p-4">
-            <div class="flex items-center mb-8">
-                <div class="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-                    <span class="text-white font-bold">V</span>
-                </div>
-                <span class="ml-3 font-bold text-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300">Vestro</span>
+    <nav id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon">V</div>
+                <span class="logo-text">Vestro</span>
             </div>
-            
-            <nav class="space-y-2">
-                <a href="#" onclick="showPage('dashboard')" class="nav-item flex items-center p-3 rounded-lg hover:bg-white/10 transition-colors">
-                    <span class="w-5 h-5">🏠</span>
-                    <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">Dashboard</span>
-                </a>
-                <a href="#" onclick="showPage('games')" class="nav-item flex items-center p-3 rounded-lg hover:bg-white/10 transition-colors">
-                    <span class="w-5 h-5">🎮</span>
-                    <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">Games</span>
-                </a>
-                <a href="#" onclick="showPage('trades')" class="nav-item flex items-center p-3 rounded-lg hover:bg-white/10 transition-colors">
-                    <span class="w-5 h-5">📊</span>
-                    <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">Trades</span>
-                </a>
-                <a href="#" onclick="showPage('marketplace')" class="nav-item flex items-center p-3 rounded-lg hover:bg-white/10 transition-colors">
-                    <span class="w-5 h-5">🛒</span>
-                    <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">Marketplace</span>
-                </a>
-                <a href="#" onclick="showPage('profile')" class="nav-item flex items-center p-3 rounded-lg hover:bg-white/10 transition-colors">
-                    <span class="w-5 h-5">👤</span>
-                    <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">Profile</span>
-                </a>
-            </nav>
-            
-            <div class="absolute bottom-4 left-4 right-4">
-                <button onclick="logout()" class="w-full flex items-center p-3 rounded-lg hover:bg-red-500/20 transition-colors text-red-400">
-                    <span class="w-5 h-5">🚪</span>
-                    <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">Logout</span>
-                </button>
+        </div>
+        
+        <div class="nav-menu">
+            <a href="#" onclick="showPage('dashboard')" class="nav-item active" data-page="dashboard">
+                <i data-lucide="home"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="#" onclick="showPage('games')" class="nav-item" data-page="games">
+                <i data-lucide="gamepad-2"></i>
+                <span>Games</span>
+            </a>
+            <a href="#" onclick="showPage('trades')" class="nav-item" data-page="trades">
+                <i data-lucide="trending-up"></i>
+                <span>Trades</span>
+            </a>
+            <a href="#" onclick="showPage('marketplace')" class="nav-item" data-page="marketplace">
+                <i data-lucide="shopping-cart"></i>
+                <span>Marketplace</span>
+            </a>
+            <a href="#" onclick="showPage('profile')" class="nav-item" data-page="profile">
+                <i data-lucide="user"></i>
+                <span>Profile</span>
+            </a>
+        </div>
+        
+        <div class="sidebar-footer">
+            <button onclick="logout()" class="logout-btn">
+                <i data-lucide="log-out"></i>
+                <span>Logout</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Top Bar -->
+    <div id="top-bar" class="top-bar hidden">
+        <div class="top-bar-left">
+            <div class="balance-display">
+                <i data-lucide="dollar-sign" class="balance-icon"></i>
+                <span class="balance-amount"><span id="top-balance">$0</span></span>
+            </div>
+        </div>
+        <div class="top-bar-right">
+            <div class="profile-info">
+                <div class="profile-avatar-small">
+                    <span id="top-avatar">U</span>
+                </div>
+                <div class="profile-details">
+                    <div class="profile-name" id="top-username">Username</div>
+                    <div class="profile-level">Level <span id="top-level">1</span></div>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Main Content -->
-    <main id="main-content" class="ml-16 p-6">
+    <main id="main-content" class="main-content">
         <!-- Login Page -->
-        <div id="login-page" class="flex items-center justify-center min-h-screen">
-            <div class="glass-effect p-8 rounded-2xl w-full max-w-md">
-                <div class="text-center mb-8">
-                    <div class="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                        <span class="text-white font-bold text-2xl">V</span>
+        <div id="login-page" class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <div class="login-logo">
+                        <div class="login-logo-icon">V</div>
                     </div>
-                    <h1 class="text-3xl font-bold mb-2">Welcome to Vestro</h1>
-                    <p class="text-gray-400">Enter your credentials to continue</p>
+                    <h1>Welcome to Vestro</h1>
+                    <p>Enter your credentials to continue</p>
                 </div>
 
-                <form id="login-form" class="space-y-6">
-                    <div>
-                        <label class="block text-sm font-medium mb-2">Username</label>
-                        <input type="text" id="username" required class="w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                <form id="login-form" class="login-form">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" required placeholder="Enter your username">
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-2">Password</label>
-                        <input type="password" id="password" required class="w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" required placeholder="Enter your password">
                     </div>
-                    <div id="status-indicator" class="text-center text-sm py-2 rounded-lg hidden">
+                    <div id="status-indicator" class="status-indicator hidden">
                         <span id="status-text"></span>
                     </div>
-                    <button type="submit" class="w-full bg-gradient-to-r from-purple-500 to-pink-500 p-3 rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all">
-                        Continue
+                    <button type="submit" class="login-btn">
+                        <span>Continue</span>
+                        <i data-lucide="arrow-right"></i>
                     </button>
                 </form>
             </div>
         </div>
 
         <!-- Dashboard Page -->
-        <div id="dashboard-page" class="hidden fade-in">
-            <div class="mb-8">
-                <h1 class="text-4xl font-bold mb-2">Dashboard</h1>
-                <p class="text-gray-400">Welcome back, <span id="welcome-username"></span></p>
+        <div id="dashboard-page" class="page-content">
+            <div class="page-header">
+                <h1>Dashboard</h1>
+                <p>Welcome back, <span id="welcome-username">Player</span></p>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div class="glass-effect p-6 rounded-xl">
-                    <h3 class="text-lg font-semibold mb-2">Balance</h3>
-                    <p class="text-3xl font-bold balance-glow">$<span id="user-balance">0</span></p>
-                </div>
-                <div class="glass-effect p-6 rounded-xl">
-                    <h3 class="text-lg font-semibold mb-2">Level</h3>
-                    <p class="text-2xl font-bold">Level <span id="user-level">1</span></p>
-                    <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
-                        <div id="level-progress" class="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full" style="width: 0%"></div>
+            
+            <div class="stats-grid">
+                <div class="wins-losses-chart">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Wins & Losses</h3>
+                        <div class="chart-stats">
+                            <div class="chart-stat">
+                                <div class="chart-stat-dot wins"></div>
+                                <span class="chart-stat-label">Wins:</span>
+                                <span class="chart-stat-value" id="chart-wins">0</span>
+                            </div>
+                            <div class="chart-stat">
+                                <div class="chart-stat-dot losses"></div>
+                                <span class="chart-stat-label">Losses:</span>
+                                <span class="chart-stat-value" id="chart-losses">0</span>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="glass-effect p-6 rounded-xl">
-                    <h3 class="text-lg font-semibold mb-2">Games Played</h3>
-                    <p class="text-3xl font-bold" id="games-played">0</p>
-                </div>
-                <div class="glass-effect p-6 rounded-xl">
-                    <h3 class="text-lg font-semibold mb-2">Total Won</h3>
-                    <p class="text-3xl font-bold text-yellow-400">$<span id="total-won">0</span></p>
+                    <div class="chart-container">
+                        <div class="chart-grid"></div>
+                        <div class="chart-line"></div>
+                        <div class="chart-points">
+                            <div class="chart-point"></div>
+                            <div class="chart-point loss"></div>
+                            <div class="chart-point"></div>
+                            <div class="chart-point"></div>
+                            <div class="chart-point loss"></div>
+                            <div class="chart-point"></div>
+                            <div class="chart-point loss"></div>
+                            <div class="chart-point"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Games Page -->
-        <div id="games-page" class="hidden fade-in">
-            <div class="mb-8">
-                <h1 class="text-4xl font-bold mb-2">Games</h1>
-                <p class="text-gray-400">Choose your game and test your luck</p>
+        <div id="games-page" class="page-content hidden">
+            <div class="page-header">
+                <h1>Games</h1>
+                <p>Choose your game and test your luck</p>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div class="glass-effect p-8 rounded-xl game-card">
-                    <div class="text-center mb-6">
-                        <div class="text-4xl mb-4">🪙</div>
-                        <h3 class="text-2xl font-bold mb-2">Coin Flip</h3>
-                        <p class="text-gray-400">50/50 chance to double your bet</p>
+            
+            <div class="games-grid">
+                <div class="game-card" onclick="showPage('dice-game')">
+                    <div class="game-icon">
+                        <i data-lucide="dice-6"></i>
                     </div>
-                    <div class="space-y-4">
-                        <input type="number" id="coinflip-bet" min="1" placeholder="Bet amount" class="w-full p-3 bg-white/10 border border-white/20 rounded-lg">
-                        <div class="grid grid-cols-2 gap-4">
-                            <button onclick="playCoinFlip('heads')" class="p-4 bg-green-500 rounded-lg hover:bg-green-600">Heads</button>
-                            <button onclick="playCoinFlip('tails')" class="p-4 bg-red-500 rounded-lg hover:bg-red-600">Tails</button>
+                    <div class="game-info">
+                        <h3>Dice Roll</h3>
+                        <p>Roll over or under to win big</p>
+                        <div class="game-stats">
+                            <span class="game-payout">Up to 99x</span>
+                            <span class="game-action">Play Now</span>
                         </div>
                     </div>
                 </div>
-                <div class="glass-effect p-8 rounded-xl game-card">
-                    <div class="text-center mb-6">
-                        <div class="text-4xl mb-4">🎲</div>
-                        <h3 class="text-2xl font-bold mb-2">Dice Roll</h3>
-                        <p class="text-gray-400">Guess higher or lower than 3.5</p>
+                
+                <div class="game-card coming-soon">
+                    <div class="game-icon">
+                        <i data-lucide="coins"></i>
                     </div>
-                    <div class="space-y-4">
-                        <input type="number" id="dice-bet" min="1" placeholder="Bet amount" class="w-full p-3 bg-white/10 border border-white/20 rounded-lg">
-                        <div class="grid grid-cols-2 gap-4">
-                            <button onclick="playDice('higher')" class="p-4 bg-green-500 rounded-lg hover:bg-green-600">Higher (4-6)</button>
-                            <button onclick="playDice('lower')" class="p-4 bg-red-500 rounded-lg hover:bg-red-600">Lower (1-3)</button>
+                    <div class="game-info">
+                        <h3>Coin Flip</h3>
+                        <p>Coming Soon</p>
+                    </div>
+                </div>
+                
+                <div class="game-card coming-soon">
+                    <div class="game-icon">
+                        <i data-lucide="spade"></i>
+                    </div>
+                    <div class="game-info">
+                        <h3>Blackjack</h3>
+                        <p>Coming Soon</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dice Game Page -->
+        <div id="dice-game-page" class="page-content hidden">
+            <div class="game-page-header">
+                <button onclick="showPage('games')" class="back-btn">
+                    <i data-lucide="arrow-left"></i>
+                    <span>Back to Games</span>
+                </button>
+                <h1>Dice Roll</h1>
+            </div>
+            
+            <!-- Dice Game -->
+            <div class="dice-game-container">
+                <div class="dice-game-header">
+                    <h3 class="dice-game-title"><i data-lucide="dice-6"></i> Dice Roll</h3>
+                    <div class="dice-game-stats">
+                        <span>Multiplier: <span id="dice-multiplier" class="formatted-number">2.00x</span></span>
+                        <span>Win Chance: <span id="dice-chance" class="formatted-number">49.50%</span></span>
+                    </div>
+                </div>
+                
+                <div class="dice-game-body">
+                    <div class="dice-visual">
+                        <div class="dice-result" id="dice-result">50.00</div>
+                        <div class="dice-track">
+                            <div class="dice-pointer" id="dice-pointer" style="left: 50%;"></div>
+                        </div>
+                        <div class="dice-numbers">
+                            <span>0.00</span>
+                            <span>25.00</span>
+                            <span>50.00</span>
+                            <span>75.00</span>
+                            <span>100.00</span>
+                        </div>
+                    </div>
+                    
+                    <div class="dice-controls">
+                        <div class="control-group">
+                            <label class="control-label">Bet Amount</label>
+                            <input type="number" id="dice-bet-amount" class="bet-input" placeholder="0.00" min="0.01" step="0.01">
+                            <div class="bet-buttons">
+                                <button class="bet-btn" onclick="setBetAmount('half')">½</button>
+                                <button class="bet-btn" onclick="setBetAmount('double')">2x</button>
+                                <button class="bet-btn" onclick="setBetAmount('max')">Max</button>
+                                <button class="bet-btn" onclick="setBetAmount('clear')">Clear</button>
+                            </div>
+                        </div>
+                        
+                        <div class="control-group">
+                            <div class="roll-type-buttons">
+                                <button class="roll-type-btn active" id="roll-over-btn" onclick="setRollType('over')">
+                                    <i data-lucide="arrow-up"></i>
+                                    <span>Roll Over</span>
+                                </button>
+                                <button class="roll-type-btn" id="roll-under-btn" onclick="setRollType('under')">
+                                    <i data-lucide="arrow-down"></i>
+                                    <span>Roll Under</span>
+                                </button>
+                            </div>
+                            <div class="target-slider">
+                                <div class="slider-track"></div>
+                                <input type="range" id="dice-target" class="slider-input" min="1" max="99" value="50" step="0.01">
+                            </div>
+                            <div class="slider-value">
+                                <span id="roll-type-text">Roll Over</span>
+                                <span id="dice-target-value">50.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button class="roll-btn" id="roll-dice-btn" onclick="rollDice()">
+                                <span id="roll-btn-text">Roll Dice</span>
+                            </button>
+                            <button class="auto-bet-btn" id="auto-bet-btn" onclick="toggleAutoBet()">Auto</button>
+                        </div>
+                        
+                        <div class="auto-bet-settings" id="auto-bet-settings">
+                            <div class="control-group">
+                                <label class="control-label">Auto Bet Settings</label>
+                                <div class="auto-bet-grid">
+                                    <div>
+                                        <label class="control-label">Number of Bets</label>
+                                        <input type="number" id="auto-bet-count" class="auto-bet-input" placeholder="10" min="1">
+                                    </div>
+                                    <div>
+                                        <label class="control-label">Stop on Win</label>
+                                        <input type="number" id="auto-stop-win" class="auto-bet-input" placeholder="100.00" min="0" step="0.01">
+                                    </div>
+                                    <div>
+                                        <label class="control-label">Stop on Loss</label>
+                                        <input type="number" id="auto-stop-loss" class="auto-bet-input" placeholder="50.00" min="0" step="0.01">
+                                    </div>
+                                    <div>
+                                        <label class="control-label">Increase on Loss</label>
+                                        <input type="number" id="auto-increase-loss" class="auto-bet-input" placeholder="0%" min="0" max="100">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Individual Game Pages -->
+        <div id="coinflip-game-page" class="page-content hidden">
+            <div class="game-page-header">
+                <button onclick="showPage('games')" class="back-btn">
+                    <i data-lucide="arrow-left"></i>
+                    <span>Back to Games</span>
+                </button>
+                <h1>Coin Flip</h1>
+            </div>
+            
+            <div class="game-interface">
+                <div class="game-visual">
+                    <div class="coin-container">
+                        <div id="coin" class="coin">
+                            <div class="coin-face heads">H</div>
+                            <div class="coin-face tails">T</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="game-controls">
+                    <div class="bet-section">
+                        <label for="coinflip-bet">Bet Amount</label>
+                        <input type="number" id="coinflip-bet" min="1" placeholder="Enter amount" class="form-input">
+                    </div>
+                    
+                    <div class="choice-section">
+                        <h3>Choose your side</h3>
+                        <div class="choice-buttons">
+                            <button onclick="playCoinFlip('heads')" class="choice-btn heads-btn">
+                                <i data-lucide="circle"></i>
+                                <span>Heads</span>
+                            </button>
+                            <button onclick="playCoinFlip('tails')" class="choice-btn tails-btn">
+                                <i data-lucide="circle"></i>
+                                <span>Tails</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="dice-game-page" class="page-content hidden">
+            <div class="game-page-header">
+                <button onclick="showPage('games')" class="back-btn">
+                    <i data-lucide="arrow-left"></i>
+                    <span>Back to Games</span>
+                </button>
+                <h1>Dice Roll</h1>
+            </div>
+            
+            <div class="game-interface">
+                <div class="game-visual">
+                    <div class="dice-container">
+                        <div id="dice" class="dice">
+                            <i data-lucide="dice-6"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="game-controls">
+                    <div class="bet-section">
+                        <label for="dice-bet">Bet Amount</label>
+                        <input type="number" id="dice-bet" min="1" placeholder="Enter amount" class="form-input">
+                    </div>
+                    
+                    <div class="choice-section">
+                        <h3>Guess the roll</h3>
+                        <div class="choice-buttons">
+                            <button onclick="playDice('higher')" class="choice-btn higher-btn">
+                                <i data-lucide="trending-up"></i>
+                                <span>Higher (4-6)</span>
+                            </button>
+                            <button onclick="playDice('lower')" class="choice-btn lower-btn">
+                                <i data-lucide="trending-down"></i>
+                                <span>Lower (1-3)</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -190,60 +377,56 @@
         </div>
 
         <!-- Other Pages -->
-        <div id="trades-page" class="hidden fade-in">
-            <div class="mb-8">
-                <h1 class="text-4xl font-bold mb-2">Trades</h1>
-                <p class="text-gray-400">Trading system coming soon</p>
+        <div id="trades-page" class="page-content hidden">
+            <div class="page-header">
+                <h1>Trades</h1>
+                <p>Trading system coming soon</p>
             </div>
-            <div class="glass-effect p-8 rounded-xl text-center">
-                <div class="text-6xl mb-4">📊</div>
-                <h3 class="text-2xl font-bold mb-4">Trading Coming Soon</h3>
-                <p class="text-gray-400">Advanced trading system in development</p>
-            </div>
-        </div>
-
-        <div id="marketplace-page" class="hidden fade-in">
-            <div class="mb-8">
-                <h1 class="text-4xl font-bold mb-2">Marketplace</h1>
-                <p class="text-gray-400">Marketplace coming soon</p>
-            </div>
-            <div class="glass-effect p-8 rounded-xl text-center">
-                <div class="text-6xl mb-4">🛒</div>
-                <h3 class="text-2xl font-bold mb-4">Marketplace Coming Soon</h3>
-                <p class="text-gray-400">Buy and sell items with other players</p>
+            <div class="coming-soon">
+                <i data-lucide="trending-up"></i>
+                <h3>Trading Coming Soon</h3>
+                <p>Advanced trading system in development</p>
             </div>
         </div>
 
-        <div id="profile-page" class="hidden fade-in">
-            <div class="mb-8">
-                <h1 class="text-4xl font-bold mb-2">Profile</h1>
-                <p class="text-gray-400">Your gaming statistics</p>
+        <div id="marketplace-page" class="page-content hidden">
+            <div class="page-header">
+                <h1>Marketplace</h1>
+                <p>Marketplace coming soon</p>
             </div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div class="glass-effect p-8 rounded-xl">
-                    <div class="text-center mb-6">
-                        <div class="w-24 h-24 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl font-bold">
-                            <span id="profile-avatar"></span>
-                        </div>
-                        <h2 class="text-2xl font-bold" id="profile-username"></h2>
-                        <p class="text-gray-400">Level <span id="profile-level">1</span></p>
+            <div class="coming-soon">
+                <i data-lucide="shopping-cart"></i>
+                <h3>Marketplace Coming Soon</h3>
+                <p>Buy and sell items with other players</p>
+            </div>
+        </div>
+
+        <div id="profile-page" class="page-content hidden">
+            <div class="page-header">
+                <h1>Profile</h1>
+                <p>Your gaming statistics</p>
+            </div>
+            <div class="profile-grid">
+                <div class="profile-card">
+                    <div class="profile-avatar">
+                        <span id="profile-avatar">P</span>
                     </div>
+                    <h2 id="profile-username">Player</h2>
+                    <p>Level <span id="profile-level">1</span></p>
                 </div>
-                <div class="glass-effect p-8 rounded-xl">
-                    <h3 class="text-xl font-semibold mb-4">Statistics</h3>
-                    <div class="space-y-3">
-                        <div class="flex justify-between">
-                            <span>Games Played:</span>
-                            <span id="profile-games-played">0</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Total Won:</span>
-                            <span class="text-green-400">$<span id="profile-total-won">0</span></span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Current Balance:</span>
-                            <span class="text-green-400">$<span id="profile-balance">0</span></span>
-                        </div>
+                <div class="profile-stats">
+                    <h3>Statistics</h3>
+                    <div class="stat-row">
+                        <span>Games Played:</span>
+                        <span id="profile-games-played">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Total Won:</span>
+                        <span id="profile-total-won">$0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Current Balance:</span>
+                        <span id="profile-balance">$0</span>
                     </div>
                 </div>
             </div>
@@ -251,17 +434,20 @@
     </main>
 
     <!-- Game Result Modal -->
-    <div id="game-result-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 hidden">
-        <div class="glass-morphism p-8 rounded-2xl max-w-md w-full mx-4 text-center">
-            <div id="result-text" class="text-3xl font-bold mb-4"></div>
-            <div id="result-amount" class="text-2xl font-bold mb-6"></div>
-            <button onclick="document.getElementById('game-result-modal').classList.add('hidden')" 
-                    class="btn-primary px-6 py-3">
+    <div id="game-result-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div id="result-text" class="result-title"></div>
+            <div id="result-amount" class="result-amount"></div>
+            <button onclick="document.getElementById('game-result-modal').classList.add('hidden')" class="btn-primary">
                 Continue
             </button>
         </div>
     </div>
 
     <script src="js/app.js"></script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+    </script>
 </body>
 </html> 
