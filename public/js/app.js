@@ -74,6 +74,7 @@ function initializeApp() {
     });
 
     initializeChart();
+    initializeMobileMenu();
 }
 
 function showLoginPage() {
@@ -256,8 +257,8 @@ function updateUserInterface() {
 }
 
 function getRequiredXP(level) {
-    // Exponential XP curve: each level requires 20% more XP than the last
-    return Math.floor(100 * Math.pow(1.2, level - 1));
+    // Base 50 XP + 10 XP per level
+    return 50 + (level * 10);
 }
 
 function updateXPBar() {
@@ -266,13 +267,13 @@ function updateXPBar() {
     const xpFillElement = document.getElementById('xp-fill');
     
     if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
-        const requiredXP = getRequiredXP(currentUser.level);
-        const totalXPForNextLevel = getRequiredXP(currentUser.level + 1);
-        const xpProgress = currentUser.experience - requiredXP;
-        const xpNeeded = totalXPForNextLevel - requiredXP;
-        const xpPercentage = (xpProgress / xpNeeded) * 100;
+        const xpForCurrentLevel = getRequiredXP(currentUser.level - 1); // XP needed for current level
+        const xpForNextLevel = getRequiredXP(currentUser.level); // XP needed for next level
+        const xpProgress = currentUser.experience - xpForCurrentLevel;
+        const xpNeeded = xpForNextLevel - xpForCurrentLevel;
+        const xpPercentage = Math.min(100, Math.max(0, (xpProgress / xpNeeded) * 100));
         
-        currentXPElement.textContent = xpProgress;
+        currentXPElement.textContent = Math.max(0, xpProgress);
         requiredXPElement.textContent = xpNeeded;
         xpFillElement.style.width = xpPercentage + '%';
     }
@@ -284,13 +285,13 @@ function updateProfileXPBar() {
     const xpFillElement = document.getElementById('profile-xp-fill');
     
     if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
-        const requiredXP = getRequiredXP(currentUser.level);
-        const totalXPForNextLevel = getRequiredXP(currentUser.level + 1);
-        const xpProgress = currentUser.experience - requiredXP;
-        const xpNeeded = totalXPForNextLevel - requiredXP;
-        const xpPercentage = (xpProgress / xpNeeded) * 100;
+        const xpForCurrentLevel = getRequiredXP(currentUser.level - 1); // XP needed for current level
+        const xpForNextLevel = getRequiredXP(currentUser.level); // XP needed for next level
+        const xpProgress = currentUser.experience - xpForCurrentLevel;
+        const xpNeeded = xpForNextLevel - xpForCurrentLevel;
+        const xpPercentage = Math.min(100, Math.max(0, (xpProgress / xpNeeded) * 100));
         
-        currentXPElement.textContent = xpProgress;
+        currentXPElement.textContent = Math.max(0, xpProgress);
         requiredXPElement.textContent = xpNeeded;
         xpFillElement.style.width = xpPercentage + '%';
     }
@@ -303,7 +304,11 @@ function updateBadges() {
     badgesGrid.innerHTML = '';
     
     // Get all badges first
-    fetch(`${API_BASE_URL}/api/badges`)
+    fetch(`${API_BASE_URL}/api/badges`, {
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+    })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -792,6 +797,45 @@ function initializeChart() {
     }
 }
 
+// Initialize mobile menu
+function initializeMobileMenu() {
+    const mobileToggle = document.getElementById('mobile-menu-toggle');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+    
+    if (!mobileToggle || !sidebar || !overlay) return;
+    
+    // Toggle mobile menu
+    mobileToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('show');
+    });
+    
+    // Close menu when clicking overlay
+    overlay.addEventListener('click', () => {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('show');
+    });
+    
+    // Close menu when clicking nav items
+    const navItems = sidebar.querySelectorAll('.nav-item');
+    navItems.forEach(item => {
+        item.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('show');
+        });
+    });
+    
+    // Close menu when clicking logout
+    const logoutBtn = sidebar.querySelector('.logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('show');
+        });
+    }
+}
+
 // Number formatting and animation functions
 function formatNumber(num) {
     return new Intl.NumberFormat('en-US', {
@@ -858,19 +902,31 @@ function updateDiceStats() {
     const multiplierDisplay = document.getElementById('dice-multiplier');
     const chanceDisplay = document.getElementById('dice-chance');
     const rollTypeText = document.getElementById('roll-type-text');
-    const track = document.querySelector('.dice-track');
+    const track = document.querySelector('.slider-track');
+    const diceTrack = document.querySelector('.dice-track');
     
     if (targetDisplay) targetDisplay.textContent = targetValue.toFixed(2);
+    
+    // Update slider position for dynamic colors on both tracks
+    const sliderPosition = targetValue + '%';
+    if (track) {
+        track.style.setProperty('--slider-position', sliderPosition);
+    }
+    if (diceTrack) {
+        diceTrack.style.setProperty('--dice-position', sliderPosition);
+    }
     
     let chance, multiplier;
     if (rollType === 'over') {
         chance = (100 - targetValue) / 100;
         rollTypeText.textContent = 'Roll Over';
         track.classList.remove('under');
+        diceTrack.classList.remove('under');
     } else {
         chance = targetValue / 100;
         rollTypeText.textContent = 'Roll Under';
         track.classList.add('under');
+        diceTrack.classList.add('under');
     }
     
     // Calculate multiplier (99% RTP)

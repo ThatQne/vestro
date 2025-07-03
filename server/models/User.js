@@ -112,22 +112,22 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 
 // Calculate required XP for a given level
 function getRequiredXP(level) {
-    // Exponential XP curve: each level requires 20% more XP than the last
-    return Math.floor(100 * Math.pow(1.2, level - 1));
+    // Base 50 XP + 10 XP per level
+    return 50 + (level * 10);
 }
 
 // Add experience and handle level ups
 userSchema.methods.addExperience = function(amount) {
     this.experience += amount;
     
-    // Calculate new level based on total XP
-    let newLevel = this.level;
-    let totalXPRequired = getRequiredXP(newLevel);
-    
-    while (this.experience >= totalXPRequired) {
+    // Calculate total XP needed for each level until we find the right one
+    let newLevel = 1;
+    while (this.experience >= getRequiredXP(newLevel)) {
         newLevel++;
-        totalXPRequired += getRequiredXP(newLevel);
     }
+    
+    // Now newLevel is one more than what we actually achieved
+    newLevel--;
     
     if (newLevel > this.level) {
         const levelsGained = newLevel - this.level;
