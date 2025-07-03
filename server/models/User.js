@@ -20,6 +20,10 @@ const userSchema = new mongoose.Schema({
         default: 100,
         min: 0
     },
+    balanceHistory: {
+        type: [Number],
+        default: [100]
+    },
     level: {
         type: Number,
         default: 1,
@@ -46,6 +50,16 @@ const userSchema = new mongoose.Schema({
         min: 0
     },
     bestWin: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    wins: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    losses: {
         type: Number,
         default: 0,
         min: 0
@@ -88,6 +102,7 @@ userSchema.methods.addExperience = function(amount) {
         const levelsGained = newLevel - this.level;
         this.level = newLevel;
         this.balance += levelsGained * 50; // $50 bonus per level
+        this.balanceHistory.push(this.balance); // Add balance to history after level up bonus
         return { leveledUp: true, levelsGained, bonusAmount: levelsGained * 50 };
     }
     
@@ -100,11 +115,17 @@ userSchema.methods.updateGameStats = function(betAmount, winAmount) {
     this.totalWagered += betAmount;
     
     if (winAmount > 0) {
+        this.wins += 1;
         this.totalWon += winAmount;
         if (winAmount > this.bestWin) {
             this.bestWin = winAmount;
         }
+    } else {
+        this.losses += 1;
     }
+
+    // Add current balance to history after updating stats
+    this.balanceHistory.push(this.balance);
 };
 
 // Remove sensitive data when converting to JSON

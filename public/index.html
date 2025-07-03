@@ -63,8 +63,18 @@
                     <span id="top-avatar">U</span>
                 </div>
                 <div class="profile-details">
-                    <div class="profile-name" id="top-username">Username</div>
-                    <div class="profile-level">Level <span id="top-level">1</span></div>
+                    <div class="profile-top">
+                        <span class="profile-name" id="top-username">Username</span>
+                        <span class="profile-level">Level <span id="top-level">1</span></span>
+                    </div>
+                    <div class="profile-xp">
+                        <div class="xp-bar">
+                            <div class="xp-fill" id="xp-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="xp-text">
+                            <span id="current-xp">0</span> / <span id="required-xp">100</span> XP
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -113,7 +123,7 @@
             <div class="stats-grid">
                 <div class="wins-losses-chart">
                     <div class="chart-header">
-                        <h3 class="chart-title">Wins & Losses</h3>
+                        <h3 class="chart-title">Balance History</h3>
                         <div class="chart-stats">
                             <div class="chart-stat">
                                 <div class="chart-stat-dot wins"></div>
@@ -129,17 +139,8 @@
                     </div>
                     <div class="chart-container">
                         <div class="chart-grid"></div>
-                        <div class="chart-line"></div>
-                        <div class="chart-points">
-                            <div class="chart-point"></div>
-                            <div class="chart-point loss"></div>
-                            <div class="chart-point"></div>
-                            <div class="chart-point"></div>
-                            <div class="chart-point loss"></div>
-                            <div class="chart-point"></div>
-                            <div class="chart-point loss"></div>
-                            <div class="chart-point"></div>
-                        </div>
+                        <canvas id="balance-chart" width="400" height="200"></canvas>
+                        <div class="chart-points" id="chart-points"></div>
                     </div>
                 </div>
             </div>
@@ -162,7 +163,6 @@
                         <p>Roll over or under to win big</p>
                         <div class="game-stats">
                             <span class="game-payout">Up to 99x</span>
-                            <span class="game-action">Play Now</span>
                         </div>
                     </div>
                 </div>

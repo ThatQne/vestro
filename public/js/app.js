@@ -58,6 +58,15 @@ function initializeApp() {
 
     // Initialize dice game
     initializeDiceGame();
+
+    // Add resize event listener for chart
+    window.addEventListener('resize', () => {
+        if (currentUser) {
+            setTimeout(() => {
+                drawBalanceChart();
+            }, 100);
+        }
+    });
 }
 
 function showLoginPage() {
@@ -225,9 +234,33 @@ function updateUserInterface() {
         }
     });
 
+    // Update XP bar
+    updateXPBar();
+
+    // No need to save to localStorage anymore
+
     // Update chart data with animations
     updateChart();
 }
+
+function updateXPBar() {
+    const currentXPElement = document.getElementById('current-xp');
+    const requiredXPElement = document.getElementById('required-xp');
+    const xpFillElement = document.getElementById('xp-fill');
+    
+    if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
+        const currentXP = currentUser.experience || 0;
+        const requiredXP = currentUser.level * 100; // 100 XP per level
+        const xpProgress = currentXP % 100; // XP progress in current level
+        const xpPercentage = (xpProgress / 100) * 100;
+        
+        currentXPElement.textContent = xpProgress;
+        requiredXPElement.textContent = 100;
+        xpFillElement.style.width = xpPercentage + '%';
+    }
+}
+
+// Remove localStorage functions as we're using MongoDB now
 
 function showPage(pageId) {
     // Hide all pages
@@ -266,14 +299,18 @@ function showPage(pageId) {
     if (pageId === 'profile') {
         loadProfileData();
     }
+    
+    // Redraw chart when showing dashboard
+    if (pageId === 'dashboard' && currentUser) {
+        setTimeout(() => {
+            drawBalanceChart();
+        }, 100);
+    }
 }
 
 function updateChart() {
-    // Update chart points based on actual wins/losses
-    const points = document.querySelectorAll('.chart-point');
     const wins = currentUser.wins || 0;
     const losses = currentUser.losses || 0;
-    const total = wins + losses;
     
     // Update chart stats
     const chartWins = document.getElementById('chart-wins');
@@ -281,39 +318,99 @@ function updateChart() {
     if (chartWins) chartWins.textContent = wins;
     if (chartLosses) chartLosses.textContent = losses;
     
-    if (total === 0) {
-        // Show empty state
-        points.forEach(point => {
-            point.classList.remove('loss');
-            point.style.opacity = '0.3';
-        });
-        return;
+    // Draw balance history chart
+    drawBalanceChart();
+}
+
+function drawBalanceChart() {
+    const canvas = document.getElementById('balance-chart');
+    if (!canvas || !currentUser || !currentUser.balanceHistory || currentUser.balanceHistory.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width = canvas.parentElement.clientWidth;
+    const height = canvas.height = 400;
+    const padding = 40;
+    const dataPoints = currentUser.balanceHistory;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    // Set up scales
+    const xScale = (width - padding * 2) / (dataPoints.length - 1);
+    const minBalance = Math.min(...dataPoints);
+    const maxBalance = Math.max(...dataPoints);
+    const balanceRange = maxBalance - minBalance;
+    const yScale = (height - padding * 2) / balanceRange;
+    
+    // Draw grid
+    ctx.strokeStyle = '#30363d';
+    ctx.lineWidth = 1;
+    
+    // Vertical grid lines
+    for (let i = 0; i <= 10; i++) {
+        const x = padding + (width - padding * 2) * (i / 10);
+        ctx.beginPath();
+        ctx.moveTo(x, padding);
+        ctx.lineTo(x, height - padding);
+        ctx.stroke();
     }
     
-    // Create a pattern based on actual win/loss ratio
-    const winRatio = wins / total;
+    // Horizontal grid lines and labels
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '12px Inter';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 5; i++) {
+        const y = padding + (height - padding * 2) * (i / 5);
+        const value = maxBalance - (balanceRange * (i / 5));
+        
+        ctx.beginPath();
+        ctx.moveTo(padding, y);
+        ctx.lineTo(width - padding, y);
+        ctx.stroke();
+        
+        // Format value with K/M for thousands/millions
+        let label = value;
+        if (value >= 1000000) {
+            label = (value / 1000000).toFixed(1) + 'M';
+        } else if (value >= 1000) {
+            label = (value / 1000).toFixed(1) + 'K';
+        } else {
+            label = value.toFixed(0);
+        }
+        ctx.fillText('$' + label, padding - 5, y + 4);
+    }
     
-    points.forEach((point, index) => {
-        setTimeout(() => {
-            // Distribute wins/losses more accurately
-            const shouldBeWin = index < Math.floor(points.length * winRatio);
-            if (shouldBeWin) {
-                point.classList.remove('loss');
-                point.style.backgroundColor = '#10b981';
-            } else {
-                point.classList.add('loss');
-                point.style.backgroundColor = '#ef4444';
-            }
-            
-            point.style.opacity = '1';
-            
-            // Add animation
-            point.style.animation = 'none';
-            setTimeout(() => {
-                point.style.animation = 'pointPulse 2s infinite';
-            }, 10);
-        }, index * 100);
-    });
+    // Draw line
+    ctx.beginPath();
+    ctx.strokeStyle = '#58a6ff';
+    ctx.lineWidth = 2;
+    
+    for (let i = 0; i < dataPoints.length; i++) {
+        const x = padding + i * xScale;
+        const y = height - padding - (dataPoints[i] - minBalance) * yScale;
+        
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+    ctx.stroke();
+    
+    // Draw points
+    for (let i = 0; i < dataPoints.length; i++) {
+        const x = padding + i * xScale;
+        const y = height - padding - (dataPoints[i] - minBalance) * yScale;
+        const isWin = i > 0 && dataPoints[i] > dataPoints[i-1];
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = isWin ? '#3fb950' : '#f85149';
+        ctx.fill();
+        ctx.strokeStyle = '#0d1117';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
 }
 
 // Number formatting and animation functions
@@ -407,14 +504,20 @@ function setRollType(type) {
     rollType = type;
     const overBtn = document.getElementById('roll-over-btn');
     const underBtn = document.getElementById('roll-under-btn');
+    const sliderTrack = document.querySelector('.slider-track');
+    const diceTrack = document.querySelector('.dice-track');
     
     if (overBtn && underBtn) {
         if (type === 'over') {
             overBtn.classList.add('active');
             underBtn.classList.remove('active');
+            if (sliderTrack) sliderTrack.classList.remove('under');
+            if (diceTrack) diceTrack.classList.remove('under');
         } else {
             underBtn.classList.add('active');
             overBtn.classList.remove('active');
+            if (sliderTrack) sliderTrack.classList.add('under');
+            if (diceTrack) diceTrack.classList.add('under');
         }
     }
     
@@ -468,102 +571,69 @@ function setBetAmount(action) {
 
 // Roll dice function
 async function rollDice() {
-    if (isRolling) return;
+    if (!currentUser || isRolling) return;
     
-    const betAmount = parseFloat(document.getElementById('dice-bet-amount').value);
-    const target = parseFloat(document.getElementById('dice-target').value);
-    
-    if (!betAmount || betAmount <= 0) {
+    const betAmount = parseFloat(document.getElementById('bet-amount').value);
+    if (isNaN(betAmount) || betAmount <= 0) {
         showError('Please enter a valid bet amount');
         return;
     }
     
-    if (currentUser && betAmount > currentUser.balance) {
+    if (betAmount > currentUser.balance) {
         showError('Insufficient balance');
         return;
     }
     
     isRolling = true;
-    const rollBtn = document.getElementById('roll-dice-btn');
-    const rollBtnText = document.getElementById('roll-btn-text');
-    const pointer = document.getElementById('dice-pointer');
-    const result = document.getElementById('dice-result');
-    
-    // Update button state
-    rollBtn.disabled = true;
-    rollBtnText.textContent = 'Rolling...';
-    
-    // Add rolling animation
-    pointer.classList.add('rolling');
-    result.classList.remove('show', 'win', 'lose');
+    const rollButton = document.getElementById('roll-button');
+    const buttonText = rollButton.querySelector('span');
+    const originalText = buttonText.textContent;
+    buttonText.textContent = 'Rolling...';
+    rollButton.disabled = true;
     
     try {
-        // Simulate API call or use actual backend
-        const rollResult = Math.random() * 100;
-        let isWin, chance, multiplier;
+        const response = await fetch(`${API_BASE_URL}/api/games/play`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                gameType: 'dice',
+                betAmount: betAmount,
+                playerChoice: rollType === 'over' ? 'higher' : 'lower',
+                targetNumber: rollType === 'over' ? targetValue : 100 - targetValue
+            })
+        });
+
+        const data = await response.json();
         
-        if (rollType === 'over') {
-            isWin = rollResult > target;
-            chance = (100 - target) / 100;
+        if (data.success) {
+            currentUser = data.user;
+            updateUserInterface();
+            showGameNotification(data.result.won, data.result.winAmount);
+            
+            if (data.result.levelUp.leveledUp) {
+                showGameNotification(true, data.result.levelUp.bonusAmount, 
+                    `Level Up! +${data.result.levelUp.levelsGained} level(s) and $${data.result.levelUp.bonusAmount} bonus!`);
+            }
+            
+            // Update chart immediately after game result
+            drawBalanceChart();
+            
+            if (isAutoBetting) {
+                continueAutoBet(data.result.won, data.result.winAmount - betAmount);
+            }
         } else {
-            isWin = rollResult < target;
-            chance = (target - 1) / 100;
+            showError(data.message || 'Failed to play game');
         }
-        
-        multiplier = 0.99 / chance;
-        const winAmount = isWin ? betAmount * multiplier : 0;
-        const netProfit = isWin ? winAmount - betAmount : -betAmount;
-        
-        // Animate pointer to result position
-        setTimeout(() => {
-            pointer.style.left = rollResult + '%';
-            result.textContent = formatNumber(rollResult);
-            result.classList.add('show', isWin ? 'win' : 'lose');
-            
-            // Update balance
-            if (currentUser) {
-                const newBalance = currentUser.balance + netProfit;
-                currentUser.balance = newBalance;
-                
-                // Animate balance update
-                const balanceElement = document.getElementById('top-balance');
-                animateNumber(balanceElement, newBalance, 600, '$');
-                
-                // Update wins/losses for chart
-                if (isWin) {
-                    currentUser.wins = (currentUser.wins || 0) + 1;
-                } else {
-                    currentUser.losses = (currentUser.losses || 0) + 1;
-                }
-                
-                updateChart();
-            }
-            
-            // Show result notification
-            showGameNotification(isWin, netProfit);
-            
-        }, 1000);
-        
-        // Reset button after animation
-        setTimeout(() => {
-            pointer.classList.remove('rolling');
-            rollBtn.disabled = false;
-            rollBtnText.textContent = autoBetActive ? `Auto (${autoBetCount})` : 'Roll Dice';
-            isRolling = false;
-            
-            // Continue auto bet if active
-            if (autoBetActive) {
-                continueAutoBet(isWin, netProfit);
-            }
-        }, 2000);
-        
     } catch (error) {
-        console.error('Dice roll error:', error);
-        showError('Game error. Please try again.');
+        console.error('Game error:', error);
+        showError('Connection error. Please try again.');
+    } finally {
         isRolling = false;
-        rollBtn.disabled = false;
-        rollBtnText.textContent = 'Roll Dice';
-        pointer.classList.remove('rolling');
+        buttonText.textContent = originalText;
+        rollButton.disabled = false;
     }
 }
 
@@ -715,6 +785,7 @@ function showError(message) {
 
 function logout() {
     localStorage.removeItem('token');
+    localStorage.removeItem('vestro_user_data');
     currentUser = null;
     showLoginPage();
     if (socket) {
