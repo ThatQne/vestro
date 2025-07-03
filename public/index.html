@@ -4,15 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vestro - Modern Gambling</title>
+    <script>
+        // Set base href and return the correct path prefix
+        var pathPrefix = '';
+        if (window.location.hostname === 'thatqne.github.io') {
+            document.write('<base href="/vestro/">');
+            pathPrefix = '/vestro';
+        }
+        window.pathPrefix = pathPrefix;
+    </script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <link rel="stylesheet" href="./css/style.css">
-    <script>
-        // Set base href only for GitHub Pages deployment
-        if (window.location.hostname === 'thatqne.github.io') {
-            document.write('<base href="/vestro/">');
-        }
-    </script>
 </head>
 <body>
     <!-- Sidebar -->
@@ -477,10 +480,13 @@
     <!-- Notification Container -->
     <div id="notification-container" class="notification-container"></div>
 
-    <script src="js/app.js"></script>
+    <script>
+        // Get the correct path for app.js
+        document.write('<script src="' + window.pathPrefix + '/js/app.js"><\/script>');
+    </script>
     <script>
         // Initialize Lucide icons
         lucide.createIcons();
     </script>
 </body>
-</html> 
+</html>
