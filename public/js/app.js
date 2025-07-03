@@ -304,44 +304,67 @@ function updateProfileXPBar() {
 
 function updateBadges() {
     const badgesGrid = document.getElementById('badges-grid');
-    if (!badgesGrid || !currentUser || !currentUser.badges) return;
+    if (!badgesGrid || !currentUser) return;
 
     badgesGrid.innerHTML = '';
     
-    // Sort badges by earned status and then by name
-    const sortedBadges = currentUser.badges
-        .sort((a, b) => {
-            if (a.badgeId && b.badgeId) {
-                return a.badgeId.name.localeCompare(b.badgeId.name);
+    // Get all badges first
+    fetch(`${API_BASE_URL}/api/badges`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const allBadges = data.badges;
+                const earnedBadges = new Set(currentUser.badges.map(b => b.badgeId._id));
+                
+                // Sort badges: earned first, then non-secret locked, then secret
+                const sortedBadges = allBadges.sort((a, b) => {
+                    const aEarned = earnedBadges.has(a._id);
+                    const bEarned = earnedBadges.has(b._id);
+                    
+                    if (aEarned && !bEarned) return -1;
+                    if (!aEarned && bEarned) return 1;
+                    
+                    if (a.secret && !b.secret) return 1;
+                    if (!a.secret && b.secret) return -1;
+                    
+                    return a.name.localeCompare(b.name);
+                });
+
+                sortedBadges.forEach(badge => {
+                    const isEarned = earnedBadges.has(badge._id);
+                    const earnedBadgeData = currentUser.badges.find(b => b.badgeId._id === badge._id);
+                    
+                    // Skip secret badges that haven't been earned
+                    if (badge.secret && !isEarned) return;
+
+                    const badgeElement = document.createElement('div');
+                    badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${isEarned ? ' earned' : ' locked'}`;
+                    
+                    let earnedText = isEarned 
+                        ? `Earned ${new Date(earnedBadgeData.earnedAt).toLocaleDateString()}`
+                        : 'Not earned yet';
+                    
+                    badgeElement.innerHTML = `
+                        <div class="badge-icon" style="background: ${badge.color}${isEarned ? '20' : '10'};">
+                            <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
+                        </div>
+                        <div class="badge-name">${badge.name}</div>
+                        <div class="badge-description">${badge.description}</div>
+                        <div class="badge-earned">${earnedText}</div>
+                    `;
+                    
+                    badgesGrid.appendChild(badgeElement);
+                });
+
+                // Initialize Lucide icons for the new badge elements
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
             }
-            return 0;
+        })
+        .catch(error => {
+            console.error('Error fetching badges:', error);
         });
-
-    sortedBadges.forEach(badge => {
-        if (!badge.badgeId) return;
-
-        const badgeElement = document.createElement('div');
-        badgeElement.className = `badge-item${badge.badgeId.secret ? ' secret' : ''}`;
-        
-        const earnedDate = new Date(badge.earnedAt);
-        const earnedText = `Earned ${earnedDate.toLocaleDateString()}`;
-        
-        badgeElement.innerHTML = `
-            <div class="badge-icon" style="background: ${badge.badgeId.color}20;">
-                <i data-lucide="${badge.badgeId.icon}" style="color: ${badge.badgeId.color};"></i>
-            </div>
-            <div class="badge-name">${badge.badgeId.name}</div>
-            <div class="badge-description">${badge.badgeId.description}</div>
-            <div class="badge-earned">${earnedText}</div>
-        `;
-        
-        badgesGrid.appendChild(badgeElement);
-    });
-
-    // Initialize Lucide icons for the new badge elements
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
 }
 
 function showPage(pageId) {

@@ -1843,6 +1843,20 @@ button:hover, a:hover {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
+.badge-item.locked {
+    opacity: 0.5;
+    filter: grayscale(0.8);
+}
+
+.badge-item.locked:hover {
+    opacity: 0.8;
+    filter: grayscale(0.4);
+}
+
+.badge-item.earned:hover {
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.2);
+}
+
 .badge-icon {
     width: 40px;
     height: 40px;
@@ -1890,8 +1904,15 @@ button:hover, a:hover {
 
 .badge-earned {
     font-size: 0.7rem;
-    color: #10b981;
     margin-top: 0.5rem;
+}
+
+.badge-item.earned .badge-earned {
+    color: #10b981;
+}
+
+.badge-item.locked .badge-earned {
+    color: #6b7280;
 }
 
 /* Modal */
