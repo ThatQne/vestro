@@ -275,7 +275,7 @@
                             <button class="roll-btn" id="roll-dice-btn" onclick="rollDice()">
                                 <span id="roll-btn-text">Roll Dice</span>
                             </button>
-                            <button class="auto-bet-btn" id="auto-bet-btn" onclick="toggleAutoBet()">Auto</button>
+                            <button class="auto-bet-btn" id="auto-bet-btn">Auto</button>
                         </div>
                         
                         <div class="auto-bet-settings" id="auto-bet-settings">
@@ -284,20 +284,63 @@
                                 <div class="auto-bet-grid">
                                     <div>
                                         <label class="control-label">Number of Bets</label>
-                                        <input type="number" id="auto-bet-count" class="auto-bet-input" placeholder="10" min="1">
+                                        <div class="input-with-toggle">
+                                            <input type="number" id="auto-bet-count" class="auto-bet-input" placeholder="10" min="1">
+                                            <button id="infinite-bets-toggle" class="toggle-btn" title="Run indefinitely">∞</button>
+                                        </div>
                                     </div>
                                     <div>
-                                        <label class="control-label">Stop on Win</label>
+                                        <label class="control-label">Stop on Win ($)</label>
                                         <input type="number" id="auto-stop-win" class="auto-bet-input" placeholder="100.00" min="0" step="0.01">
                                     </div>
                                     <div>
-                                        <label class="control-label">Stop on Loss</label>
+                                        <label class="control-label">Stop on Loss ($)</label>
                                         <input type="number" id="auto-stop-loss" class="auto-bet-input" placeholder="50.00" min="0" step="0.01">
                                     </div>
                                     <div>
-                                        <label class="control-label">Increase on Loss</label>
-                                        <input type="number" id="auto-increase-loss" class="auto-bet-input" placeholder="0%" min="0" max="100">
+                                        <label class="control-label">Stop on Balance %</label>
+                                        <div class="input-group">
+                                            <input type="number" id="auto-stop-balance-gain" class="auto-bet-input half" placeholder="+50%" min="0" max="1000">
+                                            <input type="number" id="auto-stop-balance-loss" class="auto-bet-input half" placeholder="-25%" min="0" max="100">
+                                        </div>
                                     </div>
+                                </div>
+
+                                <div class="control-group">
+                                    <label class="control-label">On Loss</label>
+                                    <div class="bet-strategy-grid">
+                                        <button id="on-loss-reset" class="strategy-btn active">Reset</button>
+                                        <button id="on-loss-increase" class="strategy-btn">Increase</button>
+                                        <button id="on-loss-decrease" class="strategy-btn">Decrease</button>
+                                        <button id="on-loss-stop" class="strategy-btn">Stop</button>
+                                    </div>
+                                    <div id="on-loss-settings" class="strategy-settings">
+                                        <div class="input-with-label">
+                                            <input type="number" id="on-loss-multiplier" class="auto-bet-input" placeholder="2.0" min="0.1" step="0.1" value="2.0">
+                                            <span class="input-label">×</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="control-group">
+                                    <label class="control-label">On Win</label>
+                                    <div class="bet-strategy-grid">
+                                        <button id="on-win-reset" class="strategy-btn active">Reset</button>
+                                        <button id="on-win-increase" class="strategy-btn">Increase</button>
+                                        <button id="on-win-decrease" class="strategy-btn">Decrease</button>
+                                        <button id="on-win-stop" class="strategy-btn">Stop</button>
+                                    </div>
+                                    <div id="on-win-settings" class="strategy-settings">
+                                        <div class="input-with-label">
+                                            <input type="number" id="on-win-multiplier" class="auto-bet-input" placeholder="2.0" min="0.1" step="0.1" value="2.0">
+                                            <span class="input-label">×</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="auto-bet-actions">
+                                    <button id="start-auto-bet" class="start-auto-btn">Start Auto Bet</button>
+                                    <button id="stop-auto-bet" class="stop-auto-btn hidden">Stop</button>
                                 </div>
                             </div>
                         </div>

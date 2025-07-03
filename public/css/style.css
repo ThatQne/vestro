@@ -547,7 +547,7 @@ button:hover, a:hover {
     border-radius: 16px;
     padding: 2rem;
     position: relative;
-    min-height: 400px;
+    min-height: 200px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -561,7 +561,8 @@ button:hover, a:hover {
     border-radius: 6px;
     position: relative;
     margin: 1rem 0;
-    overflow: hidden;
+    overflow: visible;
+    z-index: 1;
 }
 
 .dice-track::before {
@@ -574,6 +575,7 @@ button:hover, a:hover {
     background: #ef4444;
     border-radius: 6px;
     transition: none;
+    z-index: 2;
 }
 
 .dice-track::after {
@@ -586,6 +588,7 @@ button:hover, a:hover {
     background: #10b981;
     border-radius: 6px;
     transition: none;
+    z-index: 2;
 }
 
 .dice-track.under::before {
@@ -607,7 +610,7 @@ button:hover, a:hover {
     transform: translateX(-50%);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    z-index: 2;
+    z-index: 5;
 }
 
 .dice-pointer.rolling {
@@ -650,6 +653,7 @@ button:hover, a:hover {
 .dice-result.win {
     color: #10b981;
     font-weight: 600;
+    text-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
 }
 
 .dice-result.lose {
@@ -725,6 +729,7 @@ button:hover, a:hover {
 .target-slider {
     position: relative;
     margin: 0.5rem 0;
+    z-index: 1;
 }
 
 .slider-track {
@@ -734,6 +739,7 @@ button:hover, a:hover {
     border-radius: 6px;
     position: relative;
     overflow: hidden;
+    z-index: 2;
 }
 
 .slider-track::before {
@@ -746,6 +752,7 @@ button:hover, a:hover {
     background: #ef4444;
     border-radius: 6px;
     transition: none;
+    z-index: 3;
 }
 
 .slider-track::after {
@@ -758,6 +765,7 @@ button:hover, a:hover {
     background: #10b981;
     border-radius: 6px;
     transition: none;
+    z-index: 3;
 }
 
 .slider-track.under::before {
@@ -905,10 +913,9 @@ button:hover, a:hover {
     color: #60a5fa;
 }
 
-/* Auto Bet Settings */
+/* Auto Bet Styles */
 .auto-bet-settings {
-    background: rgba(59, 130, 246, 0.05);
-    border: 1px solid rgba(59, 130, 246, 0.2);
+    background: rgba(15, 15, 15, 0.5);
     border-radius: 12px;
     padding: 1rem;
     margin-top: 1rem;
@@ -933,24 +940,135 @@ button:hover, a:hover {
 
 .auto-bet-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
+    margin-bottom: 1rem;
 }
 
-.auto-bet-input {
-    padding: 0.75rem;
-    background: rgba(55, 65, 81, 0.4);
-    border: 1px solid rgba(75, 85, 99, 0.6);
+.input-with-toggle {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.toggle-btn {
+    padding: 0.5rem;
+    background: rgba(55, 65, 81, 0.3);
+    border: 1px solid rgba(75, 85, 99, 0.5);
     border-radius: 8px;
+    color: #9ca3af;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 36px;
+}
+
+.toggle-btn.active {
+    background: #10b981;
     color: #f1f1f1;
-    font-size: 0.9rem;
+    border-color: #059669;
+}
+
+.input-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.auto-bet-input.half {
+    width: calc(50% - 0.25rem);
+}
+
+.bet-strategy-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.strategy-btn {
+    padding: 0.5rem;
+    background: rgba(55, 65, 81, 0.3);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 8px;
+    color: #9ca3af;
+    font-size: 0.8rem;
+    cursor: pointer;
     transition: all 0.3s ease;
 }
 
-.auto-bet-input:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+.strategy-btn.active {
+    background: #10b981;
+    color: #f1f1f1;
+    border-color: #059669;
+}
+
+.strategy-settings {
+    margin-top: 0.5rem;
+    display: none;
+}
+
+.strategy-settings.show {
+    display: block;
+}
+
+.input-with-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.input-label {
+    color: #9ca3af;
+    font-size: 1rem;
+}
+
+.auto-bet-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.start-auto-btn, .stop-auto-btn {
+    flex: 1;
+    padding: 0.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.start-auto-btn {
+    background: #10b981;
+    color: #f1f1f1;
+    border: none;
+}
+
+.start-auto-btn:hover {
+    background: #059669;
+}
+
+.stop-auto-btn {
+    background: #ef4444;
+    color: #f1f1f1;
+    border: none;
+}
+
+.stop-auto-btn:hover {
+    background: #dc2626;
+}
+
+.hidden {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .auto-bet-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .bet-strategy-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 /* Mobile hamburger menu */

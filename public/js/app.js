@@ -17,6 +17,29 @@ let lastDragTime = 0;
 let lastDragX = 0;
 let activePoint = null;
 
+// Auto bet state
+let isAutoBetting = false;
+let autoBetCount = 0;
+let initialBetAmount = 0;
+let startingBalance = 0;
+let totalProfit = 0;
+let autoBetConfig = {
+    infiniteMode: false,
+    targetBets: 10,
+    stopWin: 0,
+    stopLoss: 0,
+    stopBalanceGain: 0,
+    stopBalanceLoss: 0,
+    onWin: {
+        action: 'reset',
+        multiplier: 2.0
+    },
+    onLoss: {
+        action: 'reset',
+        multiplier: 2.0
+    }
+};
+
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -249,9 +272,6 @@ function updateUserInterface() {
     updateXPBar();
     updateProfileXPBar();
 
-    // Update badges
-    updateBadges();
-
     // Update chart data with animations
     updateChart();
 }
@@ -276,15 +296,23 @@ function updateXPBar() {
     const xpFillElement = document.getElementById('xp-fill');
     
     if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
-        const totalXPForCurrentLevel = getTotalXPForLevel(currentUser.level - 1); // XP needed to reach current level
-        const totalXPForNextLevel = getTotalXPForLevel(currentUser.level); // XP needed to reach next level
-        const xpProgress = currentUser.experience - totalXPForCurrentLevel;
-        const xpNeeded = totalXPForNextLevel - totalXPForCurrentLevel;
-        const xpPercentage = Math.min(100, Math.max(0, (xpProgress / xpNeeded) * 100));
+        const xpForNextLevel = getRequiredXP(currentUser.level);
         
-        currentXPElement.textContent = Math.max(0, xpProgress);
-        requiredXPElement.textContent = xpNeeded;
-        xpFillElement.style.width = xpPercentage + '%';
+        // Calculate remaining XP for current level
+        const totalXPForCurrentLevel = getTotalXPForLevel(currentUser.level - 1);
+        const remainingXP = currentUser.experience - totalXPForCurrentLevel;
+        
+        const xpPercentage = Math.min(100, Math.max(0, (remainingXP / xpForNextLevel) * 100));
+        
+        // Animate the XP number
+        animateNumber(currentXPElement, remainingXP, 600);
+        requiredXPElement.textContent = xpForNextLevel;
+        
+        // Smoothly animate the XP bar
+        requestAnimationFrame(() => {
+            xpFillElement.style.transition = 'width 0.6s ease-out';
+            xpFillElement.style.width = xpPercentage + '%';
+        });
     }
 }
 
@@ -294,15 +322,23 @@ function updateProfileXPBar() {
     const xpFillElement = document.getElementById('profile-xp-fill');
     
     if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
-        const totalXPForCurrentLevel = getTotalXPForLevel(currentUser.level - 1); // XP needed to reach current level
-        const totalXPForNextLevel = getTotalXPForLevel(currentUser.level); // XP needed to reach next level
-        const xpProgress = currentUser.experience - totalXPForCurrentLevel;
-        const xpNeeded = totalXPForNextLevel - totalXPForCurrentLevel;
-        const xpPercentage = Math.min(100, Math.max(0, (xpProgress / xpNeeded) * 100));
+        const xpForNextLevel = getRequiredXP(currentUser.level);
         
-        currentXPElement.textContent = Math.max(0, xpProgress);
-        requiredXPElement.textContent = xpNeeded;
-        xpFillElement.style.width = xpPercentage + '%';
+        // Calculate remaining XP for current level
+        const totalXPForCurrentLevel = getTotalXPForLevel(currentUser.level - 1);
+        const remainingXP = currentUser.experience - totalXPForCurrentLevel;
+        
+        const xpPercentage = Math.min(100, Math.max(0, (remainingXP / xpForNextLevel) * 100));
+        
+        // Animate the XP number
+        animateNumber(currentXPElement, remainingXP, 600);
+        requiredXPElement.textContent = xpForNextLevel;
+        
+        // Smoothly animate the XP bar
+        requestAnimationFrame(() => {
+            xpFillElement.style.transition = 'width 0.6s ease-out';
+            xpFillElement.style.width = xpPercentage + '%';
+        });
     }
 }
 
@@ -411,6 +447,13 @@ function showPage(pageId) {
     // Update page-specific data
     if (pageId === 'profile') {
         loadProfileData();
+    }
+    
+    // Initialize dice game when showing dice page
+    if (pageId === 'dice-game') {
+        setTimeout(() => {
+            initializeDiceGame();
+        }, 100);
     }
     
     // Redraw chart when showing dashboard
@@ -889,8 +932,6 @@ function animateNumber(element, newValue, duration = 600, prefix = '') {
 // Global variables for dice game
 let isRolling = false;
 let rollType = 'over';
-let isAutoBetting = false;
-let autoBetCount = 0;
 
 function initializeDiceGame() {
     // Set initial roll type
@@ -902,6 +943,39 @@ function initializeDiceGame() {
         targetSlider.addEventListener('input', function() {
             updateDiceStats();
         });
+    }
+    
+    // Add roll type button event listeners as backup
+    const overBtn = document.getElementById('roll-over-btn');
+    const underBtn = document.getElementById('roll-under-btn');
+    
+    if (overBtn) {
+        overBtn.addEventListener('click', () => setRollType('over'));
+    }
+    
+    if (underBtn) {
+        underBtn.addEventListener('click', () => setRollType('under'));
+    }
+    
+    // Initialize stats display
+    updateDiceStats();
+
+    // Initialize auto bet functionality
+    initializeAutoBet();
+    
+    // Add auto bet button click handler
+    const autoBetBtn = document.getElementById('auto-bet-btn');
+    if (autoBetBtn) {
+        // Remove any existing event listeners
+        autoBetBtn.removeEventListener('click', toggleAutoBetMenu);
+        autoBetBtn.addEventListener('click', toggleAutoBetMenu);
+    }
+}
+
+function toggleAutoBetMenu() {
+    const settings = document.getElementById('auto-bet-settings');
+    if (settings) {
+        settings.classList.toggle('show');
     }
 }
 
@@ -925,7 +999,7 @@ function updateDiceStats() {
         diceTrack.style.setProperty('--dice-position', sliderPosition);
     }
     
-    let chance, multiplier;
+    let chance;
     if (rollType === 'over') {
         chance = (100 - targetValue) / 100;
         rollTypeText.textContent = 'Roll Over';
@@ -939,7 +1013,7 @@ function updateDiceStats() {
     }
     
     // Calculate multiplier (99% RTP)
-    multiplier = (0.99 / chance).toFixed(2);
+    const multiplier = (0.99 / chance).toFixed(2);
     
     if (multiplierDisplay) multiplierDisplay.textContent = multiplier + 'x';
     if (chanceDisplay) chanceDisplay.textContent = (chance * 100).toFixed(2) + '%';
@@ -1031,7 +1105,7 @@ async function rollDice() {
                 gameType: 'dice',
                 betAmount: betAmount,
                 playerChoice: rollType === 'over' ? 'higher' : 'lower',
-                targetNumber: rollType === 'over' ? targetValue : 100 - targetValue
+                targetNumber: targetValue // Send raw target value, server will handle over/under logic
             })
         });
 
@@ -1049,14 +1123,19 @@ async function rollDice() {
             if (pointer) pointer.style.left = resultNumber + '%';
             if (result) {
                 result.textContent = resultNumber.toFixed(2);
-                result.classList.add('show', data.result.won ? 'win' : 'lose');
+                result.classList.remove('win', 'lose', 'show'); // Clear previous classes
+                setTimeout(() => {
+                    result.classList.add('show', data.result.won ? 'win' : 'lose');
+                }, 50); // Small delay to ensure removal happens first
             }
             
             showGameNotification(data.result.won, data.result.winAmount);
             
             if (data.result.levelUp.leveledUp) {
-                showGameNotification(true, null, 
-                    `Level Up! +${data.result.levelUp.levelsGained} level(s)!`);
+                setTimeout(() => {
+                    showGameNotification(true, null, 
+                        `Level Up! +${data.result.levelUp.levelsGained} level(s)!`);
+                }, 500);
             }
             
             // Update chart immediately after game result
@@ -1079,73 +1158,143 @@ async function rollDice() {
 }
 
 // Auto bet functionality
-function toggleAutoBet() {
-    const autoBetBtn = document.getElementById('auto-bet-btn');
-    const autoBetSettings = document.getElementById('auto-bet-settings');
-    
-    if (!isAutoBetting) {
-        // Start auto bet
-        const count = parseInt(document.getElementById('auto-bet-count').value) || 10;
-        autoBetCount = count;
-        isAutoBetting = true;
+function initializeAutoBet() {
+    // Initialize infinite mode toggle
+    const infiniteToggle = document.getElementById('infinite-bets-toggle');
+    infiniteToggle.addEventListener('click', () => {
+        infiniteToggle.classList.toggle('active');
+        autoBetConfig.infiniteMode = infiniteToggle.classList.contains('active');
+        document.getElementById('auto-bet-count').disabled = autoBetConfig.infiniteMode;
+    });
+
+    // Initialize strategy buttons
+    ['win', 'loss'].forEach(type => {
+        const buttons = document.querySelectorAll(`#on-${type}-reset, #on-${type}-increase, #on-${type}-decrease, #on-${type}-stop`);
+        const settingsDiv = document.getElementById(`on-${type}-settings`);
         
-        autoBetBtn.classList.add('active');
-        autoBetBtn.textContent = `Stop (${autoBetCount})`;
-        autoBetSettings.classList.add('show');
-        
-        // Start first roll
-        rollDice();
-    } else {
-        // Stop auto bet
-        stopAutoBet();
+        buttons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Remove active class from all buttons in this group
+                buttons.forEach(b => b.classList.remove('active'));
+                // Add active class to clicked button
+                btn.classList.add('active');
+                // Update config
+                const action = btn.id.replace(`on-${type}-`, '');
+                autoBetConfig[`on${type.charAt(0).toUpperCase() + type.slice(1)}`].action = action;
+                // Show/hide settings based on action
+                settingsDiv.classList.toggle('show', action === 'increase' || action === 'decrease');
+            });
+        });
+    });
+
+    // Initialize start/stop buttons
+    document.getElementById('start-auto-bet').addEventListener('click', startAutoBet);
+    document.getElementById('stop-auto-bet').addEventListener('click', stopAutoBet);
+}
+
+function startAutoBet() {
+    if (isAutoBetting) return;
+
+    // Get initial values
+    const betInput = document.getElementById('dice-bet-amount');
+    initialBetAmount = parseFloat(betInput.value);
+    startingBalance = currentUser.balance;
+    totalProfit = 0;
+
+    // Validate bet amount
+    if (isNaN(initialBetAmount) || initialBetAmount < 0.01) {
+        showError('Please enter a valid bet amount');
+        return;
     }
+
+    // Get configuration
+    autoBetConfig.targetBets = autoBetConfig.infiniteMode ? Infinity : 
+        parseInt(document.getElementById('auto-bet-count').value) || 10;
+    autoBetConfig.stopWin = parseFloat(document.getElementById('auto-stop-win').value) || 0;
+    autoBetConfig.stopLoss = parseFloat(document.getElementById('auto-stop-loss').value) || 0;
+    autoBetConfig.stopBalanceGain = parseFloat(document.getElementById('auto-stop-balance-gain').value) || 0;
+    autoBetConfig.stopBalanceLoss = parseFloat(document.getElementById('auto-stop-balance-loss').value) || 0;
+    
+    ['Win', 'Loss'].forEach(type => {
+        const multiplierInput = document.getElementById(`on-${type.toLowerCase()}-multiplier`);
+        autoBetConfig[`on${type}`].multiplier = parseFloat(multiplierInput.value) || 2.0;
+    });
+
+    // Start auto betting
+    isAutoBetting = true;
+    autoBetCount = autoBetConfig.targetBets;
+    
+    // Update UI
+    document.getElementById('start-auto-bet').classList.add('hidden');
+    document.getElementById('stop-auto-bet').classList.remove('hidden');
+    document.getElementById('auto-bet-btn').classList.add('active');
+    
+    // Start first roll
+    rollDice();
 }
 
 function stopAutoBet() {
     isAutoBetting = false;
     autoBetCount = 0;
     
-    const autoBetBtn = document.getElementById('auto-bet-btn');
-    const autoBetSettings = document.getElementById('auto-bet-settings');
+    // Reset UI
+    document.getElementById('start-auto-bet').classList.remove('hidden');
+    document.getElementById('stop-auto-bet').classList.add('hidden');
+    document.getElementById('auto-bet-btn').classList.remove('active');
     
-    autoBetBtn.classList.remove('active');
-    autoBetBtn.textContent = 'Auto';
-    autoBetSettings.classList.remove('show');
-    
-    const rollBtnText = document.getElementById('roll-btn-text');
-    rollBtnText.textContent = 'Roll Dice';
+    // Reset bet amount to initial value
+    const betInput = document.getElementById('dice-bet-amount');
+    betInput.value = initialBetAmount.toFixed(2);
 }
 
 function continueAutoBet(wasWin, profit) {
     if (!isAutoBetting) return;
     
-    autoBetCount--;
+    totalProfit += profit;
+    const balanceChange = ((currentUser.balance - startingBalance) / startingBalance) * 100;
     
     // Check stop conditions
-    const stopWin = parseFloat(document.getElementById('auto-stop-win').value) || 0;
-    const stopLoss = parseFloat(document.getElementById('auto-stop-loss').value) || 0;
-    
-    if (autoBetCount <= 0) {
+    const stopConditions = [
+        { condition: !autoBetConfig.infiniteMode && autoBetCount <= 1, message: 'Auto bet completed!' },
+        { condition: autoBetConfig.stopWin > 0 && totalProfit >= autoBetConfig.stopWin, message: 'Stop win reached!' },
+        { condition: autoBetConfig.stopLoss > 0 && totalProfit <= -autoBetConfig.stopLoss, message: 'Stop loss reached!' },
+        { condition: autoBetConfig.stopBalanceGain > 0 && balanceChange >= autoBetConfig.stopBalanceGain, message: 'Balance gain target reached!' },
+        { condition: autoBetConfig.stopBalanceLoss > 0 && balanceChange <= -autoBetConfig.stopBalanceLoss, message: 'Balance loss limit reached!' }
+    ];
+
+    const stopCondition = stopConditions.find(c => c.condition);
+    if (stopCondition) {
         stopAutoBet();
-        showGameNotification(true, 0, 'Auto bet completed!');
+        showGameNotification(totalProfit >= 0, totalProfit, stopCondition.message);
         return;
     }
+
+    // Update bet amount based on result
+    const betInput = document.getElementById('dice-bet-amount');
+    const currentBet = parseFloat(betInput.value);
+    const config = wasWin ? autoBetConfig.onWin : autoBetConfig.onLoss;
     
-    if (stopWin > 0 && profit >= stopWin) {
-        stopAutoBet();
-        showGameNotification(true, profit, 'Stop win reached!');
-        return;
+    switch (config.action) {
+        case 'increase':
+            betInput.value = (currentBet * config.multiplier).toFixed(2);
+            break;
+        case 'decrease':
+            betInput.value = (currentBet / config.multiplier).toFixed(2);
+            break;
+        case 'stop':
+            stopAutoBet();
+            showGameNotification(wasWin, profit, wasWin ? 'Stopped after win' : 'Stopped after loss');
+            return;
+        case 'reset':
+        default:
+            betInput.value = initialBetAmount.toFixed(2);
+            break;
     }
-    
-    if (stopLoss > 0 && profit <= -stopLoss) {
-        stopAutoBet();
-        showGameNotification(false, profit, 'Stop loss reached!');
-        return;
+
+    // Update counter
+    if (!autoBetConfig.infiniteMode) {
+        autoBetCount--;
     }
-    
-    // Update button text
-    const autoBetBtn = document.getElementById('auto-bet-btn');
-    autoBetBtn.textContent = `Stop (${autoBetCount})`;
     
     // Continue with next roll after delay
     setTimeout(() => {
