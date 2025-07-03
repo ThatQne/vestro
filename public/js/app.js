@@ -4,9 +4,7 @@ let socket = null;
 let currentPage = 'login';
 
 // API Base URL - use Render backend for both dev and prod
-const API_BASE_URL = window.location.hostname === 'localhost' 
-    ? 'https://vestro-lz81.onrender.com' 
-    : '';
+const API_BASE_URL = 'https://vestro-lz81.onrender.com';
 
 // Global variables for chart
 let chartOffset = 0;
@@ -40,11 +38,7 @@ function initializeApp() {
 
     // Initialize socket connection
     if (typeof io !== 'undefined') {
-        // Connect to Render backend for socket connection
-        const socketUrl = window.location.hostname === 'localhost' 
-            ? 'https://vestro-lz81.onrender.com' 
-            : '';
-        socket = io(socketUrl);
+        socket = io(API_BASE_URL);
         
         socket.on('connect', () => {
             console.log('Connected to server');
