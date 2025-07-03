@@ -20,9 +20,8 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: ['http://localhost:3000', 'https://thatqne.github.io'],
-        methods: ["GET", "POST"],
-        credentials: true
+        origin: "*",
+        methods: ["GET", "POST"]
     }
 });
 
@@ -31,15 +30,7 @@ app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false
 }));
-
-// Configure CORS
-app.use(cors({
-    origin: ['http://localhost:3000', 'https://thatqne.github.io'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
-
+app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
