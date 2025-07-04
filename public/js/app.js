@@ -2465,15 +2465,18 @@ function setPlinkoRows(rows) {
     plinkoState.balls = [];
     plinkoState.bucketAnimations = {};
     
-    // Calculate dynamic sizes based on number of rows
-    // For 8 rows, scale = 1.0
-    // For 12 rows, scale = 0.75
-    // For 16 rows, scale = 0.5625
-    const scale = Math.pow(0.75, Math.log2(rows/8));
+    // Dynamic scaling formula based on row count
+    // Base sizes are for 8 rows, scale down as rows increase
+    // Formula: scale = baseRows / currentRows * adjustmentFactor
+    const baseRows = 8;
+    const adjustmentFactor = 0.85; // Fine-tune the scaling
     
-    // Scale the ball and peg sizes
-    plinkoState.currentBallSize = Math.round(plinkoConfig.ballSize * scale);
-    plinkoState.currentPegSize = Math.round(plinkoConfig.pegSize * scale);
+    // Calculate scale factor - more rows = smaller elements
+    const scale = Math.pow(baseRows / rows, 0.6) * adjustmentFactor;
+    
+    // Apply scaling to base sizes
+    plinkoState.currentBallSize = Math.max(8, Math.round(plinkoConfig.ballSize * scale));
+    plinkoState.currentPegSize = Math.max(4, Math.round(plinkoConfig.pegSize * scale));
     
     // Log the size changes for debugging
     console.log(`Row changed to ${rows}: Scale = ${scale.toFixed(3)}, Ball = ${plinkoState.currentBallSize}, Peg = ${plinkoState.currentPegSize}`);
@@ -2548,17 +2551,19 @@ async function dropBall() {
         return;
     }
     
+    // Set dropping state to prevent UI changes
+    plinkoState.isDropping = true;
+    
+    // Create new ball at top center of canvas
+    const ball = new PlinkoBall(plinkoCanvas.width / 2, 30);
+    ball.betAmount = betAmount;
+    
     try {
-        // Set dropping state to prevent UI changes
-        plinkoState.isDropping = true;
-        
-        // Create new ball at top center of canvas
-        const ball = new PlinkoBall(plinkoCanvas.width / 2, 30);
-        ball.betAmount = betAmount;
+        // Add ball to state immediately
         plinkoState.balls.push(ball);
         
         // Send bet to server
-        const response = await fetch('/api/games/plinko', {
+        const response = await fetch(`${API_BASE_URL}/api/games/plinko`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -2571,7 +2576,7 @@ async function dropBall() {
         });
         
         if (!response.ok) {
-            throw new Error('Server error');
+            throw new Error(`Server error: ${response.status}`);
         }
         
         const data = await response.json();
@@ -2599,14 +2604,28 @@ async function dropBall() {
         ball.targetBucket = data.bucketIndex;
         
     } catch (error) {
-        showGameNotification(false, null, error.message || 'Failed to place bet');
-        // Remove the ball if server request failed
-        const ballIndex = plinkoState.balls.findIndex(b => b.betAmount === betAmount && !b.serverResult);
+        console.error('Plinko API Error:', error);
+        
+        // Remove the ball from state since the bet failed
+        const ballIndex = plinkoState.balls.findIndex(b => b === ball);
         if (ballIndex !== -1) {
             plinkoState.balls.splice(ballIndex, 1);
         }
+        
         // Reset dropping state
         plinkoState.isDropping = false;
+        
+        // Show appropriate error message
+        let errorMessage = 'Failed to place bet';
+        if (error.message.includes('404')) {
+            errorMessage = 'Server not running. Please start the server first.';
+        } else if (error.message.includes('Server error')) {
+            errorMessage = 'Server error. Please try again.';
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
+        
+        showGameNotification(false, null, errorMessage);
     }
 }
 
