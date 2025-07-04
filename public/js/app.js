@@ -40,6 +40,107 @@ let autoBetConfig = {
     }
 };
 
+// Client-side badge definitions
+const CLIENT_BADGES = [
+    {
+        code: 'novice',
+        name: 'Novice Gambler',
+        description: 'Reach level 5',
+        icon: 'star',
+        color: '#10b981',
+        criteria: { type: 'level', value: 5 }
+    },
+    {
+        code: 'intermediate',
+        name: 'Intermediate Gambler',
+        description: 'Reach level 25',
+        icon: 'stars',
+        color: '#3b82f6',
+        criteria: { type: 'level', value: 25 }
+    },
+    {
+        code: 'expert',
+        name: 'Expert Gambler',
+        description: 'Reach level 50',
+        icon: 'award',
+        color: '#8b5cf6',
+        criteria: { type: 'level', value: 50 }
+    },
+    {
+        code: 'master',
+        name: 'Master Gambler',
+        description: 'Reach level 100',
+        icon: 'crown',
+        color: '#f59e0b',
+        criteria: { type: 'level', value: 100 }
+    },
+    {
+        code: 'winner',
+        name: 'Winner',
+        description: 'Win 10 games',
+        icon: 'trophy',
+        color: '#10b981',
+        criteria: { type: 'wins', value: 10 }
+    },
+    {
+        code: 'champion',
+        name: 'Champion',
+        description: 'Win 100 games',
+        icon: 'medal',
+        color: '#3b82f6',
+        criteria: { type: 'wins', value: 100 }
+    },
+    {
+        code: 'legend',
+        name: 'Legend',
+        description: 'Win 1000 games',
+        icon: 'flame',
+        color: '#8b5cf6',
+        criteria: { type: 'wins', value: 1000 }
+    },
+    {
+        code: 'millionaire',
+        name: 'Millionaire',
+        description: 'Reach a balance of $1,000,000',
+        icon: 'diamond',
+        color: '#f59e0b',
+        criteria: { type: 'balance', value: 1000000 }
+    },
+    {
+        code: 'dedicated',
+        name: 'Dedicated Player',
+        description: 'Play 1000 games',
+        icon: 'target',
+        color: '#10b981',
+        criteria: { type: 'games', value: 1000 }
+    },
+    {
+        code: 'highroller',
+        name: 'High Roller',
+        description: 'Place a bet of $10,000 or more',
+        icon: 'trending-up',
+        color: '#3b82f6',
+        criteria: { type: 'bet', value: 10000 }
+    },
+    {
+        code: 'streak_master',
+        name: 'Streak Master',
+        description: 'Win 5 games in a row',
+        icon: 'zap',
+        color: '#8b5cf6',
+        criteria: { type: 'winstreak', value: 5 }
+    },
+    {
+        code: 'meme_lord',
+        name: 'Meme Lord',
+        description: 'Place a bet of exactly $69,420',
+        icon: 'sparkles',
+        color: '#f59e0b',
+        secret: true,
+        criteria: { type: 'specific', value: 69420 }
+    }
+];
+
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -196,6 +297,9 @@ async function handleLogin(e) {
             currentUser = data.user;
             hideLoginPage();
             updateUserInterface();
+            // Check for any badges that should be awarded on login
+            checkBadges();
+            updateBadges();
         } else {
             showError(data.message || 'Login failed');
         }
@@ -296,16 +400,14 @@ function updateXPBar() {
     const xpFillElement = document.getElementById('xp-fill');
     
     if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
-        const xpForNextLevel = getRequiredXP(currentUser.level);
+        const xpForNextLevel = getRequiredXP(currentUser.level); // XP needed for current level
+        const currentXP = currentUser.experience; // Raw XP from database
         
-        // Calculate remaining XP for current level
-        const totalXPForCurrentLevel = getTotalXPForLevel(currentUser.level - 1);
-        const remainingXP = currentUser.experience - totalXPForCurrentLevel;
-        
-        const xpPercentage = Math.min(100, Math.max(0, (remainingXP / xpForNextLevel) * 100));
+        // Fix: Handle case where XP equals required XP (should level up)
+        const xpPercentage = Math.min(100, Math.max(0, (currentXP / xpForNextLevel) * 100));
         
         // Animate the XP number
-        animateNumber(currentXPElement, remainingXP, 600);
+        animateNumber(currentXPElement, currentXP, 600);
         requiredXPElement.textContent = xpForNextLevel;
         
         // Smoothly animate the XP bar
@@ -322,16 +424,14 @@ function updateProfileXPBar() {
     const xpFillElement = document.getElementById('profile-xp-fill');
     
     if (currentUser && currentXPElement && requiredXPElement && xpFillElement) {
-        const xpForNextLevel = getRequiredXP(currentUser.level);
+        const xpForNextLevel = getRequiredXP(currentUser.level); // XP needed for current level
+        const currentXP = currentUser.experience; // Raw XP from database
         
-        // Calculate remaining XP for current level
-        const totalXPForCurrentLevel = getTotalXPForLevel(currentUser.level - 1);
-        const remainingXP = currentUser.experience - totalXPForCurrentLevel;
-        
-        const xpPercentage = Math.min(100, Math.max(0, (remainingXP / xpForNextLevel) * 100));
+        // Fix: Handle case where XP equals required XP (should level up)
+        const xpPercentage = Math.min(100, Math.max(0, (currentXP / xpForNextLevel) * 100));
         
         // Animate the XP number
-        animateNumber(currentXPElement, remainingXP, 600);
+        animateNumber(currentXPElement, currentXP, 600);
         requiredXPElement.textContent = xpForNextLevel;
         
         // Smoothly animate the XP bar
@@ -342,73 +442,111 @@ function updateProfileXPBar() {
     }
 }
 
+// Client-side badge checking
+function checkBadges(betAmount = 0) {
+    if (!currentUser) return [];
+    
+    const earnedBadges = JSON.parse(localStorage.getItem(`badges_${currentUser.username}`) || '[]');
+    const newBadges = [];
+    
+    for (const badge of CLIENT_BADGES) {
+        // Skip if already earned
+        if (earnedBadges.some(b => b.code === badge.code)) continue;
+        
+        let earned = false;
+        switch (badge.criteria.type) {
+            case 'level':
+                earned = currentUser.level >= badge.criteria.value;
+                break;
+            case 'wins':
+                earned = currentUser.wins >= badge.criteria.value;
+                break;
+            case 'balance':
+                earned = currentUser.balance >= badge.criteria.value;
+                break;
+            case 'games':
+                earned = currentUser.gamesPlayed >= badge.criteria.value;
+                break;
+            case 'bet':
+                earned = betAmount >= badge.criteria.value;
+                break;
+            case 'winstreak':
+                earned = currentUser.currentWinStreak >= badge.criteria.value;
+                break;
+            case 'specific':
+                earned = betAmount === badge.criteria.value;
+                break;
+        }
+        
+        if (earned) {
+            const earnedBadge = {
+                ...badge,
+                earnedAt: new Date().toISOString()
+            };
+            earnedBadges.push(earnedBadge);
+            newBadges.push(earnedBadge);
+        }
+    }
+    
+    // Save updated badges to localStorage
+    localStorage.setItem(`badges_${currentUser.username}`, JSON.stringify(earnedBadges));
+    
+    return newBadges;
+}
+
 function updateBadges() {
     const badgesGrid = document.getElementById('badges-grid');
     if (!badgesGrid || !currentUser) return;
 
     badgesGrid.innerHTML = '';
     
-    // Get all badges first
-    fetch(`${API_BASE_URL}/api/badges`, {
-        headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const allBadges = data.badges;
-                const earnedBadges = new Set(currentUser.badges.map(b => b.badgeId._id));
-                
-                // Sort badges: earned first, then non-secret locked, then secret
-                const sortedBadges = allBadges.sort((a, b) => {
-                    const aEarned = earnedBadges.has(a._id);
-                    const bEarned = earnedBadges.has(b._id);
-                    
-                    if (aEarned && !bEarned) return -1;
-                    if (!aEarned && bEarned) return 1;
-                    
-                    if (a.secret && !b.secret) return 1;
-                    if (!a.secret && b.secret) return -1;
-                    
-                    return a.name.localeCompare(b.name);
-                });
+    const earnedBadges = JSON.parse(localStorage.getItem(`badges_${currentUser.username}`) || '[]');
+    const earnedCodes = new Set(earnedBadges.map(b => b.code));
+    
+    // Sort badges: earned first, then non-secret locked, then secret
+    const sortedBadges = CLIENT_BADGES.sort((a, b) => {
+        const aEarned = earnedCodes.has(a.code);
+        const bEarned = earnedCodes.has(b.code);
+        
+        if (aEarned && !bEarned) return -1;
+        if (!aEarned && bEarned) return 1;
+        
+        if (a.secret && !b.secret) return 1;
+        if (!a.secret && b.secret) return -1;
+        
+        return a.name.localeCompare(b.name);
+    });
 
-                sortedBadges.forEach(badge => {
-                    const isEarned = earnedBadges.has(badge._id);
-                    const earnedBadgeData = currentUser.badges.find(b => b.badgeId._id === badge._id);
-                    
-                    // Skip secret badges that haven't been earned
-                    if (badge.secret && !isEarned) return;
+    sortedBadges.forEach(badge => {
+        const isEarned = earnedCodes.has(badge.code);
+        const earnedBadgeData = earnedBadges.find(b => b.code === badge.code);
+        
+        // Skip secret badges that haven't been earned
+        if (badge.secret && !isEarned) return;
 
-                    const badgeElement = document.createElement('div');
-                    badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${isEarned ? ' earned' : ' locked'}`;
-                    
-                    let earnedText = isEarned 
-                        ? `Earned ${new Date(earnedBadgeData.earnedAt).toLocaleDateString()}`
-                        : 'Not earned yet';
-                    
-                    badgeElement.innerHTML = `
-                        <div class="badge-icon" style="background: ${badge.color}${isEarned ? '20' : '10'};">
-                            <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
-                        </div>
-                        <div class="badge-name">${badge.name}</div>
-                        <div class="badge-description">${badge.description}</div>
-                        <div class="badge-earned">${earnedText}</div>
-                    `;
-                    
-                    badgesGrid.appendChild(badgeElement);
-                });
+        const badgeElement = document.createElement('div');
+        badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${isEarned ? ' earned' : ' locked'}`;
+        
+        let earnedText = isEarned 
+            ? `Earned ${new Date(earnedBadgeData.earnedAt).toLocaleDateString()}`
+            : 'Not earned yet';
+        
+        badgeElement.innerHTML = `
+            <div class="badge-icon" style="background: ${badge.color}${isEarned ? '20' : '10'};">
+                <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
+            </div>
+            <div class="badge-name">${badge.name}</div>
+            <div class="badge-description">${badge.description}</div>
+            <div class="badge-earned">${earnedText}</div>
+        `;
+        
+        badgesGrid.appendChild(badgeElement);
+    });
 
-                // Initialize Lucide icons for the new badge elements
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching badges:', error);
-        });
+    // Initialize Lucide icons for the new badge elements
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
 function showPage(pageId) {
@@ -447,6 +585,7 @@ function showPage(pageId) {
     // Update page-specific data
     if (pageId === 'profile') {
         loadProfileData();
+        updateBadges(); // Load badges when profile page is shown
     }
     
     // Initialize dice game when showing dice page
@@ -1065,6 +1204,99 @@ function setBetAmount(action) {
     }
 }
 
+// Coinflip game function
+async function playCoinFlip(choice) {
+    if (!currentUser) return;
+    
+    const betInput = document.getElementById('coinflip-bet');
+    let betAmount = parseFloat(betInput.value);
+    
+    if (isNaN(betAmount) || betAmount < 0.01) {
+        showError('Minimum bet amount is $0.01');
+        return;
+    }
+    
+    if (betAmount > currentUser.balance) {
+        showError('Insufficient balance');
+        return;
+    }
+    
+    // Round bet to 2 decimal places
+    betAmount = Math.ceil(betAmount * 100) / 100;
+    betInput.value = betAmount.toFixed(2);
+    
+    const coin = document.getElementById('coin');
+    coin.classList.add('flipping');
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/play`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                gameType: 'coinflip',
+                betAmount: betAmount,
+                playerChoice: choice
+            })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            currentUser = data.user;
+            updateUserInterface();
+            
+            // Show result after animation
+            setTimeout(() => {
+                coin.classList.remove('flipping');
+                
+                // Update coin display
+                const result = data.result.gameResult;
+                if (result === 'heads') {
+                    coin.style.transform = 'rotateY(0deg)';
+                } else {
+                    coin.style.transform = 'rotateY(180deg)';
+                }
+                
+                // Display hash/seed at bottom of page
+                displayRandomHash(data.result.randomHash, data.result.randomTimestamp);
+                
+                // Check for new badges
+                const newBadges = checkBadges(betAmount);
+                if (newBadges.length > 0) {
+                    newBadges.forEach(badge => {
+                        setTimeout(() => {
+                            showGameNotification(true, null, `Badge Earned: ${badge.name}!`);
+                        }, 1000);
+                    });
+                    updateBadges(); // Update badge display
+                }
+                
+                showGameNotification(data.result.won, data.result.winAmount);
+                
+                if (data.result.levelUp.leveledUp) {
+                    setTimeout(() => {
+                        showGameNotification(true, null, 
+                            `Level Up! +${data.result.levelUp.levelsGained} level(s)!`);
+                    }, 500);
+                }
+                
+                // Update chart immediately after game result
+                drawBalanceChart();
+            }, 1000);
+        } else {
+            coin.classList.remove('flipping');
+            showError(data.message || 'Failed to play game');
+        }
+    } catch (error) {
+        coin.classList.remove('flipping');
+        console.error('Game error:', error);
+        showError('Connection error. Please try again.');
+    }
+}
+
 // Roll dice function
 async function rollDice() {
     if (!currentUser || isRolling) return;
@@ -1129,6 +1361,20 @@ async function rollDice() {
                 }, 50); // Small delay to ensure removal happens first
             }
             
+            // Display hash/seed at bottom of page
+            displayRandomHash(data.result.randomHash, data.result.randomTimestamp);
+            
+            // Check for new badges
+            const newBadges = checkBadges(betAmount);
+            if (newBadges.length > 0) {
+                newBadges.forEach(badge => {
+                    setTimeout(() => {
+                        showGameNotification(true, null, `Badge Earned: ${badge.name}!`);
+                    }, 1000);
+                });
+                updateBadges(); // Update badge display
+            }
+            
             showGameNotification(data.result.won, data.result.winAmount);
             
             if (data.result.levelUp.leveledUp) {
@@ -1155,6 +1401,54 @@ async function rollDice() {
         buttonText.textContent = originalText;
         rollButton.disabled = false;
     }
+}
+
+// Display random hash/seed for provably fair gaming
+function displayRandomHash(hash, timestamp) {
+    let hashContainer = document.getElementById('random-hash-container');
+    if (!hashContainer) {
+        hashContainer = document.createElement('div');
+        hashContainer.id = 'random-hash-container';
+        hashContainer.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 15, 15, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #9ca3af;
+            max-width: 90%;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        `;
+        document.body.appendChild(hashContainer);
+    }
+    
+    hashContainer.innerHTML = `
+        <div style="text-align: center; margin-bottom: 4px; font-weight: 600; color: #f1f1f1;">
+            🎲 Provably Fair Result
+        </div>
+        <div style="margin-bottom: 2px;">
+            <strong>Hash:</strong> ${hash}
+        </div>
+        <div style="font-size: 11px; color: #6b7280;">
+            Generated: ${new Date(timestamp).toLocaleString()}
+        </div>
+    `;
+    
+    // Show with animation
+    hashContainer.style.opacity = '1';
+    
+    // Hide after 10 seconds
+    setTimeout(() => {
+        hashContainer.style.opacity = '0';
+    }, 10000);
 }
 
 // Auto bet functionality

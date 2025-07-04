@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100;200;300;400;500;600;700;800;900&display=swap');
 
 /* Reset and Base Styles */
 * {
@@ -12,10 +12,11 @@
 }
 
 body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background: #0a0a0a;
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
     color: #f1f1f1;
     overflow-x: hidden;
+    min-height: 100vh;
     line-height: 1.6;
 }
 
@@ -938,19 +939,6 @@ button:hover, a:hover {
     }
 }
 
-.auto-bet-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.input-with-toggle {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
 .toggle-btn {
     padding: 0.5rem;
     background: rgba(55, 65, 81, 0.3);
@@ -961,21 +949,13 @@ button:hover, a:hover {
     cursor: pointer;
     transition: all 0.3s ease;
     min-width: 36px;
+    font-family: 'Outfit', sans-serif;
 }
 
 .toggle-btn.active {
     background: #10b981;
     color: #f1f1f1;
     border-color: #059669;
-}
-
-.input-group {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.auto-bet-input.half {
-    width: calc(50% - 0.25rem);
 }
 
 .bet-strategy-grid {
@@ -992,6 +972,8 @@ button:hover, a:hover {
     border-radius: 8px;
     color: #9ca3af;
     font-size: 0.8rem;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
 }
@@ -1032,6 +1014,7 @@ button:hover, a:hover {
     flex: 1;
     padding: 0.75rem;
     border-radius: 8px;
+    font-family: 'Outfit', sans-serif;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -1153,12 +1136,17 @@ button:hover, a:hover {
 
 /* Login Page */
 .login-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 100vh;
     padding: 2rem;
     background: linear-gradient(135deg, #0a0a0a 0%, #111111 100%);
+    z-index: 9999;
 }
 
 .login-card {
@@ -2643,4 +2631,99 @@ input, textarea {
     -moz-user-select: text;
     -ms-user-select: text;
     user-select: text;
-} 
+}
+
+.auto-bet-input {
+    padding: 0.75rem;
+    background: rgba(55, 65, 81, 0.4);
+    border: 1px solid rgba(75, 85, 99, 0.6);
+    border-radius: 8px;
+    color: #f1f1f1;
+    font-size: 0.9rem;
+    font-family: 'Outfit', sans-serif;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.auto-bet-input:focus {
+    outline: none;
+    border-color: #10b981;
+    background: rgba(55, 65, 81, 0.6);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.auto-bet-input::placeholder {
+    color: #9ca3af;
+}
+
+.auto-bet-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.auto-bet-input.half {
+    width: 100%;
+    flex: 1;
+}
+
+.input-group {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.input-with-toggle {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    width: 100%;
+}
+
+.input-with-toggle .auto-bet-input {
+    flex: 1;
+}
+
+.auto-bet-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.control-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #d1d5db;
+    font-family: 'Outfit', sans-serif;
+}
+
+@media (min-width: 768px) {
+    .auto-bet-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 767px) {
+    .auto-bet-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .bet-strategy-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .input-group {
+        flex-direction: column;
+    }
+    
+    .auto-bet-input.half {
+        width: 100%;
+    }
+}

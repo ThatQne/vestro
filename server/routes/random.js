@@ -8,11 +8,13 @@ router.post('/number', async (req, res) => {
     try {
         const { min = 1, max = 100 } = req.body;
         
-        const number = await getRandomNumber(min, max);
+        const result = await getRandomNumber(min, max);
         
         res.json({
             success: true,
-            number,
+            number: result.value,
+            hash: result.hash,
+            timestamp: result.timestamp,
             min,
             max
         });
@@ -32,7 +34,9 @@ router.post('/coinflip', async (req, res) => {
         
         res.json({
             success: true,
-            result
+            result: result.result,
+            hash: result.hash,
+            timestamp: result.timestamp
         });
     } catch (error) {
         console.error('Coin flip error:', error);
@@ -51,7 +55,9 @@ router.post('/dice', async (req, res) => {
         
         res.json({
             success: true,
-            result,
+            result: result.result,
+            hash: result.hash,
+            timestamp: result.timestamp,
             sides
         });
     } catch (error) {

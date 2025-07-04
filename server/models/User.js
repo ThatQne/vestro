@@ -129,20 +129,23 @@ function getTotalXPForLevel(level) {
 userSchema.methods.addExperience = function(amount) {
     this.experience += amount;
     
-    // Find the highest level we can achieve with current XP
-    let newLevel = 1;
-    while (getTotalXPForLevel(newLevel) <= this.experience) {
-        newLevel++;
-    }
-    newLevel--; // Back off one level since we went one too far
+    let levelsGained = 0;
+    let leveledUp = false;
     
-    if (newLevel > this.level) {
-        const levelsGained = newLevel - this.level;
-        this.level = newLevel;
-        return { leveledUp: true, levelsGained };
+    // Check if we can level up - use >= to handle exact matches
+    while (this.experience >= getRequiredXP(this.level)) {
+        const xpNeeded = getRequiredXP(this.level);
+        this.experience -= xpNeeded; // Subtract XP needed for current level
+        this.level += 1; // Increase level
+        levelsGained += 1;
+        leveledUp = true;
+        
+        // Add level up bonus
+        this.balance += 50; // $50 bonus per level up
+        this.balanceHistory.push(this.balance);
     }
     
-    return { leveledUp: false };
+    return { leveledUp, levelsGained };
 };
 
 // Update game statistics and check for badges

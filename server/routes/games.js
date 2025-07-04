@@ -48,17 +48,24 @@ router.post('/play', authenticateToken, async (req, res) => {
         let won = false;
         let winAmount = 0;
         let multiplier = 1;
+        let randomHash = null;
+        let randomTimestamp = null;
 
         // Play the game based on type
         if (gameType === 'coinflip') {
-            const coin = await getRandomNumber(0, 1);
-            gameResult = coin === 0 ? 'heads' : 'tails';
+            const randomResult = await getRandomNumber(0, 1);
+            gameResult = randomResult.value === 0 ? 'heads' : 'tails';
             won = gameResult === playerChoice.toLowerCase();
             multiplier = 2; // 2x payout for coin flip
+            randomHash = randomResult.hash;
+            randomTimestamp = randomResult.timestamp;
         } else if (gameType === 'dice') {
-            // Generate a random number between 0 and 100 with 2 decimal places
-            const roll = Math.round((await getRandomNumber(0, 10000)) / 100);
+            // Generate a random number between 0 and 10000 for precision
+            const randomResult = await getRandomNumber(0, 10000);
+            const roll = randomResult.value / 100; // Convert to 0-100 with 2 decimal places
             gameResult = roll.toFixed(2);
+            randomHash = randomResult.hash;
+            randomTimestamp = randomResult.timestamp;
             
             if (playerChoice === 'higher') {
                 won = roll > targetNumber;
@@ -139,6 +146,8 @@ router.post('/play', authenticateToken, async (req, res) => {
                 winAmount: won ? winAmount : 0,
                 experienceGained,
                 levelUp: levelUpResult,
+                randomHash,
+                randomTimestamp,
                 earnedBadges: earnedBadges.map(badge => ({
                     name: badge.name,
                     description: badge.description,
