@@ -141,6 +141,9 @@ const CLIENT_BADGES = [
     }
 ];
 
+// Add global debounce timer for username checks
+let checkUserDebounce = null;
+
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -179,10 +182,15 @@ function initializeApp() {
         loginForm.addEventListener('submit', handleLogin);
     }
 
-    // Add username input handler for live indicator
+    // Add username input handler for live indicator with debounce
     const usernameInput = document.getElementById('username');
     if (usernameInput) {
-        usernameInput.addEventListener('input', checkUserExists);
+        usernameInput.addEventListener('input', () => {
+            clearTimeout(checkUserDebounce);
+            checkUserDebounce = setTimeout(() => {
+                checkUserExists();
+            }, 600); // 600ms debounce
+        });
     }
 
     // Initialize dice game
@@ -233,7 +241,7 @@ function hideLoginPage() {
 }
 
 async function checkUserExists() {
-    const username = document.getElementById('username').value;
+    const username = document.getElementById('username').value.trim();
     const statusIndicator = document.getElementById('status-indicator');
     const statusText = document.getElementById('status-text');
 
@@ -250,6 +258,20 @@ async function checkUserExists() {
             },
             body: JSON.stringify({ username })
         });
+
+        // Handle rate limiting
+        if (response.status === 429) {
+            statusIndicator.classList.remove('hidden');
+            statusIndicator.className = 'status-indicator error';
+            statusText.textContent = '⚠ Too many attempts – please wait…';
+            return;
+        }
+
+        // Ensure we only parse JSON if the response is JSON
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error('Non-JSON response');
+        }
 
         const data = await response.json();
         
@@ -312,7 +334,7 @@ async function handleLogin(e) {
     }
 }
 
-async function fetchUserProfile() {
+async function fetchUserProfile(skipHide = false) {
     const token = localStorage.getItem('token');
     if (!token) return;
 
@@ -326,7 +348,9 @@ async function fetchUserProfile() {
         if (response.ok) {
             const data = await response.json();
             currentUser = data.user;
-            hideLoginPage();
+            if (!skipHide) {
+                hideLoginPage();
+            }
             updateUserInterface();
         } else {
             localStorage.removeItem('token');
@@ -553,41 +577,28 @@ function updateBadges() {
 
 function showPage(pageId) {
     // Hide all pages
-    const pages = ['dashboard-page', 'games-page', 'trades-page', 'marketplace-page', 'profile-page', 'coinflip-game-page', 'dice-game-page'];
-    pages.forEach(page => {
-        const pageElement = document.getElementById(page);
-        if (pageElement) {
-            pageElement.classList.add('hidden');
-        }
+    document.querySelectorAll('.page-content').forEach(page => {
+        page.classList.add('hidden');
     });
 
     // Show selected page
-    const targetPage = document.getElementById(pageId + '-page');
-    if (targetPage) {
-        targetPage.classList.remove('hidden');
-    }
-    
-    // Update navigation
+    document.getElementById(pageId + '-page').classList.remove('hidden');
+
+    // Update active navigation item
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    
-    const activeNavItem = document.querySelector(`.nav-item[data-page="${pageId}"]`);
-    if (activeNavItem) {
-        activeNavItem.classList.add('active');
-    }
-    
-    currentPage = pageId;
-    
-    // Reinitialize icons after page change
-    if (typeof lucide !== 'undefined') {
-        setTimeout(() => lucide.createIcons(), 50);
-    }
-    
-    // Update page-specific data
-    if (pageId === 'profile') {
-        loadProfileData();
-        updateBadges(); // Load badges when profile page is shown
+    document.querySelector(`[data-page="${pageId}"]`).classList.add('active');
+
+    // Page-specific handling
+    if (pageId === 'dashboard' && currentUser) {
+        // Fetch fresh profile data but avoid hideLoginPage loop
+        fetchUserProfile(true).then(() => {
+            setTimeout(() => {
+                drawBalanceChart();
+                updateBadges(); // Update badges display
+            }, 100);
+        });
     }
     
     // Initialize dice game when showing dice page
@@ -597,11 +608,9 @@ function showPage(pageId) {
         }, 100);
     }
     
-    // Redraw chart when showing dashboard
-    if (pageId === 'dashboard' && currentUser) {
-        setTimeout(() => {
-            drawBalanceChart();
-        }, 100);
+    // Reinitialize icons after page change
+    if (typeof lucide !== 'undefined') {
+        setTimeout(() => lucide.createIcons(), 50);
     }
 }
 
@@ -1247,7 +1256,43 @@ async function playCoinFlip(choice) {
         const data = await response.json();
         
         if (data.success) {
-            currentUser = data.user;
+            // Update current user data if provided, otherwise just sync the balance fields manually
+            if (data.user) {
+                currentUser = data.user;
+            } else if (currentUser && data.result) {
+                // Only update the fields we know changed (balance, XP, level)
+                if (typeof data.result.balanceAfter !== 'undefined') {
+                    currentUser.balance = data.result.balanceAfter;
+                }
+                if (typeof data.result.newLevel !== 'undefined') {
+                    currentUser.level = data.result.newLevel;
+                }
+                if (typeof data.result.experienceGained !== 'undefined') {
+                    currentUser.experience += data.result.experienceGained;
+                }
+
+                // Update basic game stats locally so UI stays in sync until next full profile fetch
+                if (typeof currentUser.gamesPlayed === 'number') {
+                    currentUser.gamesPlayed += 1;
+                }
+                if (data.result.won) {
+                    if (typeof currentUser.wins === 'number') currentUser.wins += 1;
+                    if (typeof currentUser.totalWon === 'number') currentUser.totalWon += data.result.winAmount;
+                    if (typeof currentUser.currentWinStreak === 'number') {
+                        currentUser.currentWinStreak += 1;
+                        if (typeof currentUser.bestWinStreak === 'number' && currentUser.currentWinStreak > currentUser.bestWinStreak) {
+                            currentUser.bestWinStreak = currentUser.currentWinStreak;
+                        }
+                    }
+                    if (typeof currentUser.bestWin === 'number' && data.result.winAmount > currentUser.bestWin) {
+                        currentUser.bestWin = data.result.winAmount;
+                    }
+                } else {
+                    if (typeof currentUser.losses === 'number') currentUser.losses += 1;
+                    if (typeof currentUser.currentWinStreak === 'number') currentUser.currentWinStreak = 0;
+                }
+            }
+
             updateUserInterface();
             
             // Show result after animation
@@ -1280,10 +1325,12 @@ async function playCoinFlip(choice) {
                 const profit = data.result.won ? data.result.winAmount - betAmount : 0;
                 showGameNotification(data.result.won, profit);
                 
-                if (data.result.levelUp.leveledUp) {
+                if (data.result && data.result.leveledUp) {
                     setTimeout(() => {
                         showGameNotification(true, null, 
-                            `Level Up! +${data.result.levelUp.levelsGained} level(s)!`);
+                            `Level Up! +${data.result.levelsGained} level(s)!`);
+                        // Refresh profile to update XP/level bars
+                        fetchUserProfile(true);
                     }, 500);
                 }
                 
@@ -1352,7 +1399,43 @@ async function rollDice() {
         const data = await response.json();
         
         if (data.success) {
-            currentUser = data.user;
+            // Update current user data if provided, otherwise just sync the balance fields manually
+            if (data.user) {
+                currentUser = data.user;
+            } else if (currentUser && data.result) {
+                // Only update the fields we know changed (balance, XP, level)
+                if (typeof data.result.balanceAfter !== 'undefined') {
+                    currentUser.balance = data.result.balanceAfter;
+                }
+                if (typeof data.result.newLevel !== 'undefined') {
+                    currentUser.level = data.result.newLevel;
+                }
+                if (typeof data.result.experienceGained !== 'undefined') {
+                    currentUser.experience += data.result.experienceGained;
+                }
+
+                // Update basic game stats locally so UI stays in sync until next full profile fetch
+                if (typeof currentUser.gamesPlayed === 'number') {
+                    currentUser.gamesPlayed += 1;
+                }
+                if (data.result.won) {
+                    if (typeof currentUser.wins === 'number') currentUser.wins += 1;
+                    if (typeof currentUser.totalWon === 'number') currentUser.totalWon += data.result.winAmount;
+                    if (typeof currentUser.currentWinStreak === 'number') {
+                        currentUser.currentWinStreak += 1;
+                        if (typeof currentUser.bestWinStreak === 'number' && currentUser.currentWinStreak > currentUser.bestWinStreak) {
+                            currentUser.bestWinStreak = currentUser.currentWinStreak;
+                        }
+                    }
+                    if (typeof currentUser.bestWin === 'number' && data.result.winAmount > currentUser.bestWin) {
+                        currentUser.bestWin = data.result.winAmount;
+                    }
+                } else {
+                    if (typeof currentUser.losses === 'number') currentUser.losses += 1;
+                    if (typeof currentUser.currentWinStreak === 'number') currentUser.currentWinStreak = 0;
+                }
+            }
+
             updateUserInterface();
             
             // Update dice pointer and result
@@ -1387,10 +1470,13 @@ async function rollDice() {
             const profit = data.result.won ? data.result.winAmount - betAmount : 0;
             showGameNotification(data.result.won, profit);
             
-            if (data.result.levelUp.leveledUp) {
+            // Check if levelUp data exists before accessing it
+            if (data.result && data.result.leveledUp) {
                 setTimeout(() => {
                     showGameNotification(true, null, 
-                        `Level Up! +${data.result.levelUp.levelsGained} level(s)!`);
+                        `Level Up! +${data.result.levelsGained} level(s)!`);
+                    // Refresh profile to update XP/level bars
+                    fetchUserProfile(true);
                 }, 500);
             }
             
@@ -1888,9 +1974,4 @@ function logout() {
     if (socket) {
         socket.disconnect();
     }
-}
-
-async function loadProfileData() {
-    // This function can be expanded to load additional profile data
-    updateUserInterface();
 } 

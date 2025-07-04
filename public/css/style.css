@@ -1908,9 +1908,10 @@ button:hover, a:hover {
 /* Profile Page Styles */
 .profile-grid {
     display: grid;
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 2rem;
-    padding: 2rem;
+    padding: 0;
+    margin-top: 2rem;
 }
 
 .profile-card {
@@ -2366,6 +2367,7 @@ button:hover, a:hover {
     .profile-grid {
         grid-template-columns: 1fr;
         gap: 1.5rem;
+        margin-top: 1.5rem;
     }
     
     .profile-card {
