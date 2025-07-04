@@ -144,61 +144,16 @@ const CLIENT_BADGES = [
 // Add global debounce timer for username checks
 let checkUserDebounce = null;
 
-// Plinko game variables
-let plinkoRows = 12;
-let plinkoRisk = 'medium';
-let isPlinkoDropping = false;
-let plinkoAutoBetting = false;
-let plinkoAutoConfig = {
-    count: 10,
-    infinite: false,
-    stopOnWin: null,
-    stopOnLoss: null,
-    stopOnBalanceGain: null,
-    stopOnBalanceLoss: null,
-    onLossAction: 'reset',
-    onWinAction: 'reset',
-    onLossMultiplier: 2.0,
-    onWinMultiplier: 2.0,
-    currentCount: 0,
-    initialBalance: 0,
-    currentBet: 0,
-    consecutiveWins: 0,
-    consecutiveLosses: 0
-};
-
-// Plinko multipliers for different configurations
-const plinkoMultipliers = {
-    8: {
-        low: [5.6, 2.1, 1.1, 1.0, 0.5, 1.0, 1.1, 2.1, 5.6],
-        medium: [13, 3, 1.3, 0.7, 0.7, 0.7, 0.7, 1.3, 3, 13],
-        high: [29, 4, 1.5, 0.3, 0.2, 0.2, 0.3, 1.5, 4, 29]
-    },
-    10: {
-        low: [8.9, 3, 1.4, 1.1, 1.0, 0.5, 1.0, 1.1, 1.4, 3, 8.9],
-        medium: [22, 4, 1.4, 1.1, 1.0, 0.5, 1.0, 1.1, 1.4, 4, 22],
-        high: [43, 7, 2, 1.1, 1.0, 0.2, 1.0, 1.1, 2, 7, 43]
-    },
-    12: {
-        low: [10, 3, 1.6, 1.4, 1.1, 1.0, 0.5, 1.0, 1.1, 1.4, 1.6, 3, 10],
-        medium: [33, 5, 2, 1.5, 1.1, 1.0, 0.5, 1.0, 1.1, 1.5, 2, 5, 33],
-        high: [58, 9, 3, 1.3, 1.0, 0.7, 0.2, 0.7, 1.0, 1.3, 3, 9, 58]
-    },
-    14: {
-        low: [7.1, 4, 1.9, 1.4, 1.3, 1.1, 1.0, 0.5, 1.0, 1.1, 1.3, 1.4, 1.9, 4, 7.1],
-        medium: [18, 5, 2.1, 1.6, 1.4, 1.2, 1.0, 0.5, 1.0, 1.2, 1.4, 1.6, 2.1, 5, 18],
-        high: [110, 13, 3, 1.9, 1.2, 0.9, 0.7, 0.2, 0.7, 0.9, 1.2, 1.9, 3, 13, 110]
-    },
-    16: {
-        low: [16, 9, 2, 1.4, 1.4, 1.2, 1.1, 1.0, 0.5, 1.0, 1.1, 1.2, 1.4, 1.4, 2, 9, 16],
-        medium: [16, 9, 2, 1.4, 1.4, 1.2, 1.1, 1.0, 0.5, 1.0, 1.1, 1.2, 1.4, 1.4, 2, 9, 16],
-        high: [1000, 130, 26, 9, 4, 2, 0.2, 0.2, 0.2, 0.2, 0.2, 2, 4, 9, 26, 130, 1000]
-    }
-};
-
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
+    
+    // Initialize Plinko if on plinko page
+    if (window.location.hash === '#plinko-game') {
+        setTimeout(() => {
+            initializePlinko();
+        }, 500);
+    }
 });
 
 function initializeApp() {
@@ -247,12 +202,6 @@ function initializeApp() {
 
     // Initialize dice game
     initializeDiceGame();
-    
-    // Initialize Plinko game
-    initializePlinko();
-    
-    // Initialize notifications
-    initializeNotifications();
 
     // Add resize event listener for chart
     window.addEventListener('resize', () => {
@@ -657,11 +606,6 @@ function showPage(pageId) {
                 updateBadges(); // Update badges display
             }, 100);
         });
-    } else if (pageId === 'plinko-game' && currentUser) {
-        // Initialize Plinko board when page is shown
-        setTimeout(() => {
-            setupPlinkoBoard();
-        }, 100);
     }
     
     // Initialize dice game when showing dice page
@@ -669,6 +613,13 @@ function showPage(pageId) {
         setTimeout(() => {
             initializeDiceGame();
         }, 100);
+    }
+    
+    // Initialize Plinko when showing the plinko game page
+    if (pageId === 'plinko-game') {
+        setTimeout(() => {
+            initializePlinko();
+        }, 300);
     }
     
     // Reinitialize icons after page change
@@ -2039,106 +1990,821 @@ function logout() {
     }
 }
 
-// Initialize Plinko game
+// Plinko Game Variables
+let plinkoCanvas, plinkoCtx;
+let plinkoConfig = {
+    risk: 'low',
+    rows: 8,  // Default to 8 rows
+    ballSize: 6,
+    pegSize: 4,
+    gravity: 0.5,
+    bounce: 0.6,
+    friction: 0.99
+};
+
+let plinkoState = {
+    isDropping: false,
+    balls: [],
+    pegs: [],
+    buckets: [],
+    multipliers: [],
+    animationId: null
+};
+
+let plinkoAutobet = {
+    isActive: false,
+    settings: {
+        betCount: 10,
+        isInfinite: false,
+        stopOnWin: null,
+        stopOnLoss: null,
+        stopOnBalanceGain: null,
+        stopOnBalanceLoss: null,
+        onLoss: 'reset',
+        onWin: 'reset',
+        lossMultiplier: 2.0,
+        winMultiplier: 2.0
+    },
+    stats: {
+        totalBets: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalProfit: 0,
+        currentStreak: 0,
+        longestStreak: 0,
+        startBalance: 0,
+        baseBet: 0
+    }
+};
+
+// Plinko Multiplier Tables (similar to Stake)
+const plinkoMultipliers = {
+    low: {
+        8: [5.6, 2.1, 1.1, 1.0, 0.5, 1.0, 1.1, 2.1, 5.6],
+        12: [8.1, 3.0, 1.6, 1.0, 0.7, 0.7, 0.5, 0.7, 0.7, 1.0, 1.6, 3.0, 8.1],
+        16: [16.0, 9.0, 2.0, 1.4, 1.1, 1.0, 0.5, 0.3, 0.5, 0.3, 0.5, 1.0, 1.1, 1.4, 2.0, 9.0, 16.0]
+    },
+    medium: {
+        8: [13.0, 3.0, 1.3, 0.7, 0.4, 0.7, 1.3, 3.0, 13.0],
+        12: [24.0, 5.0, 2.0, 1.4, 0.6, 0.4, 0.2, 0.4, 0.6, 1.4, 2.0, 5.0, 24.0],
+        16: [110.0, 41.0, 10.0, 5.0, 3.0, 1.5, 1.0, 0.5, 0.3, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 41.0, 110.0]
+    },
+    high: {
+        8: [29.0, 4.0, 1.5, 0.2, 0.2, 0.2, 1.5, 4.0, 29.0],
+        12: [58.0, 8.0, 2.5, 1.0, 0.2, 0.2, 0.1, 0.2, 0.2, 1.0, 2.5, 8.0, 58.0],
+        16: [1000.0, 130.0, 26.0, 9.0, 4.0, 2.0, 0.7, 0.2, 0.1, 0.2, 0.7, 2.0, 4.0, 9.0, 26.0, 130.0, 1000.0]
+    }
+};
+
+// Initialize Plinko Game
 function initializePlinko() {
-    setupPlinkoBoard();
+    plinkoCanvas = document.getElementById('plinko-canvas');
+    if (!plinkoCanvas) {
+        console.log('Plinko canvas not found, retrying...');
+        setTimeout(() => {
+            initializePlinko();
+        }, 100);
+        return;
+    }
+    
+    plinkoCtx = plinkoCanvas.getContext('2d');
+    
+    // Set default UI state
+    setPlinkoRisk('low');
+    setPlinkoRows(8);
+    
+    // Set canvas size
+    resizePlinkoCanvas();
+    
+    // Setup initial game state
+    setupPlinkoGame();
+    
+    // Setup autobet handlers
     setupPlinkoAutobet();
+    
+    // Add resize listener (only once)
+    if (!window.plinkoResizeListenerAdded) {
+        window.addEventListener('resize', resizePlinkoCanvas);
+        window.plinkoResizeListenerAdded = true;
+    }
+    
+    // Start game loop
+    if (plinkoState.animationId) {
+        cancelAnimationFrame(plinkoState.animationId);
+    }
+    plinkoGameLoop();
 }
 
-// Setup Plinko board
-function setupPlinkoBoard() {
-    const board = document.getElementById('plinko-board');
-    const multipliersContainer = document.getElementById('plinko-multipliers');
+// Resize canvas to maintain aspect ratio
+function resizePlinkoCanvas() {
+    if (!plinkoCanvas) return;
     
-    if (!board || !multipliersContainer) return;
-
-    // Clear existing content
-    board.innerHTML = '';
-    multipliersContainer.innerHTML = '';
-
-    // Add drop zone
-    const dropZone = document.createElement('div');
-    dropZone.className = 'plinko-drop-zone';
-    board.appendChild(dropZone);
-
-    // Generate pegs
-    const boardWidth = board.offsetWidth;
-    const boardHeight = board.offsetHeight;
-    const pegSpacing = boardWidth / (plinkoRows + 1);
+    const container = plinkoCanvas.parentElement;
+    if (!container) return;
     
-    for (let row = 1; row <= plinkoRows; row++) {
-        const pegsInRow = row + 1;
-        const startX = (boardWidth - (pegsInRow - 1) * pegSpacing) / 2;
-        const y = (row * (boardHeight - 60)) / (plinkoRows + 1);
-        
-        for (let peg = 0; peg < pegsInRow; peg++) {
-            const pegElement = document.createElement('div');
-            pegElement.className = 'plinko-peg';
-            pegElement.style.left = `${startX + peg * pegSpacing}px`;
-            pegElement.style.top = `${y}px`;
-            board.appendChild(pegElement);
+    const containerWidth = container.clientWidth;
+    const maxWidth = 500;
+    const aspectRatio = 600 / 400; // height / width
+    
+    const canvasWidth = Math.min(containerWidth, maxWidth);
+    const canvasHeight = canvasWidth * aspectRatio;
+    
+    plinkoCanvas.width = canvasWidth;
+    plinkoCanvas.height = canvasHeight;
+    plinkoCanvas.style.width = canvasWidth + 'px';
+    plinkoCanvas.style.height = canvasHeight + 'px';
+    
+    // Recalculate game elements
+    if (plinkoCtx) {
+        setupPlinkoGame();
+    }
+}
+
+// Setup Plinko game elements
+function setupPlinkoGame() {
+    if (!plinkoCanvas || !plinkoCtx) {
+        console.log('Canvas not ready for setup');
+        return;
+    }
+    
+    const { rows } = plinkoConfig;
+    const { width, height } = plinkoCanvas;
+    
+    // Clear previous state
+    plinkoState.pegs = [];
+    plinkoState.buckets = [];
+    plinkoState.balls = [];
+    
+    // Calculate peg positions
+    const pegSpacing = width / (rows + 1);
+    const rowSpacing = (height - 100) / (rows + 1);
+    
+    for (let row = 0; row < rows; row++) {
+        for (let col = 0; col <= row; col++) {
+            const x = width / 2 + (col - row / 2) * pegSpacing;
+            const y = 80 + row * rowSpacing;
+            
+            plinkoState.pegs.push({ x, y, row, col });
         }
     }
-
-    // Generate multipliers
-    const multipliers = plinkoMultipliers[plinkoRows][plinkoRisk];
-    multipliers.forEach((multiplier, index) => {
-        const multiplierElement = document.createElement('div');
-        multiplierElement.className = 'plinko-multiplier';
-        multiplierElement.textContent = `${multiplier}x`;
-        multiplierElement.dataset.multiplier = multiplier;
-        multiplierElement.dataset.index = index;
+    
+    // Calculate bucket positions
+    const bucketCount = rows + 1;
+    const bucketWidth = width / bucketCount;
+    
+    for (let i = 0; i < bucketCount; i++) {
+        const x = i * bucketWidth;
+        const y = height - 50;
         
-        // Add color class based on multiplier value
-        if (multiplier >= 100) {
-            multiplierElement.classList.add('ultra');
-        } else if (multiplier >= 10) {
-            multiplierElement.classList.add('high');
-        } else if (multiplier >= 2) {
-            multiplierElement.classList.add('medium');
-        } else {
-            multiplierElement.classList.add('low');
+        plinkoState.buckets.push({
+            x,
+            y,
+            width: bucketWidth,
+            height: 50,
+            index: i
+        });
+    }
+}
+
+// Plinko ball physics
+class PlinkoBall {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.radius = plinkoConfig.ballSize;
+        this.bounced = false;
+        this.finished = false;
+        this.bucketIndex = -1;
+    }
+    
+    update() {
+        // Apply gravity
+        this.vy += plinkoConfig.gravity;
+        
+        // Apply friction
+        this.vx *= plinkoConfig.friction;
+        this.vy *= plinkoConfig.friction;
+        
+        // Update position
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // Check peg collisions
+        this.checkPegCollisions();
+        
+        // Check bucket collision
+        this.checkBucketCollision();
+        
+        // Check bounds
+        if (this.x < this.radius) {
+            this.x = this.radius;
+            this.vx = Math.abs(this.vx) * plinkoConfig.bounce;
+        }
+        if (this.x > plinkoCanvas.width - this.radius) {
+            this.x = plinkoCanvas.width - this.radius;
+            this.vx = -Math.abs(this.vx) * plinkoConfig.bounce;
+        }
+    }
+    
+    checkPegCollisions() {
+        for (const peg of plinkoState.pegs) {
+            const dx = this.x - peg.x;
+            const dy = this.y - peg.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < this.radius + plinkoConfig.pegSize) {
+                // Calculate collision response
+                const angle = Math.atan2(dy, dx);
+                const force = 0.5 + Math.random() * 0.5; // Random bounce force
+                
+                // Add some randomness to the bounce
+                const randomAngle = angle + (Math.random() - 0.5) * 0.5;
+                
+                this.vx = Math.cos(randomAngle) * force * 2;
+                this.vy = Math.sin(randomAngle) * force * 2;
+                
+                // Separate from peg
+                this.x = peg.x + (this.radius + plinkoConfig.pegSize) * Math.cos(angle);
+                this.y = peg.y + (this.radius + plinkoConfig.pegSize) * Math.sin(angle);
+                
+                this.bounced = true;
+            }
+        }
+    }
+    
+    checkBucketCollision() {
+        if (this.y > plinkoCanvas.height - 60) {
+            for (let i = 0; i < plinkoState.buckets.length; i++) {
+                const bucket = plinkoState.buckets[i];
+                if (this.x >= bucket.x && this.x <= bucket.x + bucket.width) {
+                    this.finished = true;
+                    this.bucketIndex = i;
+                    this.y = bucket.y - this.radius;
+                    this.vx = 0;
+                    this.vy = 0;
+                    break;
+                }
+            }
+        }
+    }
+    
+    draw() {
+        plinkoCtx.beginPath();
+        plinkoCtx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
+        plinkoCtx.fillStyle = '#f1f1f1';
+        plinkoCtx.fill();
+        plinkoCtx.strokeStyle = '#d1d5db';
+        plinkoCtx.lineWidth = 1;
+        plinkoCtx.stroke();
+    }
+}
+
+// Game loop
+function plinkoGameLoop() {
+    if (!plinkoCanvas || !plinkoCtx) {
+        // Canvas not ready, stop loop
+        return;
+    }
+    
+    // Update balls
+    for (let i = plinkoState.balls.length - 1; i >= 0; i--) {
+        const ball = plinkoState.balls[i];
+        ball.update();
+        
+        if (ball.finished) {
+            handleBallFinished(ball);
+            plinkoState.balls.splice(i, 1);
+        }
+    }
+    
+    // Draw everything
+    drawPlinko();
+    
+    // Continue loop
+    plinkoState.animationId = requestAnimationFrame(plinkoGameLoop);
+}
+
+// Draw Plinko game
+function drawPlinko() {
+    if (!plinkoCanvas || !plinkoCtx) return;
+    
+    const { width, height } = plinkoCanvas;
+    
+    // Clear canvas
+    plinkoCtx.clearRect(0, 0, width, height);
+    
+    // Draw pegs
+    plinkoCtx.fillStyle = '#6b7280';
+    plinkoCtx.strokeStyle = '#4b5563';
+    plinkoCtx.lineWidth = 1;
+    
+    for (const peg of plinkoState.pegs) {
+        plinkoCtx.beginPath();
+        plinkoCtx.arc(peg.x, peg.y, plinkoConfig.pegSize, 0, 2 * Math.PI);
+        plinkoCtx.fill();
+        plinkoCtx.stroke();
+    }
+    
+    // Draw buckets with multipliers
+    const { risk, rows } = plinkoConfig;
+    const multipliers = plinkoMultipliers[risk][rows];
+    
+    plinkoCtx.strokeStyle = '#374151';
+    plinkoCtx.lineWidth = 2;
+    plinkoCtx.font = '12px Arial';
+    plinkoCtx.textAlign = 'center';
+    
+    for (let i = 0; i < plinkoState.buckets.length; i++) {
+        const bucket = plinkoState.buckets[i];
+        const multiplier = multipliers[i];
+        
+        // Determine color based on risk and multiplier value
+        let bucketColor = '#374151';
+        let textColor = '#ffffff';
+        
+        if (risk === 'low') {
+            if (multiplier >= 2) {
+                bucketColor = '#ef4444';
+                textColor = '#ffffff';
+            } else if (multiplier >= 1) {
+                bucketColor = '#6b7280';
+                textColor = '#ffffff';
+            } else {
+                bucketColor = '#ef4444';
+                textColor = '#ffffff';
+            }
+        } else if (risk === 'medium') {
+            if (multiplier >= 10) {
+                bucketColor = '#10b981';
+                textColor = '#ffffff';
+            } else if (multiplier >= 2) {
+                bucketColor = '#3b82f6';
+                textColor = '#ffffff';
+            } else {
+                bucketColor = '#ef4444';
+                textColor = '#ffffff';
+            }
+        } else if (risk === 'high') {
+            if (multiplier >= 100) {
+                bucketColor = '#10b981';
+                textColor = '#ffffff';
+            } else if (multiplier >= 10) {
+                bucketColor = '#3b82f6';
+                textColor = '#ffffff';
+            } else {
+                bucketColor = '#ef4444';
+                textColor = '#ffffff';
+            }
         }
         
-        multipliersContainer.appendChild(multiplierElement);
+        // Draw bucket
+        plinkoCtx.strokeStyle = bucketColor;
+        plinkoCtx.fillStyle = bucketColor + '20'; // Semi-transparent fill
+        plinkoCtx.beginPath();
+        plinkoCtx.rect(bucket.x, bucket.y, bucket.width, bucket.height);
+        plinkoCtx.fill();
+        plinkoCtx.stroke();
+        
+        // Draw multiplier text
+        plinkoCtx.fillStyle = textColor;
+        plinkoCtx.fillText(
+            multiplier + 'x',
+            bucket.x + bucket.width / 2,
+            bucket.y + bucket.height / 2 + 4
+        );
+    }
+    
+    // Draw balls
+    for (const ball of plinkoState.balls) {
+        ball.draw();
+    }
+    
+    // Draw drop zone
+    plinkoCtx.strokeStyle = '#10b981';
+    plinkoCtx.lineWidth = 2;
+    plinkoCtx.beginPath();
+    plinkoCtx.arc(width / 2, 30, 10, 0, 2 * Math.PI);
+    plinkoCtx.stroke();
+}
+
+// Drop ball function - allow multiple balls
+function dropBall() {
+    if (!currentUser) return;
+    
+    // Ensure canvas is initialized
+    if (!plinkoCanvas || !plinkoCtx) {
+        console.log('Canvas not initialized, attempting to initialize...');
+        initializePlinko();
+        setTimeout(() => {
+            dropBall();
+        }, 200);
+        return;
+    }
+    
+    const betAmount = parseFloat(document.getElementById('plinko-bet-amount').value);
+    
+    if (!betAmount || betAmount <= 0) {
+        showGameNotification(false, null, 'Please enter a valid bet amount');
+        return;
+    }
+    
+    if (betAmount > currentUser.balance) {
+        showGameNotification(false, null, 'Insufficient balance');
+        return;
+    }
+    
+    // Create new ball with slight randomness in starting position
+    const randomOffset = (Math.random() - 0.5) * 20;
+    const ball = new PlinkoBall(plinkoCanvas.width / 2 + randomOffset, 30);
+    ball.betAmount = betAmount; // Store bet amount with ball
+    plinkoState.balls.push(ball);
+    
+    // Update button text to show dropping
+    const dropBtn = document.getElementById('drop-ball-btn');
+    const dropBtnText = document.getElementById('drop-btn-text');
+    if (dropBtn && dropBtnText) {
+        dropBtnText.textContent = `Dropping (${plinkoState.balls.length})`;
+    }
+}
+
+// Handle ball finished
+function handleBallFinished(ball) {
+    const { risk, rows } = plinkoConfig;
+    const multipliers = plinkoMultipliers[risk][rows];
+    const multiplier = multipliers[ball.bucketIndex];
+    
+    // Process the game result
+    handlePlinkoGameResult(ball.bucketIndex, multiplier, ball.betAmount);
+    
+    // Update button text
+    const dropBtn = document.getElementById('drop-ball-btn');
+    const dropBtnText = document.getElementById('drop-btn-text');
+    if (dropBtn && dropBtnText) {
+        if (plinkoState.balls.length > 1) {
+            dropBtnText.textContent = `Dropping (${plinkoState.balls.length - 1})`;
+        } else {
+            dropBtnText.textContent = 'Drop Ball';
+        }
+    }
+}
+
+// Handle game result
+async function handlePlinkoGameResult(bucketIndex, multiplier, betAmount) {
+    const winAmount = betAmount * multiplier;
+    const profit = winAmount - betAmount;
+    
+    // Send to server
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/play`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                gameType: 'plinko',
+                betAmount,
+                playerChoice: `${plinkoConfig.risk}-${plinkoConfig.rows}`,
+                targetNumber: bucketIndex,
+                multiplier,
+                winAmount
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update user data
+            if (data.user) {
+                currentUser = data.user;
+            } else if (currentUser && data.result) {
+                currentUser.balance = Math.round(data.result.balanceAfter * 100) / 100;
+                if (typeof data.result.newLevel !== 'undefined') {
+                    currentUser.level = data.result.newLevel;
+                }
+                if (typeof data.result.experienceGained !== 'undefined') {
+                    currentUser.experience += data.result.experienceGained;
+                }
+                
+                // Update game stats
+                if (typeof currentUser.gamesPlayed === 'number') {
+                    currentUser.gamesPlayed += 1;
+                }
+                if (multiplier > 1) {
+                    if (typeof currentUser.wins === 'number') currentUser.wins += 1;
+                    if (typeof currentUser.totalWon === 'number') currentUser.totalWon += winAmount;
+                } else {
+                    if (typeof currentUser.losses === 'number') currentUser.losses += 1;
+                    if (typeof currentUser.totalLost === 'number') currentUser.totalLost += betAmount;
+                }
+            }
+            
+            updateUserInterface();
+            
+            // Show game notification
+            const isWin = multiplier > 1;
+            showGameNotification(isWin, profit);
+            
+            // Display provably fair
+            if (data.result.hash) {
+                displayPlinkoHash(data.result.hash, data.result.timestamp);
+            }
+            
+            // Handle level up
+            if (data.result && data.result.leveledUp) {
+                setTimeout(() => {
+                    showGameNotification(true, null, 
+                        `Level Up! +${data.result.levelsGained} level(s)!`);
+                    fetchUserProfile(true);
+                }, 500);
+            }
+            
+            // Continue autobet
+            if (plinkoAutobet.isActive) {
+                continuePlinkoAutobet(isWin, profit);
+            }
+            
+        } else {
+            showGameNotification(false, null, data.message || 'Game failed');
+        }
+        
+    } catch (error) {
+        console.error('Plinko game error:', error);
+        showGameNotification(false, null, 'Connection error');
+    }
+}
+
+// Set plinko risk
+function setPlinkoRisk(risk) {
+    plinkoConfig.risk = risk;
+    
+    // Update UI
+    document.querySelectorAll('[id^="risk-"]').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.getElementById(`risk-${risk}-btn`).classList.add('active');
+    document.getElementById('plinko-risk').textContent = risk.charAt(0).toUpperCase() + risk.slice(1);
+    
+    // Update game immediately
+    if (plinkoCanvas && plinkoCtx) {
+        setupPlinkoGame();
+        drawPlinko(); // Force immediate redraw
+    }
+}
+
+// Set plinko rows
+function setPlinkoRows(rows) {
+    plinkoConfig.rows = rows;
+    
+    // Update UI
+    document.querySelectorAll('[id^="rows-"]').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.getElementById(`rows-${rows}-btn`).classList.add('active');
+    document.getElementById('plinko-rows').textContent = rows;
+    
+    // Update game immediately
+    if (plinkoCanvas && plinkoCtx) {
+        setupPlinkoGame();
+        drawPlinko(); // Force immediate redraw
+    }
+}
+
+// Display plinko hash
+function displayPlinkoHash(hash, timestamp) {
+    const diceVisual = document.querySelector('#plinko-game-page .dice-visual');
+    if (!diceVisual) return;
+    
+    let existingElement = document.getElementById('plinko-provably-fair-result');
+    if (existingElement) {
+        existingElement.remove();
+    }
+    
+    const provablyFairElement = document.createElement('div');
+    provablyFairElement.id = 'plinko-provably-fair-result';
+    provablyFairElement.className = 'provably-fair-result';
+    provablyFairElement.innerHTML = `
+        🎲 Provably Fair: ${hash.substring(0, 16)}...
+        <button class="copy-hash-btn" onclick="copyHash('${hash}')">Copy Full Hash</button>
+    `;
+    
+    diceVisual.appendChild(provablyFairElement);
+}
+
+// Setup plinko autobet
+function setupPlinkoAutobet() {
+    const autoBetBtn = document.getElementById('plinko-auto-bet-btn');
+    const autoBetSettings = document.getElementById('plinko-auto-bet-settings');
+    const startAutoBetBtn = document.getElementById('plinko-start-auto-bet');
+    const stopAutoBetBtn = document.getElementById('plinko-stop-auto-bet');
+    
+    if (!autoBetBtn) return;
+    
+    // Toggle auto bet settings
+    autoBetBtn.addEventListener('click', () => {
+        autoBetSettings.classList.toggle('show');
+    });
+    
+    // Strategy buttons
+    setupAutoBetStrategy('plinko-on-loss', 'loss');
+    setupAutoBetStrategy('plinko-on-win', 'win');
+    
+    // Start auto bet
+    startAutoBetBtn.addEventListener('click', startPlinkoAutobet);
+    
+    // Stop auto bet
+    stopAutoBetBtn.addEventListener('click', stopPlinkoAutobet);
+    
+    // Infinite toggle
+    const infiniteToggle = document.getElementById('plinko-infinite-bets-toggle');
+    infiniteToggle.addEventListener('click', () => {
+        plinkoAutobet.settings.isInfinite = !plinkoAutobet.settings.isInfinite;
+        infiniteToggle.classList.toggle('active', plinkoAutobet.settings.isInfinite);
+        document.getElementById('plinko-auto-bet-count').disabled = plinkoAutobet.settings.isInfinite;
     });
 }
 
-// Set Plinko rows
-function setPlinkoRows(rows) {
-    plinkoRows = rows;
+// Setup auto bet strategy
+function setupAutoBetStrategy(prefix, type) {
+    const resetBtn = document.getElementById(`${prefix}-reset`);
+    const multiplyBtn = document.getElementById(`${prefix}-multiply`);
+    const stopBtn = document.getElementById(`${prefix}-stop`);
+    const settings = document.getElementById(`${prefix}-settings`);
     
-    // Update active button
-    document.querySelectorAll('[id^="rows-"]').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`rows-${rows}`).classList.add('active');
+    if (!resetBtn) return;
     
-    // Update display
-    document.getElementById('plinko-rows').textContent = rows;
-    
-    // Rebuild board
-    setupPlinkoBoard();
+    [resetBtn, multiplyBtn, stopBtn].forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Update buttons
+            [resetBtn, multiplyBtn, stopBtn].forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Update settings
+            plinkoAutobet.settings[`on${type.charAt(0).toUpperCase() + type.slice(1)}`] = btn.textContent.toLowerCase();
+            
+            // Show/hide multiplier input
+            settings.style.display = btn === multiplyBtn ? 'block' : 'none';
+        });
+    });
 }
 
-// Set Plinko risk
-function setPlinkoRisk(risk) {
-    plinkoRisk = risk;
+// Start plinko autobet
+function startPlinkoAutobet() {
+    if (!currentUser || plinkoState.isDropping) return;
     
-    // Update active button
-    document.querySelectorAll('[id^="risk-"]').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`risk-${risk}`).classList.add('active');
+    const betAmount = parseFloat(document.getElementById('plinko-bet-amount').value);
     
-    // Update display
-    document.getElementById('plinko-risk').textContent = risk.charAt(0).toUpperCase() + risk.slice(1);
+    if (!betAmount || betAmount <= 0) {
+        showGameNotification(false, null, 'Please enter a valid bet amount');
+        return;
+    }
     
-    // Rebuild board
-    setupPlinkoBoard();
+    // Gather settings
+    plinkoAutobet.settings.betCount = parseInt(document.getElementById('plinko-auto-bet-count').value) || 10;
+    plinkoAutobet.settings.stopOnWin = parseFloat(document.getElementById('plinko-auto-stop-win').value) || null;
+    plinkoAutobet.settings.stopOnLoss = parseFloat(document.getElementById('plinko-auto-stop-loss').value) || null;
+    plinkoAutobet.settings.stopOnBalanceGain = parseFloat(document.getElementById('plinko-auto-stop-balance-gain').value) || null;
+    plinkoAutobet.settings.stopOnBalanceLoss = parseFloat(document.getElementById('plinko-auto-stop-balance-loss').value) || null;
+    plinkoAutobet.settings.lossMultiplier = parseFloat(document.getElementById('plinko-on-loss-multiplier').value) || 2.0;
+    plinkoAutobet.settings.winMultiplier = parseFloat(document.getElementById('plinko-on-win-multiplier').value) || 2.0;
+    
+    // Initialize stats
+    plinkoAutobet.stats = {
+        totalBets: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalProfit: 0,
+        currentStreak: 0,
+        longestStreak: 0,
+        startBalance: currentUser.balance,
+        baseBet: betAmount
+    };
+    
+    plinkoAutobet.isActive = true;
+    
+    // Update UI
+    document.getElementById('plinko-start-auto-bet').classList.add('hidden');
+    document.getElementById('plinko-stop-auto-bet').classList.remove('hidden');
+    document.getElementById('drop-ball-btn').disabled = true;
+    
+    // Start first bet
+    dropBall();
 }
 
-// Set Plinko bet amount
+// Stop plinko autobet
+function stopPlinkoAutobet() {
+    plinkoAutobet.isActive = false;
+    
+    // Update UI
+    document.getElementById('plinko-start-auto-bet').classList.remove('hidden');
+    document.getElementById('plinko-stop-auto-bet').classList.add('hidden');
+    document.getElementById('drop-ball-btn').disabled = false;
+    
+    // Show final stats
+    const { stats } = plinkoAutobet;
+    const winRate = stats.totalBets > 0 ? (stats.totalWins / stats.totalBets * 100).toFixed(1) : '0.0';
+    
+    showGameNotification(stats.totalProfit > 0, stats.totalProfit, 
+        `Autobet completed: ${stats.totalBets} bets, ${winRate}% win rate, ${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)} profit`);
+}
+
+// Continue plinko autobet
+function continuePlinkoAutobet(won, profit) {
+    if (!plinkoAutobet.isActive) return;
+    
+    const { settings, stats } = plinkoAutobet;
+    
+    // Update stats
+    stats.totalBets++;
+    stats.totalProfit += profit;
+    
+    if (won) {
+        stats.totalWins++;
+        stats.currentStreak = stats.currentStreak > 0 ? stats.currentStreak + 1 : 1;
+    } else {
+        stats.totalLosses++;
+        stats.currentStreak = stats.currentStreak < 0 ? stats.currentStreak - 1 : -1;
+    }
+    
+    stats.longestStreak = Math.max(stats.longestStreak, Math.abs(stats.currentStreak));
+    
+    // Check stopping conditions
+    if (shouldStopAutobet(won, profit)) {
+        stopPlinkoAutobet();
+        return;
+    }
+    
+    // Adjust bet amount
+    const currentBet = parseFloat(document.getElementById('plinko-bet-amount').value);
+    let newBet = currentBet;
+    
+    if (won && settings.onWin === 'multiply') {
+        newBet = currentBet * settings.winMultiplier;
+    } else if (won && settings.onWin === 'reset') {
+        newBet = stats.baseBet;
+    }
+    
+    if (!won && settings.onLoss === 'multiply') {
+        newBet = currentBet * settings.lossMultiplier;
+    } else if (!won && settings.onLoss === 'reset') {
+        newBet = stats.baseBet;
+    }
+    
+    // Update bet amount
+    document.getElementById('plinko-bet-amount').value = Math.min(newBet, currentUser.balance).toFixed(2);
+    
+    // Continue if conditions are met
+    if ((!won && settings.onLoss === 'stop') || (won && settings.onWin === 'stop')) {
+        stopPlinkoAutobet();
+    } else {
+        // Next bet after delay
+        setTimeout(() => {
+            if (plinkoAutobet.isActive) {
+                dropBall();
+            }
+        }, 1000);
+    }
+}
+
+// Check if should stop autobet
+function shouldStopAutobet(won, profit) {
+    const { settings, stats } = plinkoAutobet;
+    
+    // Check bet count
+    if (!settings.isInfinite && stats.totalBets >= settings.betCount) {
+        return true;
+    }
+    
+    // Check profit/loss limits
+    if (settings.stopOnWin && stats.totalProfit >= settings.stopOnWin) {
+        return true;
+    }
+    
+    if (settings.stopOnLoss && stats.totalProfit <= -settings.stopOnLoss) {
+        return true;
+    }
+    
+    // Check balance percentage
+    const balanceChange = ((currentUser.balance - stats.startBalance) / stats.startBalance) * 100;
+    
+    if (settings.stopOnBalanceGain && balanceChange >= settings.stopOnBalanceGain) {
+        return true;
+    }
+    
+    if (settings.stopOnBalanceLoss && balanceChange <= -settings.stopOnBalanceLoss) {
+        return true;
+    }
+    
+    return false;
+}
+
+// Set plinko bet amount
 function setPlinkoAmount(action) {
     const betInput = document.getElementById('plinko-bet-amount');
     if (!betInput) return;
-
+    
     const currentBalance = currentUser ? Math.round(currentUser.balance * 100) / 100 : 0;
     let currentBet = Math.round(parseFloat(betInput.value || 0) * 100) / 100;
     
@@ -2160,370 +2826,4 @@ function setPlinkoAmount(action) {
     }
 }
 
-// Drop Plinko ball
-async function dropPlinko() {
-    if (!currentUser || isPlinkoDropping) return;
-    
-    const betAmount = parseFloat(document.getElementById('plinko-bet-amount').value);
-    
-    if (!betAmount || betAmount <= 0) {
-        showGameNotification(false, 0, 'Please enter a valid bet amount');
-        return;
-    }
-    
-    if (betAmount > currentUser.balance) {
-        showGameNotification(false, 0, 'Insufficient balance');
-        return;
-    }
-    
-    isPlinkoDropping = true;
-    
-    // Update button state
-    const dropBtn = document.getElementById('drop-plinko-btn');
-    const btnText = document.getElementById('plinko-btn-text');
-    dropBtn.disabled = true;
-    btnText.textContent = 'Dropping...';
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/games/play`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({
-                gameType: 'plinko',
-                betAmount: betAmount,
-                rows: plinkoRows,
-                risk: plinkoRisk
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Update current user data
-            if (data.user) {
-                currentUser = data.user;
-            } else if (currentUser && data.result) {
-                if (typeof data.result.balanceAfter !== 'undefined') {
-                    currentUser.balance = data.result.balanceAfter;
-                }
-                if (typeof data.result.newLevel !== 'undefined') {
-                    currentUser.level = data.result.newLevel;
-                }
-                if (typeof data.result.experienceGained !== 'undefined') {
-                    currentUser.experience += data.result.experienceGained;
-                }
-                
-                // Update game stats
-                if (typeof currentUser.gamesPlayed === 'number') {
-                    currentUser.gamesPlayed += 1;
-                }
-                if (data.result.won) {
-                    if (typeof currentUser.wins === 'number') currentUser.wins += 1;
-                    if (typeof currentUser.totalWon === 'number') currentUser.totalWon += data.result.winAmount;
-                    if (typeof currentUser.currentStreak === 'number') currentUser.currentStreak += 1;
-                    if (typeof currentUser.bestStreak === 'number') currentUser.bestStreak = Math.max(currentUser.bestStreak, currentUser.currentStreak);
-                } else {
-                    if (typeof currentUser.losses === 'number') currentUser.losses += 1;
-                    if (typeof currentUser.totalLost === 'number') currentUser.totalLost += betAmount;
-                    if (typeof currentUser.currentStreak === 'number') currentUser.currentStreak = 0;
-                }
-            }
-            
-            updateUserInterface();
-            
-            // Animate ball drop
-            animatePlinkoball(data.result.path, data.result.multiplierIndex);
-            
-            // Display random hash
-            if (data.result.hash) {
-                displayRandomHash(data.result.hash, data.result.timestamp);
-            }
-            
-            // Show result after animation
-            setTimeout(() => {
-                const profit = data.result.won ? data.result.winAmount - betAmount : 0;
-                showGameNotification(data.result.won, profit);
-                
-                if (data.result && data.result.leveledUp) {
-                    setTimeout(() => {
-                        showGameNotification(true, null, 
-                            `Level Up! +${data.result.levelsGained} level(s)!`);
-                        fetchUserProfile(true);
-                    }, 500);
-                }
-                
-                drawBalanceChart();
-                
-                if (plinkoAutoBetting) {
-                    continuePlinkoAutoBet(data.result.won, data.result.winAmount - betAmount);
-                }
-            }, 2000);
-            
-        } else {
-            showGameNotification(false, 0, data.message || 'Game failed');
-        }
-    } catch (error) {
-        console.error('Plinko game error:', error);
-        showGameNotification(false, 0, 'Network error occurred');
-    } finally {
-        isPlinkoDropping = false;
-        dropBtn.disabled = false;
-        btnText.textContent = 'Drop Ball';
-    }
-}
-
-// Animate Plinko ball
-function animatePlinkoball(path, multiplierIndex) {
-    const board = document.getElementById('plinko-board');
-    const ball = document.createElement('div');
-    ball.className = 'plinko-ball';
-    
-    // Start at drop zone
-    ball.style.left = '50%';
-    ball.style.top = '10px';
-    ball.style.transform = 'translateX(-50%)';
-    
-    board.appendChild(ball);
-    
-    // Animate through path
-    let step = 0;
-    const animateStep = () => {
-        if (step < path.length) {
-            const pos = path[step];
-            ball.style.left = `${pos.x}%`;
-            ball.style.top = `${pos.y}%`;
-            step++;
-            setTimeout(animateStep, 150);
-        } else {
-            // Ball reached bottom, highlight multiplier
-            const multipliers = document.querySelectorAll('.plinko-multiplier');
-            if (multipliers[multiplierIndex]) {
-                multipliers[multiplierIndex].classList.add('hit');
-                setTimeout(() => {
-                    multipliers[multiplierIndex].classList.remove('hit');
-                }, 1000);
-            }
-            
-            // Remove ball
-            setTimeout(() => {
-                ball.remove();
-            }, 1000);
-        }
-    };
-    
-    setTimeout(animateStep, 300);
-}
-
-// Setup Plinko auto-bet
-function setupPlinkoAutobet() {
-    const autoBetBtn = document.getElementById('plinko-auto-bet-btn');
-    const autoBetSettings = document.getElementById('plinko-auto-bet-settings');
-    const startAutoBetBtn = document.getElementById('plinko-start-auto-bet');
-    const stopAutoBetBtn = document.getElementById('plinko-stop-auto-bet');
-    
-    if (!autoBetBtn || !autoBetSettings || !startAutoBetBtn || !stopAutoBetBtn) return;
-    
-    // Toggle auto-bet settings
-    autoBetBtn.addEventListener('click', () => {
-        autoBetSettings.classList.toggle('show');
-    });
-    
-    // Strategy button handlers
-    setupPlinkoStrategyButtons();
-    
-    // Start auto-bet
-    startAutoBetBtn.addEventListener('click', startPlinkoAutoBet);
-    
-    // Stop auto-bet
-    stopAutoBetBtn.addEventListener('click', stopPlinkoAutoBet);
-}
-
-// Setup Plinko strategy buttons
-function setupPlinkoStrategyButtons() {
-    // On Loss strategy
-    ['reset', 'multiply', 'stop'].forEach(action => {
-        const btn = document.getElementById(`plinko-on-loss-${action}`);
-        if (btn) {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('[id^="plinko-on-loss-"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                plinkoAutoConfig.onLossAction = action;
-                
-                const settings = document.getElementById('plinko-on-loss-settings');
-                if (settings) {
-                    settings.style.display = action === 'multiply' ? 'block' : 'none';
-                }
-            });
-        }
-    });
-    
-    // On Win strategy
-    ['reset', 'multiply', 'stop'].forEach(action => {
-        const btn = document.getElementById(`plinko-on-win-${action}`);
-        if (btn) {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('[id^="plinko-on-win-"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                plinkoAutoConfig.onWinAction = action;
-                
-                const settings = document.getElementById('plinko-on-win-settings');
-                if (settings) {
-                    settings.style.display = action === 'multiply' ? 'block' : 'none';
-                }
-            });
-        }
-    });
-    
-    // Infinite toggle
-    const infiniteToggle = document.getElementById('plinko-infinite-bets-toggle');
-    if (infiniteToggle) {
-        infiniteToggle.addEventListener('click', () => {
-            plinkoAutoConfig.infinite = !plinkoAutoConfig.infinite;
-            infiniteToggle.classList.toggle('active', plinkoAutoConfig.infinite);
-            
-            const countInput = document.getElementById('plinko-auto-bet-count');
-            if (countInput) {
-                countInput.disabled = plinkoAutoConfig.infinite;
-            }
-        });
-    }
-}
-
-// Start Plinko auto-bet
-function startPlinkoAutoBet() {
-    if (!currentUser || plinkoAutoBetting) return;
-    
-    const betAmount = parseFloat(document.getElementById('plinko-bet-amount').value);
-    if (!betAmount || betAmount <= 0) {
-        showGameNotification(false, 0, 'Please enter a valid bet amount');
-        return;
-    }
-    
-    // Get auto-bet configuration
-    plinkoAutoConfig.count = parseInt(document.getElementById('plinko-auto-bet-count').value) || 10;
-    plinkoAutoConfig.stopOnWin = parseFloat(document.getElementById('plinko-auto-stop-win').value) || null;
-    plinkoAutoConfig.stopOnLoss = parseFloat(document.getElementById('plinko-auto-stop-loss').value) || null;
-    plinkoAutoConfig.stopOnBalanceGain = parseFloat(document.getElementById('plinko-auto-stop-balance-gain').value) || null;
-    plinkoAutoConfig.stopOnBalanceLoss = parseFloat(document.getElementById('plinko-auto-stop-balance-loss').value) || null;
-    plinkoAutoConfig.onLossMultiplier = parseFloat(document.getElementById('plinko-on-loss-multiplier').value) || 2.0;
-    plinkoAutoConfig.onWinMultiplier = parseFloat(document.getElementById('plinko-on-win-multiplier').value) || 2.0;
-    
-    // Initialize auto-bet state
-    plinkoAutoConfig.currentCount = 0;
-    plinkoAutoConfig.initialBalance = currentUser.balance;
-    plinkoAutoConfig.currentBet = betAmount;
-    plinkoAutoConfig.consecutiveWins = 0;
-    plinkoAutoConfig.consecutiveLosses = 0;
-    
-    plinkoAutoBetting = true;
-    
-    // Update UI
-    document.getElementById('plinko-start-auto-bet').classList.add('hidden');
-    document.getElementById('plinko-stop-auto-bet').classList.remove('hidden');
-    document.getElementById('drop-plinko-btn').disabled = true;
-    
-    // Start auto-betting
-    dropPlinko();
-}
-
-// Stop Plinko auto-bet
-function stopPlinkoAutoBet() {
-    plinkoAutoBetting = false;
-    
-    // Update UI
-    document.getElementById('plinko-start-auto-bet').classList.remove('hidden');
-    document.getElementById('plinko-stop-auto-bet').classList.add('hidden');
-    document.getElementById('drop-plinko-btn').disabled = false;
-}
-
-// Continue Plinko auto-bet
-function continuePlinkoAutoBet(won, profit) {
-    if (!plinkoAutoBetting) return;
-    
-    plinkoAutoConfig.currentCount++;
-    
-    // Check stopping conditions
-    if (!plinkoAutoConfig.infinite && plinkoAutoConfig.currentCount >= plinkoAutoConfig.count) {
-        stopPlinkoAutoBet();
-        showGameNotification(true, null, 'Auto-bet completed');
-        return;
-    }
-    
-    if (plinkoAutoConfig.stopOnWin && profit >= plinkoAutoConfig.stopOnWin) {
-        stopPlinkoAutoBet();
-        showGameNotification(true, null, 'Auto-bet stopped - win target reached');
-        return;
-    }
-    
-    if (plinkoAutoConfig.stopOnLoss && -profit >= plinkoAutoConfig.stopOnLoss) {
-        stopPlinkoAutoBet();
-        showGameNotification(false, null, 'Auto-bet stopped - loss limit reached');
-        return;
-    }
-    
-    const balanceChange = ((currentUser.balance - plinkoAutoConfig.initialBalance) / plinkoAutoConfig.initialBalance) * 100;
-    if (plinkoAutoConfig.stopOnBalanceGain && balanceChange >= plinkoAutoConfig.stopOnBalanceGain) {
-        stopPlinkoAutoBet();
-        showGameNotification(true, null, 'Auto-bet stopped - balance gain target reached');
-        return;
-    }
-    
-    if (plinkoAutoConfig.stopOnBalanceLoss && -balanceChange >= plinkoAutoConfig.stopOnBalanceLoss) {
-        stopPlinkoAutoBet();
-        showGameNotification(false, null, 'Auto-bet stopped - balance loss limit reached');
-        return;
-    }
-    
-    // Apply win/loss strategy
-    if (won) {
-        plinkoAutoConfig.consecutiveWins++;
-        plinkoAutoConfig.consecutiveLosses = 0;
-        
-        switch (plinkoAutoConfig.onWinAction) {
-            case 'reset':
-                plinkoAutoConfig.currentBet = parseFloat(document.getElementById('plinko-bet-amount').value);
-                break;
-            case 'multiply':
-                plinkoAutoConfig.currentBet *= plinkoAutoConfig.onWinMultiplier;
-                break;
-            case 'stop':
-                stopPlinkoAutoBet();
-                showGameNotification(true, null, 'Auto-bet stopped - win condition met');
-                return;
-        }
-    } else {
-        plinkoAutoConfig.consecutiveLosses++;
-        plinkoAutoConfig.consecutiveWins = 0;
-        
-        switch (plinkoAutoConfig.onLossAction) {
-            case 'reset':
-                plinkoAutoConfig.currentBet = parseFloat(document.getElementById('plinko-bet-amount').value);
-                break;
-            case 'multiply':
-                plinkoAutoConfig.currentBet *= plinkoAutoConfig.onLossMultiplier;
-                break;
-            case 'stop':
-                stopPlinkoAutoBet();
-                showGameNotification(false, null, 'Auto-bet stopped - loss condition met');
-                return;
-        }
-    }
-    
-    // Ensure bet doesn't exceed balance
-    if (plinkoAutoConfig.currentBet > currentUser.balance) {
-        stopPlinkoAutoBet();
-        showGameNotification(false, null, 'Auto-bet stopped - insufficient balance');
-        return;
-    }
-    
-    // Update bet amount input
-    document.getElementById('plinko-bet-amount').value = plinkoAutoConfig.currentBet.toFixed(2);
-    
-    // Continue auto-betting
-    setTimeout(() => {
-        dropPlinko();
-    }, 1000);
-} 
+// Set plinko risk

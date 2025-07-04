@@ -53,132 +53,110 @@ router.post('/play', authenticateToken, async (req, res) => {
             });
         }
 
-        let gameResult = {};
+        let gameResult;
         let won = false;
         let winAmount = 0;
         let multiplier = 1;
         let randomHash = null;
         let randomTimestamp = null;
 
-        // Generate random hash for provably fair gaming
+        // Play the game based on type
         if (gameType === 'coinflip') {
-            // Coinflip specific random generation
             const randomResult = await getRandomNumber(0, 1);
             gameResult = randomResult.value === 0 ? 'heads' : 'tails';
+            won = gameResult === playerChoice.toLowerCase();
+            multiplier = 2; // 2x payout for coin flip
             randomHash = randomResult.hash;
             randomTimestamp = randomResult.timestamp;
         } else if (gameType === 'dice') {
-            // Dice game logic
-            const randomResult = await getRandomNumber(1, 100);
-            const randomNumber = randomResult.value;
+            // Generate a random number between 0 and 10000 for precision
+            const randomResult = await getRandomNumber(0, 10000);
+            const roll = randomResult.value / 100; // Convert to 0-100 with 2 decimal places
+            gameResult = roll.toFixed(2);
             randomHash = randomResult.hash;
             randomTimestamp = randomResult.timestamp;
             
-            let won = false;
-            let multiplier = 1;
-            
-            if (playerChoice === 'over') {
-                won = randomNumber > targetNumber;
-                multiplier = won ? (99 / (99 - targetNumber)) : 0;
-            } else if (playerChoice === 'under') {
-                won = randomNumber < targetNumber;
-                multiplier = won ? (99 / (targetNumber - 1)) : 0;
+            if (playerChoice === 'higher') {
+                won = roll > targetNumber;
+                // Calculate multiplier (99% RTP)
+                multiplier = 0.99 / ((100 - targetNumber) / 100);
+            } else if (playerChoice === 'lower') {
+                won = roll < targetNumber;
+                // Calculate multiplier (99% RTP)
+                multiplier = 0.99 / (targetNumber / 100);
             }
-            
-            gameResult = {
-                won,
-                randomNumber,
-                multiplier: Math.round(multiplier * 100) / 100,
-                winAmount: won ? Math.round(betAmount * multiplier * 100) / 100 : 0
-            };
         } else if (gameType === 'plinko') {
-            // Plinko game logic with random hash
-            const { rows, risk } = req.body;
+            // Plinko game logic
+            const [risk, rows] = playerChoice.split('-');
+            const rowCount = parseInt(rows);
+            const bucketIndex = parseInt(targetNumber);
             
-            if (!rows || !risk || ![8, 10, 12, 14, 16].includes(rows) || !['low', 'medium', 'high'].includes(risk)) {
+            // Validate plinko parameters
+            if (!['low', 'medium', 'high'].includes(risk)) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Invalid Plinko configuration'
+                    message: 'Invalid risk level'
                 });
             }
             
-            // Generate random seed for ball path
-            const randomResult = await getRandomNumber(0, 1000000);
-            randomHash = randomResult.hash;
-            randomTimestamp = randomResult.timestamp;
+            if (![8, 12, 16].includes(rowCount)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid row count'
+                });
+            }
             
-            // Use random seed to determine ball path
-            const seed = randomResult.value;
-            
-            // Define multipliers
+            // Plinko multiplier tables
             const plinkoMultipliers = {
-                8: {
-                    low: [5.6, 2.1, 1.1, 1.0, 0.5, 1.0, 1.1, 2.1, 5.6],
-                    medium: [13, 3, 1.3, 0.7, 0.7, 0.7, 0.7, 1.3, 3, 13],
-                    high: [29, 4, 1.5, 0.3, 0.2, 0.2, 0.3, 1.5, 4, 29]
+                low: {
+                    8: [5.6, 2.1, 1.1, 1.0, 0.5, 1.0, 1.1, 2.1, 5.6],
+                    12: [8.1, 3.0, 1.6, 1.0, 0.7, 0.7, 0.5, 0.7, 0.7, 1.0, 1.6, 3.0, 8.1],
+                    16: [16.0, 9.0, 2.0, 1.4, 1.1, 1.0, 0.5, 0.3, 0.5, 0.3, 0.5, 1.0, 1.1, 1.4, 2.0, 9.0, 16.0]
                 },
-                10: {
-                    low: [8.9, 3, 1.4, 1.1, 1.0, 0.5, 1.0, 1.1, 1.4, 3, 8.9],
-                    medium: [22, 4, 1.4, 1.1, 1.0, 0.5, 1.0, 1.1, 1.4, 4, 22],
-                    high: [43, 7, 2, 1.1, 1.0, 0.2, 1.0, 1.1, 2, 7, 43]
+                medium: {
+                    8: [13.0, 3.0, 1.3, 0.7, 0.4, 0.7, 1.3, 3.0, 13.0],
+                    12: [24.0, 5.0, 2.0, 1.4, 0.6, 0.4, 0.2, 0.4, 0.6, 1.4, 2.0, 5.0, 24.0],
+                    16: [110.0, 41.0, 10.0, 5.0, 3.0, 1.5, 1.0, 0.5, 0.3, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 41.0, 110.0]
                 },
-                12: {
-                    low: [10, 3, 1.6, 1.4, 1.1, 1.0, 0.5, 1.0, 1.1, 1.4, 1.6, 3, 10],
-                    medium: [33, 5, 2, 1.5, 1.1, 1.0, 0.5, 1.0, 1.1, 1.5, 2, 5, 33],
-                    high: [58, 9, 3, 1.3, 1.0, 0.7, 0.2, 0.7, 1.0, 1.3, 3, 9, 58]
-                },
-                14: {
-                    low: [7.1, 4, 1.9, 1.4, 1.3, 1.1, 1.0, 0.5, 1.0, 1.1, 1.3, 1.4, 1.9, 4, 7.1],
-                    medium: [18, 5, 2.1, 1.6, 1.4, 1.2, 1.0, 0.5, 1.0, 1.2, 1.4, 1.6, 2.1, 5, 18],
-                    high: [110, 13, 3, 1.9, 1.2, 0.9, 0.7, 0.2, 0.7, 0.9, 1.2, 1.9, 3, 13, 110]
-                },
-                16: {
-                    low: [16, 9, 2, 1.4, 1.4, 1.2, 1.1, 1.0, 0.5, 1.0, 1.1, 1.2, 1.4, 1.4, 2, 9, 16],
-                    medium: [16, 9, 2, 1.4, 1.4, 1.2, 1.1, 1.0, 0.5, 1.0, 1.1, 1.2, 1.4, 1.4, 2, 9, 16],
-                    high: [1000, 130, 26, 9, 4, 2, 0.2, 0.2, 0.2, 0.2, 0.2, 2, 4, 9, 26, 130, 1000]
+                high: {
+                    8: [29.0, 4.0, 1.5, 0.2, 0.2, 0.2, 1.5, 4.0, 29.0],
+                    12: [58.0, 8.0, 2.5, 1.0, 0.2, 0.2, 0.1, 0.2, 0.2, 1.0, 2.5, 8.0, 58.0],
+                    16: [1000.0, 130.0, 26.0, 9.0, 4.0, 2.0, 0.7, 0.2, 0.1, 0.2, 0.7, 2.0, 4.0, 9.0, 26.0, 130.0, 1000.0]
                 }
             };
             
-            const multipliers = plinkoMultipliers[rows][risk];
+            const validMultipliers = plinkoMultipliers[risk][rowCount];
             
-            // Generate ball path using seeded random
-            const path = [];
-            let position = 0; // Start at center
-            let currentSeed = seed;
-            
-            // Generate path through pegs
-            for (let row = 0; row < rows; row++) {
-                // Add position for this row
-                path.push({
-                    x: 50 + (position * 3), // Convert to percentage
-                    y: ((row + 1) * 80) / rows // Convert to percentage
+            if (!validMultipliers || bucketIndex < 0 || bucketIndex >= validMultipliers.length) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid bucket index'
                 });
-                
-                // Use seeded random to determine direction
-                currentSeed = (currentSeed * 9301 + 49297) % 233280;
-                const normalized = currentSeed / 233280;
-                
-                if (normalized < 0.5) {
-                    position -= 1; // Go left
-                } else {
-                    position += 1; // Go right
-                }
             }
             
-            // Calculate final multiplier index
-            const centerIndex = Math.floor(multipliers.length / 2);
-            const multiplierIndex = Math.max(0, Math.min(multipliers.length - 1, centerIndex + position));
-            const multiplier = multipliers[multiplierIndex];
+            const expectedMultiplier = validMultipliers[bucketIndex];
             
-            const won = multiplier > 0;
-            const winAmount = won ? Math.round(betAmount * multiplier * 100) / 100 : 0;
+            // Validate multiplier matches expected value
+            if (Math.abs(multiplier - expectedMultiplier) > 0.01) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid multiplier for bucket'
+                });
+            }
+            
+            const isWin = multiplier > 1;
+            const actualWinAmount = Math.round(betAmount * multiplier * 100) / 100;
             
             gameResult = {
-                won,
+                bucketIndex,
                 multiplier,
-                multiplierIndex,
-                path,
-                winAmount
+                risk,
+                rows: rowCount,
+                won: isWin,
+                winAmount: isWin ? actualWinAmount : 0,
+                balanceAfter: isWin ? user.balance - betAmount + actualWinAmount : user.balance - betAmount,
+                hash: randomHash,
+                timestamp: new Date().toISOString()
             };
         } else {
             return res.status(400).json({
@@ -187,96 +165,101 @@ router.post('/play', authenticateToken, async (req, res) => {
             });
         }
 
-        // Calculate win amount and new balance
-        const won = gameResult.won || (gameType === 'coinflip' && gameResult === playerChoice);
-        const winAmount = gameResult.winAmount || (won && gameType === 'coinflip' ? betAmount * 2 : 0);
-        
-        // Update balance
-        let newBalance = Math.round((user.balance - betAmount) * 100) / 100;
-        
+        // Calculate results with proper precision
+        const balanceBefore = userBalance;
+        let newBalance = userBalance - betAmountRounded;
+
         if (won) {
+            // Calculate win amount with proper precision
+            const rawWinAmount = betAmountRounded * multiplier;
+            winAmount = Math.round(rawWinAmount * 100) / 100;
             newBalance = Math.round((newBalance + winAmount) * 100) / 100;
         } else {
-            // Loss handling
+            newBalance = Math.round(newBalance * 100) / 100;
         }
 
-        // Save user with new balance
+        // Update user balance
         user.balance = newBalance;
+        
+        // Only add final balance to history after all calculations are done
+        user.balanceHistory.push(user.balance);
+
+        // Add experience (5 XP for playing, +5 XP for winning)
+        const experienceGained = won ? 10 : 5;
+        const levelUpResult = user.addExperience(experienceGained);
+
+        // Update game statistics but don't check badges (they're client-side now)
+        user.gamesPlayed += 1;
+        user.totalWagered = Math.round((user.totalWagered + betAmountRounded) * 100) / 100;
+        
+        if (won) {
+            user.wins += 1;
+            user.totalWon = Math.round((user.totalWon + winAmount) * 100) / 100;
+            user.currentWinStreak += 1;
+            user.bestWinStreak = Math.max(user.bestWinStreak, user.currentWinStreak);
+            
+            if (winAmount > user.bestWin) {
+                user.bestWin = winAmount;
+            }
+        } else {
+            user.losses += 1;
+            user.currentWinStreak = 0;
+        }
+
+        // Save user
         await user.save();
 
-        // Add to game history
+        // Clean up old game history (keep only last 30 games)
+        const gameHistoryCount = await GameHistory.countDocuments({ userId: user._id });
+        if (gameHistoryCount >= 30) {
+            const oldGames = await GameHistory.find({ userId: user._id })
+                .sort({ timestamp: 1 })
+                .limit(gameHistoryCount - 29);
+            
+            const oldGameIds = oldGames.map(game => game._id);
+            await GameHistory.deleteMany({ _id: { $in: oldGameIds } });
+        }
+
+        // Save game history
         const gameHistory = new GameHistory({
             userId: user._id,
             gameType,
-            betAmount,
+            betAmount: betAmountRounded,
+            playerChoice: playerChoice.toLowerCase(),
+            gameResult,
+            won,
             winAmount: won ? winAmount : 0,
-            multiplier: gameResult.multiplier || (gameType === 'coinflip' ? 2 : 1),
-            result: gameResult,
-            timestamp: new Date()
+            balanceBefore,
+            balanceAfter: user.balance,
+            experienceGained,
+            leveledUp: levelUpResult.leveledUp
         });
         await gameHistory.save();
 
-        // Limit game history to last 30 games
-        const gameHistoryCount = await GameHistory.countDocuments({ userId: user._id });
-        if (gameHistoryCount > 30) {
-            const oldestGames = await GameHistory.find({ userId: user._id })
-                .sort({ timestamp: 1 })
-                .limit(gameHistoryCount - 30);
-            
-            await GameHistory.deleteMany({
-                _id: { $in: oldestGames.map(g => g._id) }
-            });
-        }
-
-        // Calculate experience and level
-        const experienceGained = Math.floor(betAmount * 0.1); // 10% of bet amount as XP
-        user.experience += experienceGained;
-        
-        // Level up calculation
-        const newLevel = Math.floor(user.experience / 100) + 1;
-        const leveledUp = newLevel > user.level;
-        const levelsGained = leveledUp ? newLevel - user.level : 0;
-        
-        if (leveledUp) {
-            user.level = newLevel;
-        }
-        
-        await user.save();
-
-        // Update balance history
-        if (!user.balanceHistory) {
-            user.balanceHistory = [];
-        }
-        user.balanceHistory.push(user.balance);
-        if (user.balanceHistory.length > 100) {
-            user.balanceHistory = user.balanceHistory.slice(-100);
-        }
-        await user.save();
-
-        // Prepare response
-        const response = {
+        // Send response
+        res.json({
             success: true,
             result: {
+                gameType,
+                playerChoice: playerChoice.toLowerCase(),
+                gameResult,
                 won,
                 winAmount: won ? winAmount : 0,
-                balanceBefore: user.balance - (won ? winAmount : 0) + betAmount,
+                balanceBefore,
                 balanceAfter: user.balance,
                 experienceGained,
-                leveledUp,
-                levelsGained,
-                newLevel,
-                hash: randomHash,
-                timestamp: randomTimestamp,
-                ...gameResult
+                leveledUp: levelUpResult.leveledUp,
+                levelsGained: levelUpResult.levelsGained,
+                newLevel: user.level,
+                randomHash,
+                randomTimestamp
             }
-        };
-
-        res.json(response);
+        });
     } catch (error) {
-        console.error('Game play error:', error);
+        console.error('Play game error:', error);
         res.status(500).json({
             success: false,
-            message: 'Server error occurred'
+            message: 'Server error'
         });
     }
 });
