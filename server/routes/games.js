@@ -168,6 +168,7 @@ router.post('/play', authenticateToken, async (req, res) => {
             multiplier = expectedMultiplier;
             won = multiplier >= 1;
             
+            // Calculate win amount for ALL multipliers (even < 1)
             const actualWinAmount = Math.round(betAmount * multiplier * 100) / 100;
             
             gameResult = {
@@ -176,8 +177,8 @@ router.post('/play', authenticateToken, async (req, res) => {
                 risk,
                 rows: rowCount,
                 won,
-                winAmount: won ? actualWinAmount : 0,
-                balanceAfter: won ? user.balance - betAmount + actualWinAmount : user.balance - betAmount,
+                winAmount: actualWinAmount, // Always return the multiplied amount
+                balanceAfter: user.balance - betAmount + actualWinAmount,
                 hash: randomHash,
                 timestamp: new Date().toISOString()
             };
@@ -192,13 +193,23 @@ router.post('/play', authenticateToken, async (req, res) => {
         const balanceBefore = userBalance;
         let newBalance = userBalance - betAmountRounded;
 
-        if (won) {
-            // Calculate win amount with proper precision
-            const rawWinAmount = betAmountRounded * multiplier;
-            winAmount = Math.round(rawWinAmount * 100) / 100;
-            newBalance = Math.round((newBalance + winAmount) * 100) / 100;
+        // For plinko, always add the multiplied amount (even if < 1)
+        // For other games, use the original win/loss logic
+        if (gameType === 'plinko') {
+            // Always add the multiplied amount back
+            const multipliedAmount = Math.round(betAmountRounded * multiplier * 100) / 100;
+            newBalance = Math.round((userBalance - betAmountRounded + multipliedAmount) * 100) / 100;
+            winAmount = multipliedAmount;
         } else {
-            newBalance = Math.round(newBalance * 100) / 100;
+            // Original logic for other games
+            if (won) {
+                // Calculate win amount with proper precision
+                const rawWinAmount = betAmountRounded * multiplier;
+                winAmount = Math.round(rawWinAmount * 100) / 100;
+                newBalance = Math.round((newBalance + winAmount) * 100) / 100;
+            } else {
+                newBalance = Math.round(newBalance * 100) / 100;
+            }
         }
 
         // Update user balance
@@ -207,8 +218,13 @@ router.post('/play', authenticateToken, async (req, res) => {
         // Only add final balance to history after all calculations are done
         user.balanceHistory.push(user.balance);
 
-        // Add experience (5 XP for playing, +5 XP for winning)
-        const experienceGained = won ? 10 : 5;
+        // Add experience - for plinko, only give 1 XP per ball drop (no win bonus)
+        let experienceGained;
+        if (gameType === 'plinko') {
+            experienceGained = 1; // Only 1 XP per ball drop for plinko
+        } else {
+            experienceGained = won ? 10 : 5; // Original logic for other games
+        }
         const levelUpResult = user.addExperience(experienceGained);
 
         // Update game statistics but don't check badges (they're client-side now)
@@ -251,7 +267,7 @@ router.post('/play', authenticateToken, async (req, res) => {
             playerChoice: playerChoice.toLowerCase(),
             gameResult: typeof gameResult === 'object' ? JSON.stringify(gameResult) : gameResult,
             won,
-            winAmount: won ? winAmount : 0,
+            winAmount: gameType === 'plinko' ? winAmount : (won ? winAmount : 0), // For plinko, always save the multiplied amount
             balanceBefore,
             balanceAfter: user.balance,
             experienceGained,
@@ -267,7 +283,7 @@ router.post('/play', authenticateToken, async (req, res) => {
                 playerChoice: playerChoice.toLowerCase(),
                 gameResult,
                 won,
-                winAmount: won ? winAmount : 0,
+                winAmount: gameType === 'plinko' ? winAmount : (won ? winAmount : 0), // For plinko, always return the multiplied amount
                 balanceBefore,
                 balanceAfter: user.balance,
                 experienceGained,

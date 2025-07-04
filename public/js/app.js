@@ -622,7 +622,7 @@ function showPage(pageId) {
     }
     
     // Initialize Plinko when showing the plinko game page
-    if (pageId === 'plinko-game') {
+    if (pageId === 'plinko-game') {wA
         setTimeout(() => {
             initializePlinko();
         }, 300);
@@ -2138,9 +2138,9 @@ function setupPlinkoGame() {
     const { rows } = plinkoConfig;
     const { width, height } = plinkoCanvas;
     
-    // Adjust ball size based on rows - bigger sizes for better visibility
-    plinkoConfig.ballSize = rows <= 8 ? 12 : rows <= 12 ? 9 : 7;
-    plinkoConfig.pegSize = rows <= 8 ? 8 : rows <= 12 ? 6 : 5;
+    // Adjust ball size based on rows - bigger sizes for better visibility and gameplay
+    plinkoConfig.ballSize = rows <= 8 ? 16 : rows <= 12 ? 12 : 9;
+    plinkoConfig.pegSize = rows <= 8 ? 10 : rows <= 12 ? 8 : 6;
     
     // Clear previous state
     plinkoState.pegs = [];
@@ -2537,25 +2537,9 @@ function drawPlinko() {
     plinkoCtx.fillText('DROP', width / 2, 45);
 }
 
-// Drop ball function - allow multiple balls with rate limiting
+// Drop ball function
 function dropBall() {
-    if (!currentUser) return;
-    
-    // Rate limiting - prevent spam
-    const now = Date.now();
-    if (now - plinkoState.lastGameTime < 500) { // 500ms minimum between drops
-        return;
-    }
-    
-    // Ensure canvas is initialized
-    if (!plinkoCanvas || !plinkoCtx) {
-        console.log('Canvas not initialized, attempting to initialize...');
-        initializePlinko();
-        setTimeout(() => {
-            dropBall();
-        }, 200);
-        return;
-    }
+    if (!currentUser || plinkoState.isDropping) return;
     
     const betAmount = parseFloat(document.getElementById('plinko-bet-amount').value);
     
@@ -2569,65 +2553,70 @@ function dropBall() {
         return;
     }
     
-    plinkoState.lastGameTime = now;
+    // Rate limiting check
+    const now = Date.now();
+    if (now - plinkoState.lastGameTime < 500) {
+        console.log('Rate limited, please wait');
+        return;
+    }
     
-    // Immediately deduct bet amount from balance for instant feedback
+    plinkoState.lastGameTime = now;
+    plinkoState.isDropping = true;
+    
+    // Disable controls visually
+    document.querySelectorAll('[id^="risk-"], [id^="rows-"]').forEach(btn => {
+        btn.style.opacity = '0.5';
+        btn.style.pointerEvents = 'none';
+    });
+    
+    // Immediately deduct bet amount for instant feedback
     currentUser.balance = Math.round((currentUser.balance - betAmount) * 100) / 100;
     updateUserInterface();
     drawBalanceChart();
     
-    // Create new ball with slight randomness in starting position
-    const randomOffset = (Math.random() - 0.5) * 10; // Reduced randomness
-    const ball = new PlinkoBall(plinkoCanvas.width / 2 + randomOffset, 25);
-    ball.betAmount = betAmount; // Store bet amount with ball
-    
-    // Ensure ball uses current size (in case config changed)
-    ball.radius = plinkoConfig.ballSize;
-    
+    // Create and drop ball
+    const ball = new PlinkoBall(plinkoCanvas.width / 2, 20);
+    ball.radius = plinkoConfig.ballSize; // Ensure ball uses current size
     plinkoState.balls.push(ball);
     
-    // Update button text to show dropping
-    const dropBtn = document.getElementById('drop-ball-btn');
-    const dropBtnText = document.getElementById('drop-btn-text');
-    if (dropBtn && dropBtnText) {
-        dropBtnText.textContent = `Dropping (${plinkoState.balls.length})`;
-    }
+    // Store bet amount for this ball
+    ball.betAmount = betAmount;
 }
 
 // Handle ball finished
 function handleBallFinished(ball) {
-    const { risk, rows } = plinkoConfig;
-    const multipliers = plinkoMultipliers[risk][rows];
+    if (!ball.finished) return;
     
-    // Ensure bucket index is valid
-    if (ball.bucketIndex < 0 || ball.bucketIndex >= multipliers.length) {
-        console.error('Invalid bucket index:', ball.bucketIndex);
-        return;
+    // Remove ball from array
+    const ballIndex = plinkoState.balls.indexOf(ball);
+    if (ballIndex > -1) {
+        plinkoState.balls.splice(ballIndex, 1);
     }
     
-    const multiplier = multipliers[ball.bucketIndex];
+    // Re-enable controls when no balls are dropping
+    if (plinkoState.balls.length === 0) {
+        plinkoState.isDropping = false;
+        document.querySelectorAll('[id^="risk-"], [id^="rows-"]').forEach(btn => {
+            btn.style.opacity = '1';
+            btn.style.pointerEvents = 'auto';
+        });
+    }
+    
+    // Get multiplier for the bucket
+    const bucketIndex = ball.bucketIndex;
+    const multipliers = plinkoMultipliers[plinkoConfig.risk][plinkoConfig.rows];
+    const multiplier = multipliers[bucketIndex];
+    
+    // Calculate win amount
     const winAmount = Math.round(ball.betAmount * multiplier * 100) / 100;
     
     // Immediately add win amount for instant feedback
-    if (multiplier >= 1) {
-        currentUser.balance = Math.round((currentUser.balance + winAmount) * 100) / 100;
-        updateUserInterface();
-        drawBalanceChart();
-    }
+    currentUser.balance = Math.round((currentUser.balance + winAmount) * 100) / 100;
+    updateUserInterface();
+    drawBalanceChart();
     
-    // Process the game result
-    handlePlinkoGameResult(ball.bucketIndex, multiplier, ball.betAmount);
-    
-    // Update button text
-    const dropBtn = document.getElementById('drop-ball-btn');
-    const dropBtnText = document.getElementById('drop-btn-text');
-    if (dropBtn && dropBtnText) {
-        if (plinkoState.balls.length > 1) {
-            dropBtnText.textContent = `Dropping (${plinkoState.balls.length - 1})`;
-        } else {
-            dropBtnText.textContent = 'Drop Ball';
-        }
-    }
+    // Send to server
+    handlePlinkoGameResult(bucketIndex, multiplier, ball.betAmount);
 }
 
 // Handle game result with better error handling
@@ -2786,6 +2775,11 @@ async function handlePlinkoGameResult(bucketIndex, multiplier, betAmount) {
 
 // Set plinko risk
 function setPlinkoRisk(risk) {
+    // Don't allow changes while dropping
+    if (plinkoState.isDropping) {
+        return;
+    }
+    
     plinkoConfig.risk = risk;
     
     // Update UI
@@ -2804,6 +2798,11 @@ function setPlinkoRisk(risk) {
 
 // Set plinko rows
 function setPlinkoRows(rows) {
+    // Don't allow changes while dropping
+    if (plinkoState.isDropping) {
+        return;
+    }
+    
     plinkoConfig.rows = rows;
     
     // Update UI
