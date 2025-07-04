@@ -1185,16 +1185,16 @@ function setBetAmount(action) {
     const betInput = document.getElementById('dice-bet-amount');
     if (!betInput) return;
 
-    const currentBalance = currentUser ? Math.ceil(currentUser.balance * 100) / 100 : 0;
-    let currentBet = Math.ceil(parseFloat(betInput.value || 0) * 100) / 100;
+    const currentBalance = currentUser ? Math.round(currentUser.balance * 100) / 100 : 0;
+    let currentBet = Math.round(parseFloat(betInput.value || 0) * 100) / 100;
     
     switch(action) {
         case 'half':
-            const halved = Math.ceil((currentBet / 2) * 100) / 100;
+            const halved = Math.round((currentBet / 2) * 100) / 100;
             betInput.value = Math.max(0.01, halved).toFixed(2);
             break;
         case 'double':
-            const doubled = Math.ceil((currentBet * 2) * 100) / 100;
+            const doubled = Math.round((currentBet * 2) * 100) / 100;
             betInput.value = Math.min(doubled, currentBalance).toFixed(2);
             break;
         case 'max':
@@ -1314,14 +1314,17 @@ async function rollDice() {
         return;
     }
     
-    // Fix floating point precision issues by using a small tolerance
-    if (betAmount > currentUser.balance + 0.001) {
+    // Round bet amount to 2 decimal places to match server precision
+    betAmount = Math.round(betAmount * 100) / 100;
+    const userBalance = Math.round(currentUser.balance * 100) / 100;
+    
+    // Check balance with proper precision
+    if (betAmount > userBalance) {
         showError('Insufficient balance');
         return;
     }
     
-    // Round bet to 2 decimal places
-    betAmount = Math.round(betAmount * 100) / 100;
+    // Update input with precise value
     betInput.value = betAmount.toFixed(2);
     
     isRolling = true;
@@ -1434,8 +1437,8 @@ function displayRandomHash(hash, timestamp) {
         ${new Date(timestamp).toLocaleTimeString()}
     `;
     
-    // Insert after dice-visual container (under it)
-    diceVisual.parentNode.insertBefore(provablyFairElement, diceVisual.nextSibling);
+    // Insert inside dice-visual container at the bottom
+    diceVisual.appendChild(provablyFairElement);
     
     // Initialize the copy icon
     lucide.createIcons();

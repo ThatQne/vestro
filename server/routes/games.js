@@ -36,11 +36,20 @@ router.post('/play', authenticateToken, async (req, res) => {
             });
         }
 
-        // Check balance
-        if (user.balance < betAmount) {
+        // Fix precision issues by rounding to 2 decimal places
+        const userBalance = Math.round(user.balance * 100) / 100;
+        const betAmountRounded = Math.round(betAmount * 100) / 100;
+
+        // Check balance with small tolerance for floating point errors
+        if (userBalance < betAmountRounded) {
             return res.status(400).json({
                 success: false,
-                message: 'Insufficient balance'
+                message: 'Insufficient balance',
+                debug: {
+                    userBalance: userBalance,
+                    betAmount: betAmountRounded,
+                    difference: userBalance - betAmountRounded
+                }
             });
         }
 
@@ -83,21 +92,21 @@ router.post('/play', authenticateToken, async (req, res) => {
             });
         }
 
-        // Calculate results
-        const balanceBefore = user.balance;
-        user.balance -= betAmount; // Deduct bet
+        // Calculate results with proper precision
+        const balanceBefore = userBalance;
+        let newBalance = userBalance - betAmountRounded;
 
         if (won) {
-            // Calculate raw win amount
-            const rawWinAmount = betAmount * multiplier;
-            // Split into dollars and cents
-            const dollars = Math.floor(rawWinAmount);
-            const cents = (rawWinAmount - dollars) * 100;
-            // Only round up cents if they exist
-            winAmount = dollars + (cents > 0 ? Math.ceil(cents) : Math.round(cents)) / 100;
-            
-            user.balance += winAmount;
+            // Calculate win amount with proper precision
+            const rawWinAmount = betAmountRounded * multiplier;
+            winAmount = Math.round(rawWinAmount * 100) / 100;
+            newBalance = Math.round((newBalance + winAmount) * 100) / 100;
+        } else {
+            newBalance = Math.round(newBalance * 100) / 100;
         }
+
+        // Update user balance
+        user.balance = newBalance;
         
         // Only add final balance to history after all calculations are done
         user.balanceHistory.push(user.balance);
@@ -106,17 +115,43 @@ router.post('/play', authenticateToken, async (req, res) => {
         const experienceGained = won ? 10 : 5;
         const levelUpResult = user.addExperience(experienceGained);
 
-        // Update game statistics and check for badges
-        const earnedBadges = await user.updateGameStats(betAmount, won ? winAmount : 0);
+        // Update game statistics but don't check badges (they're client-side now)
+        user.gamesPlayed += 1;
+        user.totalWagered = Math.round((user.totalWagered + betAmountRounded) * 100) / 100;
+        
+        if (won) {
+            user.wins += 1;
+            user.totalWon = Math.round((user.totalWon + winAmount) * 100) / 100;
+            user.currentWinStreak += 1;
+            user.bestWinStreak = Math.max(user.bestWinStreak, user.currentWinStreak);
+            
+            if (winAmount > user.bestWin) {
+                user.bestWin = winAmount;
+            }
+        } else {
+            user.losses += 1;
+            user.currentWinStreak = 0;
+        }
 
         // Save user
         await user.save();
+
+        // Clean up old game history (keep only last 30 games)
+        const gameHistoryCount = await GameHistory.countDocuments({ userId: user._id });
+        if (gameHistoryCount >= 30) {
+            const oldGames = await GameHistory.find({ userId: user._id })
+                .sort({ timestamp: 1 })
+                .limit(gameHistoryCount - 29);
+            
+            const oldGameIds = oldGames.map(game => game._id);
+            await GameHistory.deleteMany({ _id: { $in: oldGameIds } });
+        }
 
         // Save game history
         const gameHistory = new GameHistory({
             userId: user._id,
             gameType,
-            betAmount,
+            betAmount: betAmountRounded,
             playerChoice: playerChoice.toLowerCase(),
             gameResult,
             won,
@@ -128,14 +163,7 @@ router.post('/play', authenticateToken, async (req, res) => {
         });
         await gameHistory.save();
 
-        // Populate badge details
-        if (earnedBadges.length > 0) {
-            await User.populate(user, {
-                path: 'badges.badgeId',
-                model: 'Badge'
-            });
-        }
-
+        // Send response
         res.json({
             success: true,
             result: {
@@ -143,25 +171,19 @@ router.post('/play', authenticateToken, async (req, res) => {
                 playerChoice: playerChoice.toLowerCase(),
                 gameResult,
                 won,
-                betAmount,
                 winAmount: won ? winAmount : 0,
+                balanceBefore,
+                balanceAfter: user.balance,
                 experienceGained,
-                levelUp: levelUpResult,
+                leveledUp: levelUpResult.leveledUp,
+                levelsGained: levelUpResult.levelsGained,
+                newLevel: user.level,
                 randomHash,
-                randomTimestamp,
-                earnedBadges: earnedBadges.map(badge => ({
-                    name: badge.name,
-                    description: badge.description,
-                    icon: badge.icon,
-                    color: badge.color,
-                    secret: badge.secret
-                }))
-            },
-            user: user.toJSON()
+                randomTimestamp
+            }
         });
-
     } catch (error) {
-        console.error('Game play error:', error);
+        console.error('Play game error:', error);
         res.status(500).json({
             success: false,
             message: 'Server error'
