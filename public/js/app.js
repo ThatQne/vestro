@@ -602,7 +602,7 @@ function showPage(pageId) {
     if (activeNavItem) {
         activeNavItem.classList.add('active');
     }
-
+    
     // Page-specific handling
     if (pageId === 'dashboard' && currentUser) {
         // Fetch fresh profile data to get updated balance history
@@ -2571,6 +2571,11 @@ function dropBall() {
     
     plinkoState.lastGameTime = now;
     
+    // Immediately deduct bet amount from balance for instant feedback
+    currentUser.balance = Math.round((currentUser.balance - betAmount) * 100) / 100;
+    updateUserInterface();
+    drawBalanceChart();
+    
     // Create new ball with slight randomness in starting position
     const randomOffset = (Math.random() - 0.5) * 10; // Reduced randomness
     const ball = new PlinkoBall(plinkoCanvas.width / 2 + randomOffset, 25);
@@ -2601,6 +2606,14 @@ function handleBallFinished(ball) {
     }
     
     const multiplier = multipliers[ball.bucketIndex];
+    const winAmount = Math.round(ball.betAmount * multiplier * 100) / 100;
+    
+    // Immediately add win amount for instant feedback
+    if (multiplier >= 1) {
+        currentUser.balance = Math.round((currentUser.balance + winAmount) * 100) / 100;
+        updateUserInterface();
+        drawBalanceChart();
+    }
     
     // Process the game result
     handlePlinkoGameResult(ball.bucketIndex, multiplier, ball.betAmount);
@@ -2680,17 +2693,19 @@ async function handlePlinkoGameResult(bucketIndex, multiplier, betAmount) {
         if (data.success) {
             console.log('Game successful! Updating user data...');
             
-            // Update user data
+                        // Update user data - sync with server's authoritative balance
             if (data.user) {
                 console.log('Using full user data from server');
                 currentUser = data.user;
             } else if (currentUser && data.result) {
-                console.log('Updating specific user fields:', {
-                    oldBalance: currentUser.balance,
-                    newBalance: data.result.balanceAfter
+                console.log('Syncing with server balance:', {
+                    clientBalance: currentUser.balance,
+                    serverBalance: data.result.balanceAfter
                 });
                 
+                // Use server's authoritative balance (it may differ slightly due to precision)
                 currentUser.balance = Math.round(data.result.balanceAfter * 100) / 100;
+                
                 if (typeof data.result.newLevel !== 'undefined') {
                     currentUser.level = data.result.newLevel;
                 }
@@ -2698,28 +2713,50 @@ async function handlePlinkoGameResult(bucketIndex, multiplier, betAmount) {
                     currentUser.experience += data.result.experienceGained;
                 }
                 
-                // Update game stats
+                // Update game stats like dice game does
                 if (typeof currentUser.gamesPlayed === 'number') {
                     currentUser.gamesPlayed += 1;
                 }
-                if (multiplier >= 1) {
+                if (data.result.won) {
                     if (typeof currentUser.wins === 'number') currentUser.wins += 1;
-                    if (typeof currentUser.totalWon === 'number') currentUser.totalWon += winAmount;
+                    if (typeof currentUser.totalWon === 'number') currentUser.totalWon += data.result.winAmount;
+                    if (typeof currentUser.currentWinStreak === 'number') {
+                        currentUser.currentWinStreak += 1;
+                        if (typeof currentUser.bestWinStreak === 'number' && currentUser.currentWinStreak > currentUser.bestWinStreak) {
+                            currentUser.bestWinStreak = currentUser.currentWinStreak;
+                        }
+                    }
+                    if (typeof currentUser.bestWin === 'number' && data.result.winAmount > currentUser.bestWin) {
+                        currentUser.bestWin = data.result.winAmount;
+                    }
                 } else {
                     if (typeof currentUser.losses === 'number') currentUser.losses += 1;
-                    if (typeof currentUser.totalLost === 'number') currentUser.totalLost += betAmount;
+                    if (typeof currentUser.currentWinStreak === 'number') currentUser.currentWinStreak = 0;
                 }
             }
             
             updateUserInterface();
+            drawBalanceChart();
+            
+            // Check for new badges
+            const newBadges = checkBadges(betAmount);
+            if (newBadges.length > 0) {
+                newBadges.forEach(badge => {
+                    setTimeout(() => {
+                        showBadgeNotification(badge);
+                    }, 1000);
+                });
+                updateBadges(); // Update badge display
+            }
             
             // Show game notification
-            const isWin = multiplier >= 1;
+            const isWin = data.result.won;
+            const profit = isWin ? data.result.winAmount - betAmount : -betAmount;
             showGameNotification(isWin, profit);
             
             // Display provably fair
-            if (data.result.hash) {
-                displayPlinkoHash(data.result.hash, data.result.timestamp);
+            if (data.result.randomHash) {
+                displayPlinkoHash(data.result.randomHash, data.result.randomTimestamp);
             }
             
             // Handle level up
