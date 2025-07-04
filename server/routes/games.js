@@ -166,7 +166,7 @@ router.post('/play', authenticateToken, async (req, res) => {
             
             // Use the expected multiplier for calculations to avoid any precision issues
             multiplier = expectedMultiplier;
-            won = multiplier > 1;
+            won = multiplier >= 1;
             
             const actualWinAmount = Math.round(betAmount * multiplier * 100) / 100;
             
@@ -249,7 +249,7 @@ router.post('/play', authenticateToken, async (req, res) => {
             gameType,
             betAmount: betAmountRounded,
             playerChoice: playerChoice.toLowerCase(),
-            gameResult,
+            gameResult: typeof gameResult === 'object' ? JSON.stringify(gameResult) : gameResult,
             won,
             winAmount: won ? winAmount : 0,
             balanceBefore,
