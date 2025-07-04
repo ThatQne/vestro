@@ -92,6 +92,11 @@ router.post('/play', authenticateToken, async (req, res) => {
             const bucketIndex = parseInt(targetNumber);
             const clientMultiplier = req.body.multiplier; // Get multiplier from request body
             
+            // Generate random hash for provably fair
+            const randomResult = await getRandomNumber(0, 1000000);
+            randomHash = randomResult.hash;
+            randomTimestamp = randomResult.timestamp;
+            
             // Validate plinko parameters
             if (!['low', 'medium', 'high'].includes(risk)) {
                 return res.status(400).json({

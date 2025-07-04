@@ -2003,9 +2003,9 @@ let plinkoConfig = {
     rows: 8,  // Default to 8 rows
     ballSize: 8,  // Will be adjusted based on rows
     pegSize: 4,
-    gravity: 0.4,
-    bounce: 0.6,
-    friction: 0.99
+    gravity: 0.25,  // Reduced gravity for slower fall
+    bounce: 0.8,    // Increased bounce for more bouncy balls
+    friction: 0.98  // Slightly more friction for better control
 };
 
 let plinkoState = {
@@ -2015,7 +2015,8 @@ let plinkoState = {
     buckets: [],
     multipliers: [],
     animationId: null,
-    lastGameTime: 0  // Rate limiting
+    lastGameTime: 0,  // Rate limiting
+    bucketAnimations: []  // For hit animations
 };
 
 let plinkoAutobet = {
@@ -2137,9 +2138,9 @@ function setupPlinkoGame() {
     const { rows } = plinkoConfig;
     const { width, height } = plinkoCanvas;
     
-    // Adjust ball size based on rows
-    plinkoConfig.ballSize = rows <= 8 ? 8 : rows <= 12 ? 6 : 5;
-    plinkoConfig.pegSize = rows <= 8 ? 5 : rows <= 12 ? 4 : 3;
+    // Adjust ball size based on rows - bigger sizes for better visibility
+    plinkoConfig.ballSize = rows <= 8 ? 12 : rows <= 12 ? 9 : 7;
+    plinkoConfig.pegSize = rows <= 8 ? 8 : rows <= 12 ? 6 : 5;
     
     // Clear previous state
     plinkoState.pegs = [];
@@ -2232,18 +2233,22 @@ class PlinkoBall {
             const distance = Math.sqrt(dx * dx + dy * dy);
             
             if (distance < this.radius + plinkoConfig.pegSize) {
-                // Calculate collision response
+                // Calculate collision response with better physics
                 const angle = Math.atan2(dy, dx);
-                const force = 0.8 + Math.random() * 0.4; // Random bounce force
                 
-                // Add some randomness to the bounce direction
-                const randomAngle = angle + (Math.random() - 0.5) * 0.3;
+                // Preserve some of the current velocity for more realistic bounces
+                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const bounceForce = Math.max(1.0, currentSpeed * plinkoConfig.bounce);
                 
-                this.vx = Math.cos(randomAngle) * force * 1.5;
-                this.vy = Math.sin(randomAngle) * force * 1.5;
+                // Add controlled randomness to the bounce direction
+                const randomAngle = angle + (Math.random() - 0.5) * 0.4;
                 
-                // Separate from peg
-                const separationDistance = this.radius + plinkoConfig.pegSize + 1;
+                // Apply bounce with better force distribution
+                this.vx = Math.cos(randomAngle) * bounceForce * 0.8;
+                this.vy = Math.sin(randomAngle) * bounceForce * 0.6; // Less vertical bounce
+                
+                // Separate from peg more smoothly
+                const separationDistance = this.radius + plinkoConfig.pegSize + 2;
                 this.x = peg.x + separationDistance * Math.cos(angle);
                 this.y = peg.y + separationDistance * Math.sin(angle);
                 
@@ -2255,7 +2260,7 @@ class PlinkoBall {
                     if (this.lastPegHit === peg) {
                         this.lastPegHit = null;
                     }
-                }, 100);
+                }, 150);
                 
                 break; // Only process one collision per frame
             }
@@ -2263,24 +2268,36 @@ class PlinkoBall {
     }
     
     checkBucketCollision() {
-        // Check if ball is in bucket area
-        if (this.y > plinkoCanvas.height - 70) {
+        // Check if ball is in bucket area - adjusted for smaller buckets
+        if (this.y > plinkoCanvas.height - 50) {
             for (let i = 0; i < plinkoState.buckets.length; i++) {
                 const bucket = plinkoState.buckets[i];
                 
-                // More precise bucket collision detection
-                if (this.x >= bucket.x - 5 && this.x <= bucket.x + bucket.width + 5) {
+                // Calculate actual bucket dimensions (smaller)
+                const bucketWidth = bucket.width * 0.8;
+                const bucketX = bucket.x + (bucket.width - bucketWidth) / 2;
+                
+                // More precise bucket collision detection with smaller buckets
+                if (this.x >= bucketX - 5 && this.x <= bucketX + bucketWidth + 5) {
                     this.finished = true;
                     this.bucketIndex = i;
-                    this.y = bucket.y - this.radius;
+                    this.y = plinkoCanvas.height - 40 - this.radius; // Adjusted for smaller bucket height
                     this.vx = 0;
                     this.vy = 0;
+                    
+                    // Trigger bucket hit animation
+                    plinkoState.bucketAnimations[i] = {
+                        scale: 1.2,
+                        opacity: 1.0,
+                        startTime: Date.now()
+                    };
+                    
                     break;
                 }
             }
             
             // Fallback: if ball is below buckets but not in any bucket, put in closest
-            if (!this.finished && this.y > plinkoCanvas.height - 40) {
+            if (!this.finished && this.y > plinkoCanvas.height - 30) {
                 let closestBucket = 0;
                 let closestDistance = Math.abs(this.x - (plinkoState.buckets[0].x + plinkoState.buckets[0].width / 2));
                 
@@ -2296,9 +2313,16 @@ class PlinkoBall {
                 
                 this.finished = true;
                 this.bucketIndex = closestBucket;
-                this.y = plinkoState.buckets[closestBucket].y - this.radius;
+                this.y = plinkoCanvas.height - 40 - this.radius; // Adjusted for smaller bucket height
                 this.vx = 0;
                 this.vy = 0;
+                
+                // Trigger bucket hit animation for fallback bucket
+                plinkoState.bucketAnimations[closestBucket] = {
+                    scale: 1.2,
+                    opacity: 1.0,
+                    startTime: Date.now()
+                };
             }
         }
     }
@@ -2369,18 +2393,35 @@ function drawPlinko() {
         plinkoCtx.stroke();
     }
     
-    // Draw buckets with multipliers
+    // Draw buckets with multipliers - improved design
     const { risk, rows } = plinkoConfig;
     const multipliers = plinkoMultipliers[risk][rows];
     
-    plinkoCtx.strokeStyle = '#374151';
-    plinkoCtx.lineWidth = 2;
-    plinkoCtx.font = Math.max(10, Math.min(14, width / 30)) + 'px Arial';
+    // Update bucket animations
+    const now = Date.now();
+    for (let i = 0; i < plinkoState.bucketAnimations.length; i++) {
+        const anim = plinkoState.bucketAnimations[i];
+        if (anim) {
+            const elapsed = now - anim.startTime;
+            const duration = 300; // Animation duration in ms
+            
+            if (elapsed < duration) {
+                const progress = elapsed / duration;
+                anim.scale = 1.2 - (0.2 * progress); // Scale from 1.2 to 1.0
+                anim.opacity = 1.0 - (0.3 * progress); // Fade from 1.0 to 0.7
+            } else {
+                plinkoState.bucketAnimations[i] = null; // Remove finished animation
+            }
+        }
+    }
+    
     plinkoCtx.textAlign = 'center';
+    plinkoCtx.font = Math.max(8, Math.min(12, width / 35)) + 'px Arial';
     
     for (let i = 0; i < plinkoState.buckets.length; i++) {
         const bucket = plinkoState.buckets[i];
         const multiplier = multipliers[i];
+        const animation = plinkoState.bucketAnimations[i];
         
         // Determine color based on risk and multiplier value
         let bucketColor = '#374151';
@@ -2421,21 +2462,60 @@ function drawPlinko() {
             }
         }
         
-        // Draw bucket
-        plinkoCtx.strokeStyle = bucketColor;
-        plinkoCtx.fillStyle = bucketColor + '20'; // Semi-transparent fill
+        // Calculate bucket dimensions - smaller and more compact
+        const bucketHeight = 35; // Reduced from 50
+        const bucketWidth = bucket.width * 0.8; // 80% of original width
+        const bucketX = bucket.x + (bucket.width - bucketWidth) / 2; // Center the smaller bucket
+        const bucketY = height - bucketHeight - 5;
+        const cornerRadius = 8; // Rounded corners
+        
+        // Apply animation scaling
+        const scale = animation ? animation.scale : 1.0;
+        const opacity = animation ? animation.opacity : 0.8;
+        
+        plinkoCtx.save();
+        
+        // Apply scaling animation
+        if (scale !== 1.0) {
+            const centerX = bucketX + bucketWidth / 2;
+            const centerY = bucketY + bucketHeight / 2;
+            plinkoCtx.translate(centerX, centerY);
+            plinkoCtx.scale(scale, scale);
+            plinkoCtx.translate(-centerX, -centerY);
+        }
+        
+        // Draw rounded rectangle bucket
         plinkoCtx.beginPath();
-        plinkoCtx.rect(bucket.x, bucket.y, bucket.width, bucket.height);
+        plinkoCtx.moveTo(bucketX + cornerRadius, bucketY);
+        plinkoCtx.lineTo(bucketX + bucketWidth - cornerRadius, bucketY);
+        plinkoCtx.quadraticCurveTo(bucketX + bucketWidth, bucketY, bucketX + bucketWidth, bucketY + cornerRadius);
+        plinkoCtx.lineTo(bucketX + bucketWidth, bucketY + bucketHeight - cornerRadius);
+        plinkoCtx.quadraticCurveTo(bucketX + bucketWidth, bucketY + bucketHeight, bucketX + bucketWidth - cornerRadius, bucketY + bucketHeight);
+        plinkoCtx.lineTo(bucketX + cornerRadius, bucketY + bucketHeight);
+        plinkoCtx.quadraticCurveTo(bucketX, bucketY + bucketHeight, bucketX, bucketY + bucketHeight - cornerRadius);
+        plinkoCtx.lineTo(bucketX, bucketY + cornerRadius);
+        plinkoCtx.quadraticCurveTo(bucketX, bucketY, bucketX + cornerRadius, bucketY);
+        plinkoCtx.closePath();
+        
+        // Fill bucket with opacity
+        const alpha = Math.round(opacity * 255).toString(16).padStart(2, '0');
+        plinkoCtx.fillStyle = bucketColor + alpha;
         plinkoCtx.fill();
+        
+        // Draw bucket border
+        plinkoCtx.strokeStyle = bucketColor;
+        plinkoCtx.lineWidth = 2;
         plinkoCtx.stroke();
         
         // Draw multiplier text
         plinkoCtx.fillStyle = textColor;
         plinkoCtx.fillText(
             multiplier + 'x',
-            bucket.x + bucket.width / 2,
-            bucket.y + bucket.height / 2 + 4
+            bucketX + bucketWidth / 2,
+            bucketY + bucketHeight / 2 + 4
         );
+        
+        plinkoCtx.restore();
     }
     
     // Draw balls
@@ -2495,6 +2575,10 @@ function dropBall() {
     const randomOffset = (Math.random() - 0.5) * 10; // Reduced randomness
     const ball = new PlinkoBall(plinkoCanvas.width / 2 + randomOffset, 25);
     ball.betAmount = betAmount; // Store bet amount with ball
+    
+    // Ensure ball uses current size (in case config changed)
+    ball.radius = plinkoConfig.ballSize;
+    
     plinkoState.balls.push(ball);
     
     // Update button text to show dropping
@@ -2594,10 +2678,18 @@ async function handlePlinkoGameResult(bucketIndex, multiplier, betAmount) {
         }
         
         if (data.success) {
+            console.log('Game successful! Updating user data...');
+            
             // Update user data
             if (data.user) {
+                console.log('Using full user data from server');
                 currentUser = data.user;
             } else if (currentUser && data.result) {
+                console.log('Updating specific user fields:', {
+                    oldBalance: currentUser.balance,
+                    newBalance: data.result.balanceAfter
+                });
+                
                 currentUser.balance = Math.round(data.result.balanceAfter * 100) / 100;
                 if (typeof data.result.newLevel !== 'undefined') {
                     currentUser.level = data.result.newLevel;
@@ -2691,6 +2783,9 @@ function setPlinkoRows(rows) {
     if (plinkoCanvas && plinkoCtx) {
         setupPlinkoGame();
         drawPlinko(); // Force immediate redraw
+        
+        // Log the size changes for debugging
+        console.log(`Row changed to ${rows}: Ball size = ${plinkoConfig.ballSize}, Peg size = ${plinkoConfig.pegSize}`);
     }
 }
 
