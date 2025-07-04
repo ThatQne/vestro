@@ -921,6 +921,7 @@ button:hover, a:hover {
     padding: 1rem;
     margin-top: 1rem;
     display: none;
+    pointer-events: auto;
 }
 
 .auto-bet-settings.show {
@@ -950,6 +951,12 @@ button:hover, a:hover {
     transition: all 0.3s ease;
     min-width: 36px;
     font-family: 'Outfit', sans-serif;
+    pointer-events: auto;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    touch-action: manipulation;
 }
 
 .toggle-btn.active {
@@ -960,7 +967,7 @@ button:hover, a:hover {
 
 .bet-strategy-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 0.5rem;
     margin-bottom: 0.5rem;
 }
@@ -1050,7 +1057,7 @@ button:hover, a:hover {
     }
     
     .bet-strategy-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, 1fr);
     }
 }
 
@@ -2074,23 +2081,7 @@ button:hover, a:hover {
     color: #9ca3af;
 }
 
-.badge-item.secret {
-    filter: brightness(0.5) grayscale(1);
-}
 
-.badge-item.secret .badge-name,
-.badge-item.secret .badge-description {
-    filter: blur(4px);
-}
-
-.badge-item.secret:hover {
-    filter: none;
-}
-
-.badge-item.secret:hover .badge-name,
-.badge-item.secret:hover .badge-description {
-    filter: none;
-}
 
 .badge-earned {
     font-size: 0.7rem;
@@ -2677,10 +2668,12 @@ input, textarea {
     gap: 0.5rem;
     align-items: center;
     width: 100%;
+    pointer-events: auto;
 }
 
 .input-with-toggle .auto-bet-input {
     flex: 1;
+    pointer-events: auto;
 }
 
 .auto-bet-grid {
@@ -2716,7 +2709,7 @@ input, textarea {
     }
     
     .bet-strategy-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, 1fr);
     }
     
     .input-group {
@@ -2727,3 +2720,157 @@ input, textarea {
         width: 100%;
     }
 }
+
+/* Provably Fair Result Styles */
+.provably-fair-result {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: rgba(15, 15, 15, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: #9ca3af;
+    backdrop-filter: blur(8px);
+    width: 100%;
+}
+
+.provably-fair-content {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.provably-fair-label {
+    font-weight: 600;
+    color: #f1f1f1;
+    white-space: nowrap;
+}
+
+.provably-fair-hash {
+    font-family: monospace;
+    background: rgba(55, 65, 81, 0.3);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    word-break: break-all;
+    flex: 1;
+    min-width: 200px;
+}
+
+.provably-fair-time {
+    font-size: 0.7rem;
+    color: #6b7280;
+    white-space: nowrap;
+}
+
+.copy-hash-btn {
+    background: rgba(55, 65, 81, 0.3);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    border-radius: 4px;
+    padding: 0.25rem;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.copy-hash-btn:hover {
+    background: rgba(75, 85, 99, 0.4);
+    border-color: rgba(156, 163, 175, 0.5);
+    color: #f1f1f1;
+}
+
+.copy-hash-btn.copied {
+    background: #10b981;
+    border-color: #059669;
+    color: #f1f1f1;
+}
+
+.copy-hash-btn i {
+    width: 16px;
+    height: 16px;
+}
+
+@media (max-width: 768px) {
+    .provably-fair-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+    
+    .provably-fair-hash {
+        min-width: 100%;
+    }
+    
+    .copy-hash-btn {
+        align-self: flex-end;
+        margin-top: -2rem;
+        margin-right: 0.25rem;
+    }
+}
+
+/* Badge Styles Updates */
+.badge-item.secret.locked {
+    filter: blur(4px) brightness(0.5) grayscale(1);
+}
+
+.badge-item.secret.locked .badge-name,
+.badge-item.secret.locked .badge-description {
+    filter: blur(4px);
+}
+
+.badge-item.secret.earned {
+    filter: none;
+}
+
+.badge-item.secret.earned .badge-name,
+.badge-item.secret.earned .badge-description {
+    filter: none;
+}
+
+/* Sparkle animation for unlocked hidden badges */
+.badge-item.sparkle {
+    position: relative;
+    overflow: hidden;
+}
+
+.badge-item.sparkle::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+        45deg,
+        transparent,
+        rgba(255, 255, 255, 0.1),
+        transparent
+    );
+    animation: sparkle 3s infinite;
+    pointer-events: none;
+}
+
+@keyframes sparkle {
+    0% {
+        transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    }
+    50% {
+        transform: translateX(100%) translateY(100%) rotate(45deg);
+    }
+    100% {
+        transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    }
+}
+
+/* Notification badge type */
+.notification.badge {
+    --notification-color: #8b5cf6;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(15, 15, 15, 0.95) 100%);
+    border-color: rgba(139, 92, 246, 0.3);
+}
+

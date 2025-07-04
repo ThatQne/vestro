@@ -140,9 +140,9 @@ userSchema.methods.addExperience = function(amount) {
         levelsGained += 1;
         leveledUp = true;
         
-        // Add level up bonus
-        this.balance += 50; // $50 bonus per level up
-        this.balanceHistory.push(this.balance);
+        // Level up bonus removed per user request
+        // this.balance += 50; // $50 bonus per level up
+        // this.balanceHistory.push(this.balance);
     }
     
     return { leveledUp, levelsGained };

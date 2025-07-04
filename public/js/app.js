@@ -1405,65 +1405,91 @@ async function rollDice() {
 
 // Display random hash/seed for provably fair gaming
 function displayRandomHash(hash, timestamp) {
-    let hashContainer = document.getElementById('random-hash-container');
-    if (!hashContainer) {
-        hashContainer = document.createElement('div');
-        hashContainer.id = 'random-hash-container';
-        hashContainer.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(15, 15, 15, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 12px 16px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            color: #9ca3af;
-            max-width: 90%;
-            z-index: 1000;
-            backdrop-filter: blur(10px);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        `;
-        document.body.appendChild(hashContainer);
+    // Find the dice-visual container
+    const diceVisual = document.querySelector('.dice-visual');
+    if (!diceVisual) return;
+    
+    // Remove existing provably fair element
+    let existingElement = document.getElementById('provably-fair-result');
+    if (existingElement) {
+        existingElement.remove();
     }
     
-    hashContainer.innerHTML = `
-        <div style="text-align: center; margin-bottom: 4px; font-weight: 600; color: #f1f1f1;">
-            🎲 Provably Fair Result
-        </div>
-        <div style="margin-bottom: 2px;">
-            <strong>Hash:</strong> ${hash}
-        </div>
-        <div style="font-size: 11px; color: #6b7280;">
-            Generated: ${new Date(timestamp).toLocaleString()}
+    // Create new provably fair element
+    const provablyFairElement = document.createElement('div');
+    provablyFairElement.id = 'provably-fair-result';
+    provablyFairElement.className = 'provably-fair-result';
+    provablyFairElement.innerHTML = `
+        <div class="provably-fair-content">
+            <span class="provably-fair-label">🎲 Provably Fair:</span>
+            <span class="provably-fair-hash">${hash}</span>
+            <button class="copy-hash-btn" onclick="copyHash('${hash}')" title="Copy hash">
+                <i data-lucide="copy"></i>
+            </button>
+            <span class="provably-fair-time">${new Date(timestamp).toLocaleTimeString()}</span>
         </div>
     `;
     
-    // Show with animation
-    hashContainer.style.opacity = '1';
+    // Insert after dice-visual container
+    diceVisual.after(provablyFairElement);
     
-    // Hide after 10 seconds
-    setTimeout(() => {
-        hashContainer.style.opacity = '0';
-    }, 10000);
+    // Initialize the copy icon
+    lucide.createIcons();
+}
+
+// Function to copy hash to clipboard
+function copyHash(hash) {
+    navigator.clipboard.writeText(hash).then(() => {
+        const copyBtn = document.querySelector('.copy-hash-btn');
+        const icon = copyBtn.querySelector('i');
+        
+        // Show feedback
+        icon.setAttribute('data-lucide', 'check');
+        copyBtn.classList.add('copied');
+        lucide.createIcons();
+        
+        // Reset after 2 seconds
+        setTimeout(() => {
+            icon.setAttribute('data-lucide', 'copy');
+            copyBtn.classList.remove('copied');
+            lucide.createIcons();
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        showError('Failed to copy hash');
+    });
 }
 
 // Auto bet functionality
 function initializeAutoBet() {
-    // Initialize infinite mode toggle
+    // Initialize infinite mode toggle with improved event handling
     const infiniteToggle = document.getElementById('infinite-bets-toggle');
-    infiniteToggle.addEventListener('click', () => {
-        infiniteToggle.classList.toggle('active');
-        autoBetConfig.infiniteMode = infiniteToggle.classList.contains('active');
-        document.getElementById('auto-bet-count').disabled = autoBetConfig.infiniteMode;
-    });
+    if (infiniteToggle) {
+        const toggleInfinite = (e) => {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            infiniteToggle.classList.toggle('active');
+            autoBetConfig.infiniteMode = infiniteToggle.classList.contains('active');
+            const countInput = document.getElementById('auto-bet-count');
+            if (countInput) {
+                countInput.disabled = autoBetConfig.infiniteMode;
+            }
+        };
+
+        // Remove any existing event listeners
+        infiniteToggle.removeEventListener('click', toggleInfinite);
+        infiniteToggle.removeEventListener('touchend', toggleInfinite);
+        
+        // Add new event listeners
+        infiniteToggle.addEventListener('click', toggleInfinite);
+        infiniteToggle.addEventListener('touchend', toggleInfinite);
+    }
 
     // Initialize strategy buttons
     ['win', 'loss'].forEach(type => {
-        const buttons = document.querySelectorAll(`#on-${type}-reset, #on-${type}-increase, #on-${type}-decrease, #on-${type}-stop`);
+        const buttons = document.querySelectorAll(`#on-${type}-reset, #on-${type}-multiply, #on-${type}-stop`);
         const settingsDiv = document.getElementById(`on-${type}-settings`);
         
         buttons.forEach(btn => {
@@ -1476,14 +1502,18 @@ function initializeAutoBet() {
                 const action = btn.id.replace(`on-${type}-`, '');
                 autoBetConfig[`on${type.charAt(0).toUpperCase() + type.slice(1)}`].action = action;
                 // Show/hide settings based on action
-                settingsDiv.classList.toggle('show', action === 'increase' || action === 'decrease');
+                if (settingsDiv) {
+                    settingsDiv.classList.toggle('show', action === 'multiply');
+                }
             });
         });
     });
 
     // Initialize start/stop buttons
-    document.getElementById('start-auto-bet').addEventListener('click', startAutoBet);
-    document.getElementById('stop-auto-bet').addEventListener('click', stopAutoBet);
+    const startBtn = document.getElementById('start-auto-bet');
+    const stopBtn = document.getElementById('stop-auto-bet');
+    if (startBtn) startBtn.addEventListener('click', startAutoBet);
+    if (stopBtn) stopBtn.addEventListener('click', stopAutoBet);
 }
 
 function startAutoBet() {
