@@ -171,8 +171,7 @@ userSchema.methods.updateGameStats = async function(betAmount, winAmount) {
         this.currentWinStreak = 0;
     }
 
-    // Add current balance to history
-    this.balanceHistory.push(this.balance);
+    // Balance history is now added in the game route after all calculations
 
     // Check for badges
     const badges = await Badge.find();

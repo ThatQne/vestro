@@ -86,7 +86,6 @@ router.post('/play', authenticateToken, async (req, res) => {
         // Calculate results
         const balanceBefore = user.balance;
         user.balance -= betAmount; // Deduct bet
-        user.balanceHistory.push(user.balance); // Add balance after bet
 
         if (won) {
             // Calculate raw win amount
@@ -98,8 +97,10 @@ router.post('/play', authenticateToken, async (req, res) => {
             winAmount = dollars + (cents > 0 ? Math.ceil(cents) : Math.round(cents)) / 100;
             
             user.balance += winAmount;
-            user.balanceHistory.push(user.balance); // Add balance after win
         }
+        
+        // Only add final balance to history after all calculations are done
+        user.balanceHistory.push(user.balance);
 
         // Add experience (5 XP for playing, +5 XP for winning)
         const experienceGained = won ? 10 : 5;

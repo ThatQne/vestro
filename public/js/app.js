@@ -521,9 +521,7 @@ function updateBadges() {
         const isEarned = earnedCodes.has(badge.code);
         const earnedBadgeData = earnedBadges.find(b => b.code === badge.code);
         
-        // Skip secret badges that haven't been earned
-        if (badge.secret && !isEarned) return;
-
+        // Show all badges including hidden ones
         const badgeElement = document.createElement('div');
         badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${isEarned ? ' earned' : ' locked'}`;
         
@@ -531,12 +529,16 @@ function updateBadges() {
             ? `Earned ${new Date(earnedBadgeData.earnedAt).toLocaleDateString()}`
             : 'Not earned yet';
         
+        // For hidden badges that are not earned, show as "???"
+        const displayName = badge.secret && !isEarned ? '???' : badge.name;
+        const displayDescription = badge.secret && !isEarned ? 'Hidden badge' : badge.description;
+        
         badgeElement.innerHTML = `
             <div class="badge-icon" style="background: ${badge.color}${isEarned ? '20' : '10'};">
                 <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
             </div>
-            <div class="badge-name">${badge.name}</div>
-            <div class="badge-description">${badge.description}</div>
+            <div class="badge-name">${displayName}</div>
+            <div class="badge-description">${displayDescription}</div>
             <div class="badge-earned">${earnedText}</div>
         `;
         
@@ -1268,13 +1270,15 @@ async function playCoinFlip(choice) {
                 if (newBadges.length > 0) {
                     newBadges.forEach(badge => {
                         setTimeout(() => {
-                            showGameNotification(true, null, `Badge Earned: ${badge.name}!`);
+                            showBadgeNotification(badge);
                         }, 1000);
                     });
                     updateBadges(); // Update badge display
                 }
                 
-                showGameNotification(data.result.won, data.result.winAmount);
+                // Calculate profit (win amount minus bet amount)
+                const profit = data.result.won ? data.result.winAmount - betAmount : 0;
+                showGameNotification(data.result.won, profit);
                 
                 if (data.result.levelUp.leveledUp) {
                     setTimeout(() => {
@@ -1302,7 +1306,7 @@ async function rollDice() {
     if (!currentUser || isRolling) return;
     
     const betInput = document.getElementById('dice-bet-amount');
-    let betAmount = Math.ceil(parseFloat(betInput.value) * 100) / 100;
+    let betAmount = parseFloat(betInput.value);
     const targetValue = parseFloat(document.getElementById('dice-target').value);
     
     if (isNaN(betAmount) || betAmount < 0.01) {
@@ -1310,13 +1314,14 @@ async function rollDice() {
         return;
     }
     
-    if (betAmount > currentUser.balance) {
+    // Fix floating point precision issues by using a small tolerance
+    if (betAmount > currentUser.balance + 0.001) {
         showError('Insufficient balance');
         return;
     }
     
     // Round bet to 2 decimal places
-    betAmount = Math.ceil(betAmount * 100) / 100;
+    betAmount = Math.round(betAmount * 100) / 100;
     betInput.value = betAmount.toFixed(2);
     
     isRolling = true;
@@ -1369,13 +1374,15 @@ async function rollDice() {
             if (newBadges.length > 0) {
                 newBadges.forEach(badge => {
                     setTimeout(() => {
-                        showGameNotification(true, null, `Badge Earned: ${badge.name}!`);
+                        showBadgeNotification(badge);
                     }, 1000);
                 });
                 updateBadges(); // Update badge display
             }
             
-            showGameNotification(data.result.won, data.result.winAmount);
+            // Calculate profit (win amount minus bet amount)
+            const profit = data.result.won ? data.result.winAmount - betAmount : 0;
+            showGameNotification(data.result.won, profit);
             
             if (data.result.levelUp.leveledUp) {
                 setTimeout(() => {
@@ -1420,18 +1427,15 @@ function displayRandomHash(hash, timestamp) {
     provablyFairElement.id = 'provably-fair-result';
     provablyFairElement.className = 'provably-fair-result';
     provablyFairElement.innerHTML = `
-        <div class="provably-fair-content">
-            <span class="provably-fair-label">🎲 Provably Fair:</span>
-            <span class="provably-fair-hash">${hash}</span>
-            <button class="copy-hash-btn" onclick="copyHash('${hash}')" title="Copy hash">
-                <i data-lucide="copy"></i>
-            </button>
-            <span class="provably-fair-time">${new Date(timestamp).toLocaleTimeString()}</span>
-        </div>
+        🎲 Provably Fair: ${hash.substring(0, 16)}...
+        <button class="copy-hash-btn" onclick="copyHash('${hash}')" title="Copy full hash">
+            <i data-lucide="copy"></i>
+        </button>
+        ${new Date(timestamp).toLocaleTimeString()}
     `;
     
-    // Insert after dice-visual container
-    diceVisual.after(provablyFairElement);
+    // Insert after dice-visual container (under it)
+    diceVisual.parentNode.insertBefore(provablyFairElement, diceVisual.nextSibling);
     
     // Initialize the copy icon
     lucide.createIcons();
@@ -1439,10 +1443,26 @@ function displayRandomHash(hash, timestamp) {
 
 // Function to copy hash to clipboard
 function copyHash(hash) {
-    navigator.clipboard.writeText(hash).then(() => {
-        const copyBtn = document.querySelector('.copy-hash-btn');
-        const icon = copyBtn.querySelector('i');
-        
+    // Try modern clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(hash).then(() => {
+            showCopyFeedback();
+        }).catch(err => {
+            console.error('Clipboard API failed:', err);
+            fallbackCopyTextToClipboard(hash);
+        });
+    } else {
+        // Use fallback for older browsers or non-secure contexts
+        fallbackCopyTextToClipboard(hash);
+    }
+}
+
+function showCopyFeedback() {
+    const copyBtn = document.querySelector('.copy-hash-btn');
+    if (!copyBtn) return;
+    
+    const icon = copyBtn.querySelector('i');
+    if (icon) {
         // Show feedback
         icon.setAttribute('data-lucide', 'check');
         copyBtn.classList.add('copied');
@@ -1454,10 +1474,36 @@ function copyHash(hash) {
             copyBtn.classList.remove('copied');
             lucide.createIcons();
         }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy:', err);
+    }
+}
+
+// Fallback copy function for older browsers
+function fallbackCopyTextToClipboard(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    
+    // Avoid scrolling to bottom
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.position = "fixed";
+    
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+            showCopyFeedback();
+        } else {
+            showError('Failed to copy hash');
+        }
+    } catch (err) {
+        console.error('Fallback: Oops, unable to copy', err);
         showError('Failed to copy hash');
-    });
+    }
+    
+    document.body.removeChild(textArea);
 }
 
 // Auto bet functionality
@@ -1470,21 +1516,29 @@ function initializeAutoBet() {
                 e.preventDefault();
                 e.stopPropagation();
             }
-            infiniteToggle.classList.toggle('active');
-            autoBetConfig.infiniteMode = infiniteToggle.classList.contains('active');
+            const toggle = e ? e.currentTarget : document.getElementById('infinite-bets-toggle');
+            toggle.classList.toggle('active');
+            autoBetConfig.infiniteMode = toggle.classList.contains('active');
             const countInput = document.getElementById('auto-bet-count');
             if (countInput) {
                 countInput.disabled = autoBetConfig.infiniteMode;
             }
         };
 
-        // Remove any existing event listeners
-        infiniteToggle.removeEventListener('click', toggleInfinite);
-        infiniteToggle.removeEventListener('touchend', toggleInfinite);
+        // Clean up old event listeners by replacing the element
+        const newInfiniteToggle = infiniteToggle.cloneNode(true);
+        infiniteToggle.parentNode.replaceChild(newInfiniteToggle, infiniteToggle);
         
-        // Add new event listeners
-        infiniteToggle.addEventListener('click', toggleInfinite);
-        infiniteToggle.addEventListener('touchend', toggleInfinite);
+        // Add new event listeners to the new element
+        newInfiniteToggle.addEventListener('click', toggleInfinite);
+        newInfiniteToggle.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            toggleInfinite(e);
+        });
+        
+        // Ensure proper initialization
+        newInfiniteToggle.style.pointerEvents = 'auto';
+        newInfiniteToggle.style.cursor = 'pointer';
     }
 
     // Initialize strategy buttons
@@ -1599,11 +1653,8 @@ function continueAutoBet(wasWin, profit) {
     const config = wasWin ? autoBetConfig.onWin : autoBetConfig.onLoss;
     
     switch (config.action) {
-        case 'increase':
+        case 'multiply':
             betInput.value = (currentBet * config.multiplier).toFixed(2);
-            break;
-        case 'decrease':
-            betInput.value = (currentBet / config.multiplier).toFixed(2);
             break;
         case 'stop':
             stopAutoBet();
@@ -1748,7 +1799,8 @@ class NotificationManager {
             error: '!',
             warning: '!',
             info: 'i',
-            'level-up': '↑'
+            'level-up': '↑',
+            'badge': '★'
         };
         return icons[type] || 'i';
     }
@@ -1781,6 +1833,28 @@ const notifications = new NotificationManager();
 // Replace old notification functions
 function showError(message) {
     notifications.error('Error', message);
+}
+
+function showBadgeNotification(badge) {
+    const notification = notifications.show({
+        type: 'badge',
+        title: 'Badge Earned!',
+        message: badge.name,
+        duration: 8000
+    });
+    
+    // Customize notification with badge color and icon
+    if (notification) {
+        notification.style.setProperty('--notification-color', badge.color);
+        const iconElement = notification.querySelector('.notification-icon');
+        if (iconElement) {
+            iconElement.innerHTML = `<i data-lucide="${badge.icon}"></i>`;
+            iconElement.style.background = badge.color;
+        }
+        
+        // Re-initialize lucide icons for the notification
+        lucide.createIcons();
+    }
 }
 
 function showGameNotification(isWin, amount, customMessage = null) {
