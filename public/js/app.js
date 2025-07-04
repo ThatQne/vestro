@@ -589,13 +589,19 @@ function showPage(pageId) {
     });
 
     // Show selected page
-    document.getElementById(pageId + '-page').classList.remove('hidden');
+    const targetPage = document.getElementById(pageId + '-page');
+    if (targetPage) {
+        targetPage.classList.remove('hidden');
+    }
     
     // Update active navigation item
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    document.querySelector(`[data-page="${pageId}"]`).classList.add('active');
+    const activeNavItem = document.querySelector(`[data-page="${pageId}"]`);
+    if (activeNavItem) {
+        activeNavItem.classList.add('active');
+    }
 
     // Page-specific handling
     if (pageId === 'dashboard' && currentUser) {
@@ -2179,6 +2185,7 @@ class PlinkoBall {
         this.y = y;
         this.vx = 0;
         this.vy = 0;
+        // Use current ball size from config (recalculated based on rows)
         this.radius = plinkoConfig.ballSize;
         this.bounced = false;
         this.finished = false;
@@ -2676,6 +2683,9 @@ function setPlinkoRows(rows) {
     });
     document.getElementById(`rows-${rows}-btn`).classList.add('active');
     document.getElementById('plinko-rows').textContent = rows;
+    
+    // Clear existing balls since they have wrong size
+    plinkoState.balls = [];
     
     // Update game immediately
     if (plinkoCanvas && plinkoCtx) {

@@ -90,6 +90,7 @@ router.post('/play', authenticateToken, async (req, res) => {
             const [risk, rows] = playerChoice.split('-');
             const rowCount = parseInt(rows);
             const bucketIndex = parseInt(targetNumber);
+            const clientMultiplier = req.body.multiplier; // Get multiplier from request body
             
             // Validate plinko parameters
             if (!['low', 'medium', 'high'].includes(risk)) {
@@ -136,15 +137,32 @@ router.post('/play', authenticateToken, async (req, res) => {
             
             const expectedMultiplier = validMultipliers[bucketIndex];
             
-            // Validate multiplier matches expected value
-            if (Math.abs(multiplier - expectedMultiplier) > 0.01) {
+            // Validate multiplier matches expected value (with some tolerance for floating point)
+            if (Math.abs(clientMultiplier - expectedMultiplier) > 0.01) {
+                console.log('Multiplier validation failed:', {
+                    client: clientMultiplier,
+                    expected: expectedMultiplier,
+                    bucketIndex,
+                    risk,
+                    rows: rowCount
+                });
                 return res.status(400).json({
                     success: false,
-                    message: 'Invalid multiplier for bucket'
+                    message: 'Invalid multiplier for bucket',
+                    debug: {
+                        clientMultiplier,
+                        expectedMultiplier,
+                        bucketIndex,
+                        risk,
+                        rows: rowCount
+                    }
                 });
             }
             
-            const isWin = multiplier > 1;
+            // Use the expected multiplier for calculations to avoid any precision issues
+            multiplier = expectedMultiplier;
+            won = multiplier > 1;
+            
             const actualWinAmount = Math.round(betAmount * multiplier * 100) / 100;
             
             gameResult = {
@@ -152,9 +170,9 @@ router.post('/play', authenticateToken, async (req, res) => {
                 multiplier,
                 risk,
                 rows: rowCount,
-                won: isWin,
-                winAmount: isWin ? actualWinAmount : 0,
-                balanceAfter: isWin ? user.balance - betAmount + actualWinAmount : user.balance - betAmount,
+                won,
+                winAmount: won ? actualWinAmount : 0,
+                balanceAfter: won ? user.balance - betAmount + actualWinAmount : user.balance - betAmount,
                 hash: randomHash,
                 timestamp: new Date().toISOString()
             };
