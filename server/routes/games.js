@@ -86,11 +86,9 @@ router.post('/play', authenticateToken, async (req, res) => {
                 multiplier = 0.99 / (targetNumber / 100);
             }
         } else if (gameType === 'plinko') {
-            // Plinko game logic
+            // Plinko game logic - generate outcome server-side
             const [risk, rows] = playerChoice.split('-');
             const rowCount = parseInt(rows);
-            const bucketIndex = parseInt(targetNumber);
-            const clientMultiplier = req.body.multiplier; // Get multiplier from request body
             
             // Generate random hash for provably fair
             const randomResult = await getRandomNumber(0, 1000000);
@@ -133,53 +131,22 @@ router.post('/play', authenticateToken, async (req, res) => {
             
             const validMultipliers = plinkoMultipliers[risk][rowCount];
             
-            if (!validMultipliers || bucketIndex < 0 || bucketIndex >= validMultipliers.length) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid bucket index'
-                });
+            // Generate random bucket index using binomial distribution
+            const bucketCount = rowCount + 1;
+            let sum = 0;
+            for (let i = 0; i < rowCount; i++) {
+                sum += Math.random() < 0.5 ? 1 : 0;
             }
+            const bucketIndex = Math.min(Math.max(sum, 0), bucketCount - 1);
             
-            const expectedMultiplier = validMultipliers[bucketIndex];
-            
-            // Validate multiplier matches expected value (with some tolerance for floating point)
-            if (Math.abs(clientMultiplier - expectedMultiplier) > 0.01) {
-                console.log('Multiplier validation failed:', {
-                    client: clientMultiplier,
-                    expected: expectedMultiplier,
-                    bucketIndex,
-                    risk,
-                    rows: rowCount
-                });
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid multiplier for bucket',
-                    debug: {
-                        clientMultiplier,
-                        expectedMultiplier,
-                        bucketIndex,
-                        risk,
-                        rows: rowCount
-                    }
-                });
-            }
-            
-            // Use the expected multiplier for calculations to avoid any precision issues
-            multiplier = expectedMultiplier;
+            multiplier = validMultipliers[bucketIndex];
             won = multiplier >= 1;
-            
-            const actualWinAmount = Math.round(betAmount * multiplier * 100) / 100;
             
             gameResult = {
                 bucketIndex,
                 multiplier,
                 risk,
-                rows: rowCount,
-                won,
-                winAmount: won ? actualWinAmount : 0,
-                balanceAfter: won ? user.balance - betAmount + actualWinAmount : user.balance - betAmount,
-                hash: randomHash,
-                timestamp: new Date().toISOString()
+                rows: rowCount
             };
         } else {
             return res.status(400).json({
@@ -284,265 +251,6 @@ router.post('/play', authenticateToken, async (req, res) => {
             success: false,
             message: 'Server error'
         });
-    }
-});
-
-// Plinko game endpoint
-router.post('/plinko', authenticateToken, async (req, res) => {
-    try {
-        const { betAmount, risk, rows } = req.body;
-        
-        // Validation
-        if (!betAmount || !risk || !rows) {
-            return res.status(400).json({
-                error: 'Bet amount, risk, and rows are required'
-            });
-        }
-
-        if (betAmount <= 0) {
-            return res.status(400).json({
-                error: 'Bet amount must be greater than 0'
-            });
-        }
-
-        if (!['low', 'medium', 'high'].includes(risk)) {
-            return res.status(400).json({
-                error: 'Invalid risk level'
-            });
-        }
-
-        if (![8, 12, 16].includes(rows)) {
-            return res.status(400).json({
-                error: 'Invalid row count'
-            });
-        }
-
-        // Get user
-        const user = await User.findById(req.user.userId);
-        if (!user) {
-            return res.status(404).json({
-                error: 'User not found'
-            });
-        }
-
-        // Fix precision issues by rounding to 2 decimal places
-        const userBalance = Math.round(user.balance * 100) / 100;
-        const betAmountRounded = Math.round(betAmount * 100) / 100;
-
-        // Check balance
-        if (userBalance < betAmountRounded) {
-            return res.status(400).json({
-                error: 'Insufficient balance'
-            });
-        }
-
-        // Plinko multiplier tables
-        const plinkoMultipliers = {
-            low: {
-                8: [5.6, 2.1, 1.1, 1.0, 0.5, 1.0, 1.1, 2.1, 5.6],
-                12: [8.1, 3.0, 1.6, 1.0, 0.7, 0.7, 0.5, 0.7, 0.7, 1.0, 1.6, 3.0, 8.1],
-                16: [16.0, 9.0, 2.0, 1.4, 1.1, 1.0, 0.5, 0.3, 0.5, 0.3, 0.5, 1.0, 1.1, 1.4, 2.0, 9.0, 16.0]
-            },
-            medium: {
-                8: [13.0, 3.0, 1.3, 0.7, 0.4, 0.7, 1.3, 3.0, 13.0],
-                12: [24.0, 5.0, 2.0, 1.4, 0.6, 0.4, 0.2, 0.4, 0.6, 1.4, 2.0, 5.0, 24.0],
-                16: [110.0, 41.0, 10.0, 5.0, 3.0, 1.5, 1.0, 0.5, 0.3, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 41.0, 110.0]
-            },
-            high: {
-                8: [29.0, 4.0, 1.5, 0.2, 0.2, 0.2, 1.5, 4.0, 29.0],
-                12: [58.0, 8.0, 2.5, 1.0, 0.2, 0.2, 0.1, 0.2, 0.2, 1.0, 2.5, 8.0, 58.0],
-                16: [1000.0, 130.0, 26.0, 9.0, 4.0, 2.0, 0.7, 0.2, 0.1, 0.2, 0.7, 2.0, 4.0, 9.0, 26.0, 130.0, 1000.0]
-            }
-        };
-
-        const multipliers = plinkoMultipliers[risk][rows];
-        
-        // Generate random hash for provably fair
-        const randomResult = await getRandomNumber(0, 1000000);
-        
-        // Simulate ball drop - use weighted random based on normal distribution
-        // Center buckets are more likely to be hit
-        const bucketCount = rows + 1;
-        const center = (bucketCount - 1) / 2;
-        
-        // Generate random bucket index using normal distribution
-        let bucketIndex;
-        const random = Math.random();
-        
-        // Use binomial distribution approximation for more realistic plinko physics
-        let sum = 0;
-        for (let i = 0; i < rows; i++) {
-            sum += Math.random() < 0.5 ? 1 : 0;
-        }
-        bucketIndex = Math.min(Math.max(sum, 0), bucketCount - 1);
-        
-        const multiplier = multipliers[bucketIndex];
-        const won = multiplier >= 1;
-        
-        // Calculate results
-        const balanceBefore = userBalance;
-        let newBalance = userBalance - betAmountRounded;
-        let winAmount = 0;
-
-        if (won) {
-            const rawWinAmount = betAmountRounded * multiplier;
-            winAmount = Math.round(rawWinAmount * 100) / 100;
-            newBalance = Math.round((newBalance + winAmount) * 100) / 100;
-        } else {
-            newBalance = Math.round(newBalance * 100) / 100;
-        }
-
-        // Update user balance
-        user.balance = newBalance;
-        user.balanceHistory.push(user.balance);
-
-        // Add experience
-        const experienceGained = won ? 10 : 5;
-        const levelUpResult = user.addExperience(experienceGained);
-
-        // Update game statistics
-        user.gamesPlayed += 1;
-        user.totalWagered = Math.round((user.totalWagered + betAmountRounded) * 100) / 100;
-        
-        if (won) {
-            user.wins += 1;
-            user.totalWon = Math.round((user.totalWon + winAmount) * 100) / 100;
-            user.currentWinStreak += 1;
-            user.bestWinStreak = Math.max(user.bestWinStreak, user.currentWinStreak);
-            
-            if (winAmount > user.bestWin) {
-                user.bestWin = winAmount;
-            }
-        } else {
-            user.losses += 1;
-            user.currentWinStreak = 0;
-        }
-
-        // Save user
-        await user.save();
-
-        // Save game history
-        const gameHistory = new GameHistory({
-            userId: user._id,
-            gameType: 'plinko',
-            betAmount: betAmountRounded,
-            playerChoice: `${risk}-${rows}`,
-            gameResult: JSON.stringify({
-                bucketIndex,
-                multiplier,
-                risk,
-                rows
-            }),
-            won,
-            winAmount: won ? winAmount : 0,
-            balanceBefore,
-            balanceAfter: user.balance,
-            experienceGained,
-            leveledUp: levelUpResult.leveledUp
-        });
-        await gameHistory.save();
-
-        // Send response
-        res.json({
-            success: true,
-            bucketIndex,
-            multiplier,
-            won,
-            winAmount: won ? winAmount : 0,
-            user: {
-                balance: user.balance,
-                xp: user.xp,
-                level: user.level
-            },
-            hash: randomResult.hash,
-            timestamp: randomResult.timestamp
-        });
-
-    } catch (error) {
-        console.error('Plinko game error:', error);
-        res.status(500).json({
-            error: 'Server error'
-        });
-    }
-});
-
-// Plinko Batch Game Endpoint
-router.post('/plinko/batch', authenticateToken, async (req, res) => {
-    try {
-        const { games } = req.body; // Expects an array of game results
-        if (!games || !Array.isArray(games) || games.length === 0) {
-            return res.status(400).json({ error: 'Invalid batch submission.' });
-        }
-
-        const user = await User.findById(req.user.userId);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        let totalWinAmount = 0;
-        let totalBetAmount = 0;
-        let totalExperienceGained = 0;
-
-        for (const game of games) {
-            const { betAmount, risk, rows, bucketIndex } = game;
-
-            // Basic validation for each game object
-            if (!betAmount || !risk || !rows || bucketIndex === undefined) continue;
-
-            const multipliers = plinkoMultipliers[risk]?.[rows];
-            if (!multipliers || bucketIndex < 0 || bucketIndex >= multipliers.length) continue;
-
-            const multiplier = multipliers[bucketIndex];
-            const winAmount = Math.round(betAmount * multiplier * 100) / 100;
-
-            totalWinAmount += winAmount;
-            totalBetAmount += betAmount;
-            totalExperienceGained += (multiplier >= 1) ? 10 : 5;
-            
-            // Log individual game for history
-             const gameHistory = new GameHistory({
-                userId: user._id,
-                gameType: 'plinko-batch',
-                betAmount,
-                playerChoice: `${risk}-${rows}`,
-                gameResult: JSON.stringify({ bucketIndex, multiplier }),
-                won: multiplier >= 1,
-                winAmount,
-                balanceBefore: user.balance, // This is less accurate in a batch, but provides a snapshot
-                balanceAfter: user.balance - betAmount + winAmount,
-                experienceGained: (multiplier >= 1) ? 10 : 5,
-            });
-            await gameHistory.save();
-        }
-
-        // Single atomic update for user stats
-        const netChange = totalWinAmount - totalBetAmount;
-        user.balance = Math.round((user.balance + netChange) * 100) / 100;
-        
-        const levelUpResult = user.addExperience(totalExperienceGained);
-        
-        user.gamesPlayed += games.length;
-        user.totalWagered = Math.round((user.totalWagered + totalBetAmount) * 100) / 100;
-
-        const wins = games.filter(g => plinkoMultipliers[g.risk]?.[g.rows]?.[g.bucketIndex] >= 1).length;
-        user.wins += wins;
-        user.losses += (games.length - wins);
-        user.totalWon = Math.round((user.totalWon + totalWinAmount) * 100) / 100;
-
-        await user.save();
-        
-        res.json({
-            success: true,
-            message: `${games.length} Plinko games processed.`,
-            newBalance: user.balance,
-            xp: user.xp,
-            level: user.level,
-            leveledUp: levelUpResult.leveledUp
-        });
-
-    } catch (error) {
-        console.error('Plinko Batch Error:', error);
-        res.status(500).json({ error: 'Server error while processing batch.' });
     }
 });
 
