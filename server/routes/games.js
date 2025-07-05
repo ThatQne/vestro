@@ -466,6 +466,86 @@ router.post('/plinko', authenticateToken, async (req, res) => {
     }
 });
 
+// Plinko Batch Game Endpoint
+router.post('/plinko/batch', authenticateToken, async (req, res) => {
+    try {
+        const { games } = req.body; // Expects an array of game results
+        if (!games || !Array.isArray(games) || games.length === 0) {
+            return res.status(400).json({ error: 'Invalid batch submission.' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        let totalWinAmount = 0;
+        let totalBetAmount = 0;
+        let totalExperienceGained = 0;
+
+        for (const game of games) {
+            const { betAmount, risk, rows, bucketIndex } = game;
+
+            // Basic validation for each game object
+            if (!betAmount || !risk || !rows || bucketIndex === undefined) continue;
+
+            const multipliers = plinkoMultipliers[risk]?.[rows];
+            if (!multipliers || bucketIndex < 0 || bucketIndex >= multipliers.length) continue;
+
+            const multiplier = multipliers[bucketIndex];
+            const winAmount = Math.round(betAmount * multiplier * 100) / 100;
+
+            totalWinAmount += winAmount;
+            totalBetAmount += betAmount;
+            totalExperienceGained += (multiplier >= 1) ? 10 : 5;
+            
+            // Log individual game for history
+             const gameHistory = new GameHistory({
+                userId: user._id,
+                gameType: 'plinko-batch',
+                betAmount,
+                playerChoice: `${risk}-${rows}`,
+                gameResult: JSON.stringify({ bucketIndex, multiplier }),
+                won: multiplier >= 1,
+                winAmount,
+                balanceBefore: user.balance, // This is less accurate in a batch, but provides a snapshot
+                balanceAfter: user.balance - betAmount + winAmount,
+                experienceGained: (multiplier >= 1) ? 10 : 5,
+            });
+            await gameHistory.save();
+        }
+
+        // Single atomic update for user stats
+        const netChange = totalWinAmount - totalBetAmount;
+        user.balance = Math.round((user.balance + netChange) * 100) / 100;
+        
+        const levelUpResult = user.addExperience(totalExperienceGained);
+        
+        user.gamesPlayed += games.length;
+        user.totalWagered = Math.round((user.totalWagered + totalBetAmount) * 100) / 100;
+
+        const wins = games.filter(g => plinkoMultipliers[g.risk]?.[g.rows]?.[g.bucketIndex] >= 1).length;
+        user.wins += wins;
+        user.losses += (games.length - wins);
+        user.totalWon = Math.round((user.totalWon + totalWinAmount) * 100) / 100;
+
+        await user.save();
+        
+        res.json({
+            success: true,
+            message: `${games.length} Plinko games processed.`,
+            newBalance: user.balance,
+            xp: user.xp,
+            level: user.level,
+            leveledUp: levelUpResult.leveledUp
+        });
+
+    } catch (error) {
+        console.error('Plinko Batch Error:', error);
+        res.status(500).json({ error: 'Server error while processing batch.' });
+    }
+});
+
 // Get game history
 router.get('/history', authenticateToken, async (req, res) => {
     try {

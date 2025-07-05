@@ -3,6 +3,15 @@ let currentUser = null;
 let socket = null;
 let currentPage = 'login';
 
+// Matter.js physics global variables
+let engine = null;
+let runner = null;
+let MatterModules = {};
+if (typeof Matter !== 'undefined') {
+    const { Engine, World, Bodies, Body, Events, Runner } = Matter;
+    MatterModules = { Engine, World, Bodies, Body, Events, Runner };
+}
+
 // API Base URL - use Render backend for both dev and prod
 const API_BASE_URL = 'https://vestro-lz81.onrender.com';
 
@@ -1991,7 +2000,7 @@ function showBadgeNotification(badge) {
     }
 }
 
-function showGameNotification(isWin, amount, customMessage = null) {
+function showGameNotification(isWin, amount, customMessage = null, colorObj = null, multiplier = null) {
     if (customMessage) {
         if (customMessage.includes('Level Up')) {
             notifications.levelUp('Level Up!', customMessage);
@@ -2003,10 +2012,31 @@ function showGameNotification(isWin, amount, customMessage = null) {
             notifications.info('Game', customMessage);
         }
     } else {
-        if (isWin) {
-            notifications.success('You Won!', 'Congratulations on your win!', amount);
+        const optsColor = colorObj ? colorObj.text : undefined;
+        if (multiplier !== null && multiplier < 1) {
+            notifications.show({
+                type: 'info',
+                title: 'Partial Return',
+                message: `You got back $${amount.toFixed(2)}`,
+                amount,
+                customColor: optsColor
+            });
+        } else if (isWin) {
+            notifications.show({
+                type: 'success',
+                title: 'You Won!',
+                message: `Won $${amount.toFixed(2)}!`,
+                amount,
+                customColor: optsColor
+            });
         } else {
-            notifications.error('You Lost', 'Better luck next time!', amount);
+            notifications.show({
+                type: 'error',
+                title: 'You Lost',
+                message: 'Better luck next time!',
+                amount,
+                customColor: optsColor
+            });
         }
     }
 }
@@ -2025,12 +2055,10 @@ function logout() {
 let plinkoCanvas, plinkoCtx;
 let plinkoConfig = {
     risk: 'low',
-    rows: 8,  // Default to 8 rows
-    ballSize: 10,  // Size for 8 rows, will scale down for more rows
-    pegSize: 10,   // Size for 8 rows, will scale down for more rows
-    gravity: 0.25,   // Slightly increased gravity for better flow
-    bounce: 0.8,    // Reduced bounce to prevent excessive bouncing
-    friction: 0.98 // Reduced friction to maintain momentum
+    rows: 8,
+    ballSize: 24,
+    pegSize: 12,
+    gravity: 0.35,
 };
 
 let plinkoState = {
@@ -2045,6 +2073,8 @@ let plinkoState = {
     currentBallSize: 16,  // Initialize with default size
     currentPegSize: 10    // Initialize with default size
 };
+
+// Debounce for ball drops (variables declared elsewhere)
 
 let plinkoAutobet = {
     isActive: false,
@@ -2072,6 +2102,9 @@ let plinkoAutobet = {
     }
 };
 
+// Helper function from example to get a random integer
+const randomBetween = (min, max) => Math.floor(Math.random() * (max - min)) + min;
+
 // Plinko Multiplier Tables (similar to Stake)
 const plinkoMultipliers = {
     low: {
@@ -2095,38 +2128,28 @@ const plinkoMultipliers = {
 function initializePlinko() {
     plinkoCanvas = document.getElementById('plinko-canvas');
     if (!plinkoCanvas) {
-        console.log('Plinko canvas not found, retrying...');
-        setTimeout(() => {
-            initializePlinko();
-        }, 100);
+        setTimeout(initializePlinko, 100);
         return;
     }
     
     plinkoCtx = plinkoCanvas.getContext('2d');
     
-    // Set default UI state
     setPlinkoRisk('low');
     setPlinkoRows(8);
     
-    // Set canvas size
     resizePlinkoCanvas();
-    
-    // Setup initial game state
     setupPlinkoGame();
-    
-    // Setup autobet handlers
     setupPlinkoAutobet();
     
-    // Add resize listener (only once)
     if (!window.plinkoResizeListenerAdded) {
         window.addEventListener('resize', resizePlinkoCanvas);
         window.plinkoResizeListenerAdded = true;
     }
     
-    // Start game loop
     if (plinkoState.animationId) {
         cancelAnimationFrame(plinkoState.animationId);
     }
+    initializePlinkoSync(); // Start the sync process
     plinkoGameLoop();
 }
 
@@ -2155,384 +2178,400 @@ function resizePlinkoCanvas() {
     }
 }
 
-// Setup Plinko game elements
+// Setup Plinko game elements and physics world
 function setupPlinkoGame() {
-    if (!plinkoCanvas || !plinkoCtx) {
-        console.log('Canvas not ready for setup');
-        return;
-    }
+    if (!plinkoCanvas || !plinkoCtx) return;
+
+    // --- Matter.js World Setup ---
+    const { Engine, World, Bodies, Runner, Events } = MatterModules;
+    if (runner) Runner.stop(runner);
+    engine = Engine.create({ gravity: { x: 0, y: plinkoConfig.gravity } });
+    runner = Runner.create();
+    Runner.run(runner, engine);
     
+    // --- Layout & SIZING FIX ---
     const { rows } = plinkoConfig;
     const { width, height } = plinkoCanvas;
     
-    // Clear previous state
+    const baseRows = 8;
+    const pegSpacing = width / (rows + 2);
+    const basePegSpacing = width / (baseRows + 2);
+    const scaleFactor = pegSpacing / basePegSpacing;
+
+    plinkoState.currentBallSize = plinkoConfig.ballSize * scaleFactor;
+    plinkoState.currentPegSize = plinkoConfig.pegSize * scaleFactor;
+
+    // Ensure a minimum size for visibility
+    plinkoState.currentBallSize = Math.max(plinkoState.currentBallSize, 6);
+    plinkoState.currentPegSize = Math.max(plinkoState.currentPegSize, 4);
+
+    // --- Layout Calculations ---
+    const topOffset = 80;
+    const bottomGap = 100;
+    
+    // Clear state
     plinkoState.pegs = [];
     plinkoState.buckets = [];
+    plinkoState.balls.forEach(ball => World.remove(engine.world, ball.body));
     plinkoState.balls = [];
     plinkoState.bucketAnimations = {};
-    
-    // Set current multipliers
+    plinkoState.pegAnimations = {}; // For hit animations
     plinkoState.multipliers = plinkoMultipliers[plinkoConfig.risk][rows];
-    
-    // Calculate peg positions - start from row with 3 pegs (skip top 2 rows)
-    const pegSpacing = width / (rows + 1);
-    const rowSpacing = (height - 120) / rows;
-    
-    // Start from row 2 (which has 3 pegs) instead of row 0
-    for (let row = 2; row < rows + 2; row++) {
-        for (let col = 0; col <= row; col++) {
-            const x = width / 2 + (col - row / 2) * pegSpacing;
-            const y = 60 + (row - 2) * rowSpacing;
-            
-            plinkoState.pegs.push({ 
-                x, 
-                y, 
-                row, 
-                col,
-                size: plinkoState.currentPegSize // Use current scaled peg size
-            });
-        }
-    }
-    
-    // Calculate bucket positions
-    const bucketCount = rows + 1;
-    const bucketWidth = width / bucketCount;
-    
-    for (let i = 0; i < bucketCount; i++) {
-        const x = i * bucketWidth;
-        const y = height - 50;
-        
-        plinkoState.buckets.push({
-            x,
-            y,
-            width: bucketWidth,
-            height: 50,
-            index: i
-        });
-    }
-    
-    // Log the current configuration
-    console.log(`Game setup with ${rows} rows: Ball size = ${plinkoState.currentBallSize}, Peg size = ${plinkoState.currentPegSize}`);
-}
 
-// Plinko ball physics
-class PlinkoBall {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.vx = 0;
-        this.vy = 0;
-        this.radius = plinkoState.currentBallSize || 16; // Use current scaled size
-        this.finished = false;
-        this.bucketIndex = -1;
-        this.betAmount = 0;
-        this.serverResult = null;
-        this.targetBucket = null;
-        this.guidanceStrength = 0.02; // How much to guide the ball towards target
-        this.lastCollisionTime = 0; // Prevent rapid collisions
-        this.lastCollidedPeg = null; // Track last peg hit
-    }
+    const bucketCount = rows + 1;
+    const bucketWidth = width / (bucketCount * 1.1);
+    const bucketMargin = (width - bucketWidth * bucketCount) / (bucketCount + 1);
     
-    update() {
-        if (this.finished) return;
-        
-        // Apply gravity with slight randomness
-        this.vy += plinkoConfig.gravity;
-        
-        // Apply guidance towards target bucket if we have one
-        if (this.targetBucket !== null && this.y > 100) {
-            const targetBucket = plinkoState.buckets[this.targetBucket];
-            if (targetBucket) {
-                const targetX = targetBucket.x + targetBucket.width / 2;
-                const distanceToTarget = targetX - this.x;
-                
-                // Apply subtle guidance force that increases as ball gets lower
-                const guidanceStrength = Math.min(this.guidanceStrength * (this.y / 200), 0.03);
-                const guidanceForce = distanceToTarget * guidanceStrength;
-                this.vx += guidanceForce;
-            }
-        }
-        
-        // Apply friction
-        this.vx *= plinkoConfig.friction;
-        this.vy *= plinkoConfig.friction;
-        
-        // Ensure minimum downward velocity to prevent floating
-        if (this.vy < 1) {
-            this.vy = Math.max(this.vy, 1);
-        }
-        
-        // Update position
-        this.x += this.vx;
-        this.y += this.vy;
-        
-        // Keep ball within canvas bounds
-        if (this.x < this.radius) {
-            this.x = this.radius;
-            this.vx = Math.abs(this.vx) * 0.5;
-        } else if (this.x > plinkoCanvas.width - this.radius) {
-            this.x = plinkoCanvas.width - this.radius;
-            this.vx = -Math.abs(this.vx) * 0.5;
-        }
-        
-        // Check collisions
-        this.checkPegCollisions();
-        this.checkBucketCollision();
-        
-        // Check if ball is out of bounds
-        if (this.y > plinkoCanvas.height + 100) {
-            this.finished = true;
+    // Peg field dimensions (pegSpacing already computed above)
+    const rowSpacing = (height - topOffset - bottomGap) / rows;
+
+    // --- Create Physics Bodies ---
+    const worldBodies = [];
+
+    // Walls
+    const wallOptions = { isStatic: true, render: { fillStyle: 'transparent' }, label: 'wall', collisionFilter: { category: collisionCategories.wall, mask: collisionCategories.ball } };
+    worldBodies.push(Bodies.rectangle(0, height / 2, 10, height, wallOptions));
+    worldBodies.push(Bodies.rectangle(width, height / 2, 10, height, wallOptions));
+    worldBodies.push(Bodies.rectangle(width / 2, height + 40, width, 100, { isStatic: true, label: 'floor' }));
+
+    // Pegs (Classic Triangle Formation)
+    for (let row = 0; row < rows; row++) {
+        const numPegs = row + 3; // Start with 3 pegs and increase
+        for (let col = 0; col < numPegs; col++) {
+            const x = (width / 2) + (col - (numPegs - 1) / 2) * pegSpacing;
+            const y = topOffset + row * rowSpacing;
+            
+            const pegBody = Bodies.circle(x, y, plinkoState.currentPegSize / 2, {
+                isStatic: true,
+                restitution: 0,
+                friction: 0,
+                render: { fillStyle: '#6b7280' },
+                label: 'peg',
+                collisionFilter: { category: collisionCategories.peg, mask: collisionCategories.ball }
+            });
+            plinkoState.pegs.push(pegBody);
         }
     }
-    
-    checkPegCollisions() {
-        const currentTime = Date.now();
+    worldBodies.push(...plinkoState.pegs);
+
+    // Buckets
+    for (let i = 0; i < bucketCount; i++) {
+        const x = bucketMargin + i * (bucketWidth + bucketMargin);
+        const y = height - 50;
+        const bucket = { x, y, width: bucketWidth, height: 50, index: i };
+        plinkoState.buckets.push(bucket);
         
-        for (let i = 0; i < plinkoState.pegs.length; i++) {
-            const peg = plinkoState.pegs[i];
+        const sensor = Bodies.rectangle(x + bucketWidth / 2, y + 25, bucketWidth * 0.8, 50, {
+            isStatic: true,
+            isSensor: true,
+            label: `bucket-${i}`,
+            collisionFilter: { category: collisionCategories.bucket, mask: collisionCategories.ball }
+        });
+        worldBodies.push(sensor);
+    }
+    
+    World.add(engine.world, worldBodies);
+
+    // --- Collision Handling ---
+    Events.off(engine, 'collisionStart');
+    Events.on(engine, 'collisionStart', (event) => {
+        for (const pair of event.pairs) {
+            const { bodyA, bodyB } = pair;
+            const ballBody = bodyA.label === 'ball' ? bodyA : (bodyB.label === 'ball' ? bodyB : null);
+            if (!ballBody) continue;
+
+            const otherBody = ballBody === bodyA ? bodyB : bodyA;
             
-            // Skip if this is the same peg we just hit (prevent vibrating)
-            if (this.lastCollidedPeg === i && currentTime - this.lastCollisionTime < 50) {
-                continue;
+            if (otherBody.label.startsWith('bucket-')) {
+                const ballObj = plinkoState.balls.find(b => b.body === ballBody);
+                if (ballObj && !ballObj.hasLanded) {
+                    ballObj.hasLanded = true;
+                    const bucketIndex = parseInt(otherBody.label.split('-')[1], 10);
+                    handlePlinkoBallLanding(ballObj, bucketIndex);
+                }
             }
-            
-            const dx = this.x - peg.x;
-            const dy = this.y - peg.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            // Use the scaled sizes for collision detection
-            if (distance < this.radius + peg.size && distance > 0) {
-                // Record collision
-                this.lastCollisionTime = currentTime;
-                this.lastCollidedPeg = i;
+            // Trigger peg hit animation + pinball impulse
+            else if (otherBody.label === 'peg') {
+                plinkoState.pegAnimations[otherBody.id] = { startTime: Date.now() };
+
+                // Apply strong outward velocity like a pinball bumper
+                const { Body } = MatterModules;
+                const dx = ballBody.position.x - otherBody.position.x;
+                const dy = ballBody.position.y - otherBody.position.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const speedBoost = 1; // bumper kick velocity (pixels per tick)
                 
-                // Calculate collision response
-                const angle = Math.atan2(dy, dx);
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                // Find the ball object to get its target
+                const ballObj = plinkoState.balls.find(b => b.body === ballBody);
+                const now = Date.now();
                 
-                // Separate ball from peg completely
-                const separationDistance = this.radius + peg.size + 3;
-                this.x = peg.x + Math.cos(angle) * separationDistance;
-                this.y = peg.y + Math.sin(angle) * separationDistance;
+                // Prevent rapid peg bouncing with cooldown
+                if (ballObj && now - ballObj.lastPegCollision < 100) {
+                    return; // Skip this collision
+                }
+                if (ballObj) ballObj.lastPegCollision = now;
                 
-                // Calculate new velocity with controlled randomness
-                let newAngle = angle + (Math.random() - 0.5) * 0.8;
-                let newSpeed = Math.max(speed * plinkoConfig.bounce, 1.5);
-                
-                // Bias towards target bucket if we have one
-                if (this.targetBucket !== null) {
-                    const targetBucket = plinkoState.buckets[this.targetBucket];
+                if (ballObj && ballObj.targetBucketIdx !== null && ballObj.targetBucketIdx !== undefined) {
+                    const targetBucket = plinkoState.buckets[ballObj.targetBucketIdx];
                     if (targetBucket) {
                         const targetX = targetBucket.x + targetBucket.width / 2;
-                        const targetDirection = targetX > this.x ? 1 : -1;
-                        const currentDirection = Math.cos(newAngle) > 0 ? 1 : -1;
+                        const ballX = ballBody.position.x;
+                        const shouldGoLeft = targetX < ballX;
+                        const shouldGoRight = targetX > ballX;
                         
-                        // Bias the bounce towards the target (20% chance)
-                        if (Math.random() < 0.2 && currentDirection !== targetDirection) {
-                            newAngle = -newAngle * 0.8;
+                        // Bias the bounce direction toward the target
+                        let biasedNx = nx;
+                        if (shouldGoLeft && nx > 0) {
+                            biasedNx = nx * 0.5; // Reduce rightward bounce
+                        } else if (shouldGoRight && nx < 0) {
+                            biasedNx = nx * 0.5; // Reduce leftward bounce
                         }
+                        
+                        Body.setVelocity(ballBody, { x: biasedNx * speedBoost, y: ny * speedBoost });
+                    } else {
+                        Body.setVelocity(ballBody, { x: nx * speedBoost, y: ny * speedBoost });
                     }
+                } else {
+                    Body.setVelocity(ballBody, { x: nx * speedBoost, y: ny * speedBoost });
                 }
-                
-                this.vx = Math.cos(newAngle) * newSpeed;
-                this.vy = Math.sin(newAngle) * newSpeed;
-                
-                // Ensure downward movement
-                if (this.vy < 0.5) {
-                    this.vy = 0.5;
-                }
-                
-                break; // Only handle one collision per frame
+            }
+            // Apply similar bounce off side walls
+            else if (otherBody.label === 'wall') {
+                const { Body } = MatterModules;
+                const dx = ballBody.position.x - otherBody.position.x;
+                const dy = ballBody.position.y - otherBody.position.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const speedBoost = 1;
+                Body.setVelocity(ballBody, { x: nx * speedBoost, y: ny * speedBoost });
             }
         }
-    }
-    
-    checkBucketCollision() {
-        // Check if ball is in bucket area
-        if (this.y > plinkoCanvas.height - 60) {
-            for (let i = 0; i < plinkoState.buckets.length; i++) {
-                const bucket = plinkoState.buckets[i];
-                
-                // Calculate actual bucket dimensions (80% of original width)
-                const bucketWidth = bucket.width * 0.8;
-                const bucketX = bucket.x + (bucket.width - bucketWidth) / 2;
-                
-                // Check if ball is within bucket bounds
-                if (this.x >= bucketX && this.x <= bucketX + bucketWidth) {
-                    this.finished = true;
-                    this.bucketIndex = i;
-                    this.y = plinkoCanvas.height - 40 - this.radius; // Position in bucket
-                    this.vx = 0;
-                    this.vy = 0;
-                    break;
+    });
+
+    // After collisionStart Events.on, add new beforeUpdate event once
+    Events.off(engine, 'beforeUpdate');
+    Events.on(engine, 'beforeUpdate', () => {
+        const { Body } = MatterModules;
+        const maxHorizSpeed = 4; // limit side-to-side travel
+        for (const ballObj of plinkoState.balls) {
+            const body = ballObj.body;
+            if (!body) continue;
+
+            // Apply small downward guidance force to discourage horizontal gliding
+            Body.applyForce(body, body.position, { x: 0, y: 0.00003 * body.mass });
+
+            // Guide ball toward predetermined target bucket
+            if (ballObj.targetBucketIdx !== null && ballObj.targetBucketIdx !== undefined) {
+                const targetBucket = plinkoState.buckets[ballObj.targetBucketIdx];
+                if (targetBucket && body.position.y > 100) { // Only guide after it's past the starting area
+                    const targetX = targetBucket.x + targetBucket.width / 2;
+                    const dx = targetX - body.position.x;
+                    const distance = Math.abs(dx);
+                    
+                    // Gentle horizontal guidance - stronger when further from target
+                    const guidanceStrength = Math.min(distance / 300, 1) * 0.00001;
+                    const guidanceForce = Math.sign(dx) * guidanceStrength * body.mass;
+                    Body.applyForce(body, body.position, { x: guidanceForce, y: 0 });
                 }
             }
-            
-            // Fallback: if ball is below buckets but not in any bucket, put in target bucket
-            if (!this.finished && this.y > plinkoCanvas.height - 30 && this.targetBucket !== null) {
-                this.finished = true;
-                this.bucketIndex = this.targetBucket;
-                this.y = plinkoCanvas.height - 40 - this.radius;
-                this.vx = 0;
-                this.vy = 0;
+
+            // Clamp horizontal velocity
+            if (Math.abs(body.velocity.x) > maxHorizSpeed) {
+                Body.setVelocity(body, { x: Math.sign(body.velocity.x) * maxHorizSpeed, y: body.velocity.y });
+            }
+
+            // Anti-stuck nudge: if almost stationary
+            const speed = Math.hypot(body.velocity.x, body.velocity.y);
+            if (speed < 0.05) {
+                const nudgeX = (Math.random() - 0.5) * 0.00005;
+                const nudgeY = 0.0001;
+                Body.applyForce(body, body.position, { x: nudgeX, y: nudgeY });
             }
         }
-    }
+    });
+}
+
+function handlePlinkoBallLanding(ball, bucketIdx) {
+    // Server-determined outcome - use predetermined target bucket
+    const actualBucketIdx = ball.targetBucketIdx !== null ? ball.targetBucketIdx : bucketIdx;
+    const multiplier = plinkoState.multipliers[actualBucketIdx];
+    const winAmount = +(ball.betAmount * multiplier).toFixed(2);
+
+    // Add winnings to the balance (bet was already deducted)
+    currentUser.balance += winAmount;
+    updateUserInterface();
+
+    console.log(`✅ Ball landed in bucket ${bucketIdx}, predetermined was ${ball.targetBucketIdx}, using ${actualBucketIdx} for payout`);
+
+    const colors = getBucketColor(multiplier);
+    showGameNotification(multiplier >= 1, winAmount, null, colors, multiplier);
+    plinkoState.bucketAnimations[actualBucketIdx] = { start: Date.now(), won: multiplier >= 1 };
     
-    draw() {
-        if (!plinkoCtx) return;
+    if (plinkoAutobet.isActive) {
+        continuePlinkoAutobet(multiplier >= 1, winAmount - ball.betAmount);
+    }
+
+    MatterModules.World.remove(engine.world, ball.body);
+    const ballIndex = plinkoState.balls.indexOf(ball);
+    if (ballIndex > -1) {
+        plinkoState.balls.splice(ballIndex, 1);
+    }
+}
+
+// Plinko ball class using Matter.js
+class PlinkoBall {
+    constructor(x, y, betAmount, targetBucketIdx = null) {
+        const { Bodies, World, Body } = MatterModules;
+        this.betAmount = betAmount;
+        this.targetBucketIdx = targetBucketIdx;
+        this.radius = plinkoState.currentBallSize / 2;
+        this.hasLanded = false;
+        this.lastPegCollision = 0; // Cooldown for peg collisions
+
+        this.body = Bodies.circle(x, y, this.radius, {
+            restitution: 0.9,
+            friction: 0,
+            frictionStatic: 0,
+            frictionAir: 0.002,
+            label: 'ball',
+            collisionFilter: {
+                category: collisionCategories.ball,
+                mask: collisionCategories.peg | collisionCategories.bucket | collisionCategories.wall
+            }
+            // No 'render' property
+        });
         
+        const startForce = 0.0005; // Smaller initial horizontal randomness for straighter drop
+        const force = {
+            x: (Math.random() - 0.5) * startForce,
+            y: 0
+        };
+        Body.applyForce(this.body, this.body.position, force);
+
+        World.add(engine.world, this.body);
+    }
+    get x() { return this.body.position.x; }
+    get y() { return this.body.position.y; }
+}
+
+function plinkoGameLoop() {
+    if (!plinkoCtx || !plinkoCanvas) return;
+    
+    plinkoCtx.clearRect(0, 0, plinkoCanvas.width, plinkoCanvas.height);
+    
+    // Draw Pegs with hit animations
+    for (const peg of plinkoState.pegs) {
         plinkoCtx.beginPath();
-        plinkoCtx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
-        
-        // Gradient for better visual
+        plinkoCtx.arc(peg.position.x, peg.position.y, peg.circleRadius, 0, 2 * Math.PI);
+        plinkoCtx.fillStyle = '#6b7280';
+        plinkoCtx.fill();
+
+        const anim = plinkoState.pegAnimations[peg.id];
+        if (anim) {
+            const elapsed = Date.now() - anim.startTime;
+            const duration = 250;
+            if (elapsed > duration) {
+                delete plinkoState.pegAnimations[peg.id];
+            } else {
+                const progress = elapsed / duration;
+                const scale = 1 + 0.6 * Math.sin(progress * Math.PI); // Pop effect
+                plinkoCtx.save();
+                plinkoCtx.translate(peg.position.x, peg.position.y);
+                plinkoCtx.scale(scale, scale);
+                plinkoCtx.translate(-peg.position.x, -peg.position.y);
+                
+                plinkoCtx.beginPath();
+                plinkoCtx.arc(peg.position.x, peg.position.y, peg.circleRadius, 0, 2 * Math.PI);
+                plinkoCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                plinkoCtx.fill();
+
+                plinkoCtx.restore();
+            }
+        }
+    }
+    
+    // Draw Balls with original gradient
+    for (const ball of plinkoState.balls) {
+        plinkoCtx.beginPath();
+        plinkoCtx.arc(ball.x, ball.y, ball.radius, 0, 2 * Math.PI);
         const gradient = plinkoCtx.createRadialGradient(
-            this.x - this.radius/3, this.y - this.radius/3, 0,
-            this.x, this.y, this.radius
+            ball.x - ball.radius/3, ball.y - ball.radius/3, 0,
+            ball.x, ball.y, ball.radius
         );
         gradient.addColorStop(0, '#ffffff');
         gradient.addColorStop(1, '#d1d5db');
-        
         plinkoCtx.fillStyle = gradient;
         plinkoCtx.fill();
         plinkoCtx.strokeStyle = '#9ca3af';
         plinkoCtx.lineWidth = 1;
         plinkoCtx.stroke();
     }
-}
-
-// Game loop
-function plinkoGameLoop() {
-    if (!plinkoCtx || !plinkoCanvas) return;
     
-    // Clear canvas
-    plinkoCtx.clearRect(0, 0, plinkoCanvas.width, plinkoCanvas.height);
-    
-    // Draw pegs
-    for (const peg of plinkoState.pegs) {
-        plinkoCtx.beginPath();
-        plinkoCtx.arc(peg.x, peg.y, peg.size, 0, 2 * Math.PI);
-        plinkoCtx.fillStyle = '#6b7280';
-        plinkoCtx.fill();
-        plinkoCtx.strokeStyle = '#4b5563';
-        plinkoCtx.lineWidth = 1;
-        plinkoCtx.stroke();
-    }
-    
-    // Helper function to get bucket color based on multiplier
-    function getBucketColor(multiplier) {
-        if (multiplier >= 10) return { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.6)', text: '#dc2626' }; // Red for high
-        if (multiplier >= 5) return { bg: 'rgba(245, 158, 11, 0.3)', border: 'rgba(245, 158, 11, 0.6)', text: '#d97706' }; // Orange
-        if (multiplier >= 2) return { bg: 'rgba(34, 197, 94, 0.3)', border: 'rgba(34, 197, 94, 0.6)', text: '#16a34a' }; // Green
-        if (multiplier >= 1) return { bg: 'rgba(59, 130, 246, 0.3)', border: 'rgba(59, 130, 246, 0.6)', text: '#2563eb' }; // Blue
-        return { bg: 'rgba(107, 114, 128, 0.3)', border: 'rgba(107, 114, 128, 0.6)', text: '#6b7280' }; // Gray for low
-    }
-    
-    // Draw buckets
+    // Draw Buckets and Animations
     for (let i = 0; i < plinkoState.buckets.length; i++) {
         const bucket = plinkoState.buckets[i];
-        const bucketWidth = bucket.width * 0.8;
-        const bucketX = bucket.x + (bucket.width - bucketWidth) / 2;
-        
         const multiplier = plinkoState.multipliers[i];
         const colors = getBucketColor(multiplier);
-        
-        // Draw bucket with color
         plinkoCtx.beginPath();
-        plinkoCtx.roundRect(bucketX, bucket.y, bucketWidth, 35, 8);
+        const radius = 6;
+        plinkoCtx.roundRect(bucket.x, bucket.y, bucket.width, bucket.height, radius);
         plinkoCtx.fillStyle = colors.bg;
         plinkoCtx.fill();
         plinkoCtx.strokeStyle = colors.border;
         plinkoCtx.lineWidth = 2;
         plinkoCtx.stroke();
         
-        // Draw multiplier with colored text
         plinkoCtx.fillStyle = colors.text;
-        plinkoCtx.font = 'bold 12px Outfit';
+        plinkoCtx.font = 'bold 14px Outfit';
         plinkoCtx.textAlign = 'center';
-        plinkoCtx.fillText(multiplier + 'x', bucketX + bucketWidth/2, bucket.y + 22);
+        plinkoCtx.fillText(multiplier + 'x', bucket.x + bucket.width / 2, bucket.y + bucket.height / 2 + 6);
         
-        // Draw bucket animation if active
-        const animation = plinkoState.bucketAnimations[i];
-        if (animation) {
-            const elapsed = Date.now() - animation.startTime;
-            if (elapsed > 800) {
+        const anim = plinkoState.bucketAnimations[i];
+        if (anim) {
+            const elapsed = Date.now() - anim.start;
+            const duration = 600;
+            if (elapsed > duration) {
                 delete plinkoState.bucketAnimations[i];
             } else {
-                const progress = elapsed / 800;
-                const scale = 1 + (animation.scale - 1) * (1 - progress);
-                const opacity = animation.opacity * (1 - progress);
-                
+                const progress = elapsed / duration;
+                const scale = 1 + (0.4 * (1 - progress));
                 plinkoCtx.save();
-                plinkoCtx.globalAlpha = opacity;
-                plinkoCtx.translate(bucketX + bucketWidth/2, bucket.y + 17.5);
+                plinkoCtx.globalAlpha = 0.8 * (1 - progress);
+                plinkoCtx.translate(bucket.x + bucket.width / 2, bucket.y + bucket.height / 2);
                 plinkoCtx.scale(scale, scale);
-                plinkoCtx.translate(-(bucketX + bucketWidth/2), -(bucket.y + 17.5));
-                
+                plinkoCtx.translate(-(bucket.x + bucket.width / 2), -(bucket.y + bucket.height / 2));
                 plinkoCtx.beginPath();
-                plinkoCtx.roundRect(bucketX, bucket.y, bucketWidth, 35, 8);
-                plinkoCtx.fillStyle = animation.won ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+                plinkoCtx.roundRect(bucket.x, bucket.y, bucket.width, bucket.height, radius);
+                plinkoCtx.fillStyle = anim.won ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.4)';
                 plinkoCtx.fill();
-                
                 plinkoCtx.restore();
             }
         }
     }
     
-    // Update and draw balls
+    // Cleanup any balls that might have escaped (rare)
     for (let i = plinkoState.balls.length - 1; i >= 0; i--) {
         const ball = plinkoState.balls[i];
-        ball.update();
-        ball.draw();
-        
-        // Handle finished balls
-        if (ball.finished) {
-            if (ball.bucketIndex !== -1 && ball.serverResult) {
-                // Use server result data
-                const result = ball.serverResult;
-                const multiplier = result.multiplier;
-                const colors = getBucketColor(multiplier);
-                
-                // The server already updated the balance, so we just need to refresh the UI
-                // No need to manually calculate - the server response contains the correct balance
-                updateUserInterface();
-                
-                // Show notification with color and amount
-                const notificationManager = new NotificationManager();
-                notificationManager.show({
-                    title: result.won ? 'Plinko Win!' : 'Plinko Loss',
-                    message: `Ball landed in ${multiplier}x bucket! ${result.won ? `Won $${result.winAmount.toFixed(2)}` : `Lost $${ball.betAmount.toFixed(2)}`}`,
-                    type: result.won ? 'success' : 'error',
-                    amount: result.won ? result.winAmount : -ball.betAmount,
-                    customColor: colors.text
-                });
-                
-                // Trigger bucket animation
-                plinkoState.bucketAnimations[ball.bucketIndex] = {
-                    startTime: Date.now(),
-                    scale: 1.3,
-                    opacity: 0.8,
-                    won: result.won
-                };
-            }
-            
-            // Remove the ball
+        if (ball.y > plinkoCanvas.height + 100) {
+            MatterModules.World.remove(engine.world, ball.body);
             plinkoState.balls.splice(i, 1);
         }
     }
-    
-    // Reset dropping state if no balls are active
+
     if (plinkoState.balls.length === 0 && plinkoState.isDropping) {
         plinkoState.isDropping = false;
     }
     
-    requestAnimationFrame(plinkoGameLoop);
+    plinkoState.animationId = requestAnimationFrame(plinkoGameLoop);
 }
 
 // Set plinko rows
 function setPlinkoRows(rows) {
-    // Don't allow changes while dropping
-    if (plinkoState.isDropping) {
+    // Don't allow changes while dropping or balls are active
+    if (plinkoState.isDropping || plinkoState.balls.length > 0) {
         return;
     }
     
@@ -2550,31 +2589,14 @@ function setPlinkoRows(rows) {
     plinkoState.balls = [];
     plinkoState.bucketAnimations = {};
     
-    // Calculate scaling based on available space
-    // The peg spacing determines how big elements can be
-    const canvasWidth = plinkoCanvas ? plinkoCanvas.width : 500;
-    const pegSpacing = canvasWidth / (rows + 1);
-    
-    // Scale elements based on available space between pegs
-    // Leave enough room for balls to pass between pegs
-    const maxPegSize = Math.min(pegSpacing * 0.15, 12); // Pegs take max 15% of spacing
-    const maxBallSize = Math.min(pegSpacing * 0.25, 18); // Balls take max 25% of spacing
-    
-    // Apply minimum sizes to ensure visibility
-    plinkoState.currentPegSize = Math.max(4, Math.round(maxPegSize));
-    plinkoState.currentBallSize = Math.max(6, Math.round(maxBallSize));
-    
-    // Log the size changes for debugging
-    console.log(`Row changed to ${rows}: PegSpacing = ${pegSpacing.toFixed(1)}, Ball = ${plinkoState.currentBallSize}, Peg = ${plinkoState.currentPegSize}`);
-    
-    // Recalculate game layout with new sizes
+    // Recalculate game layout with new sizes (scaling handled in setupPlinkoGame)
     setupPlinkoGame();
 }
 
 // Set plinko risk
 function setPlinkoRisk(risk) {
-    // Don't allow changes while dropping
-    if (plinkoState.isDropping) {
+    // Don't allow changes while dropping or balls are active
+    if (plinkoState.isDropping || plinkoState.balls.length > 0) {
         return;
     }
     
@@ -2584,13 +2606,14 @@ function setPlinkoRisk(risk) {
     document.querySelectorAll('[id^="risk-"]').forEach(btn => {
         btn.classList.remove('active');
     });
-    document.getElementById(`risk-${risk}-btn`).classList.add('active');
-    document.getElementById('plinko-risk').textContent = risk.charAt(0).toUpperCase() + risk.slice(1);
+    document.getElementById(`risk-${risk}`).classList.add('active');
     
-    // Update game immediately
-    if (plinkoCanvas && plinkoCtx) {
-        setupPlinkoGame();
-    }
+    // Update multipliers
+    plinkoState.multipliers = plinkoMultipliers[risk][plinkoConfig.rows];
+    
+    // Clear any existing balls and animations
+    plinkoState.balls = [];
+    plinkoState.bucketAnimations = {};
 }
 
 // Set plinko bet amount
@@ -2621,35 +2644,30 @@ function setPlinkoAmount(action) {
 
 // Drop a new ball
 async function dropBall() {
+    // Debounce to prevent API spam
+    const now = Date.now();
+    if (now - lastDropTime < DROP_DEBOUNCE_MS) {
+        return;
+    }
+    lastDropTime = now;
+    
     const betAmount = parseFloat(document.getElementById('plinko-bet-amount').value);
-    if (!betAmount || betAmount <= 0) {
-        showGameNotification(false, null, 'Please enter a valid bet amount');
+    if (!betAmount || betAmount <= 0 || betAmount > currentUser.balance) {
+        showGameNotification(false, null, 'Invalid bet amount.');
         return;
     }
     
-    if (betAmount > currentUser.balance) {
-        showGameNotification(false, null, 'Insufficient balance');
-        return;
-    }
-    
-    // Set dropping state to prevent UI changes (but allow more balls)
     plinkoState.isDropping = true;
     
-    // Create new ball at top center of canvas
-    const ball = new PlinkoBall(plinkoCanvas.width / 2, 30);
-    ball.betAmount = betAmount;
+    // VISUAL balance deduction
+    currentUser.balance -= betAmount;
+    updateUserInterface();
     
     try {
-        // Add ball to state immediately
-        plinkoState.balls.push(ball);
-        
-        // Send bet to server
+        // Get predetermined outcome from server
         const response = await fetch(`${API_BASE_URL}/api/games/plinko`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
             body: JSON.stringify({
                 betAmount: betAmount,
                 risk: plinkoConfig.risk,
@@ -2657,59 +2675,33 @@ async function dropBall() {
             })
         });
         
-        if (!response.ok) {
-            throw new Error(`Server error: ${response.status}`);
-        }
-        
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
         const data = await response.json();
-        if (data.error) {
-            throw new Error(data.error);
-        }
+        if (data.error) throw new Error(data.error);
         
-        // Update user balance
+        // Create ball with predetermined target
+        const ball = new PlinkoBall(plinkoCanvas.width / 2, 30, betAmount, data.bucketIndex);
+        plinkoState.balls.push(ball);
+        
+        // Debug: Log the predetermined outcome
+        const multiplier = plinkoMultipliers[plinkoConfig.risk][plinkoConfig.rows][data.bucketIndex];
+        const expectedWin = +(betAmount * multiplier).toFixed(2);
+        console.log(`🎯 Predetermined outcome: Bucket ${data.bucketIndex}, Multiplier ${multiplier}x, Win: $${expectedWin}`);
+        
+        // Update XP/level from server
         if (data.user) {
-            currentUser.balance = data.user.balance;
             currentUser.xp = data.user.xp;
             currentUser.level = data.user.level;
             updateUserInterface();
         }
         
-        // Store result for when ball lands - include the predetermined bucket
-        ball.serverResult = {
-            bucketIndex: data.bucketIndex,
-            multiplier: data.multiplier,
-            won: data.won,
-            winAmount: data.winAmount
-        };
-        
-        // Set the ball to land in the predetermined bucket
-        ball.targetBucket = data.bucketIndex;
-        
     } catch (error) {
-        console.error('Plinko API Error:', error);
-        
-        // Remove the ball from state since the bet failed
-        const ballIndex = plinkoState.balls.findIndex(b => b === ball);
-        if (ballIndex !== -1) {
-            plinkoState.balls.splice(ballIndex, 1);
-        }
-        
-        // Only reset dropping state if no balls are left
-        if (plinkoState.balls.length === 0) {
-            plinkoState.isDropping = false;
-        }
-        
-        // Show appropriate error message
-        let errorMessage = 'Failed to place bet';
-        if (error.message.includes('404')) {
-            errorMessage = 'Server not running. Please start the server first.';
-        } else if (error.message.includes('Server error')) {
-            errorMessage = 'Server error. Please try again.';
-        } else if (error.message) {
-            errorMessage = error.message;
-        }
-        
-        showGameNotification(false, null, errorMessage);
+        console.error('Plinko Drop Error:', error);
+        // Refund on error
+        currentUser.balance += betAmount;
+        updateUserInterface();
+        showGameNotification(false, null, 'Failed to drop ball. Please try again.');
+        plinkoState.isDropping = false;
     }
 }
 
@@ -2919,3 +2911,117 @@ function shouldStopAutobet(won, profit) {
     
     return false;
 }
+
+// Helper to map multiplier to color
+function getBucketColor(multiplier) {
+    if (multiplier >= 10) return { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' }; // red
+    if (multiplier >= 5)  return { bg: 'rgba(245, 158, 11, 0.3)', border: 'rgba(245, 158, 11, 0.8)', text: '#f59e0b' }; // orange
+    if (multiplier >= 2)  return { bg: 'rgba(34, 197, 94, 0.3)',  border: 'rgba(34, 197, 94, 0.8)',  text: '#22c55e' }; // green
+    if (multiplier >= 1)  return { bg: 'rgba(59, 130, 246, 0.3)', border: 'rgba(59, 130, 246, 0.8)', text: '#3b82f6' }; // blue
+    return { bg: 'rgba(107, 114, 128, 0.3)', border: 'rgba(107, 114, 128, 0.8)', text: '#6b7280' }; // grey
+}
+
+// Plinko request queue to prevent 429 errors
+const plinkoRequestQueue = [];
+let plinkoIsProcessingQueue = false;
+const PLINKO_REQUEST_DELAY = 350; // ms between requests
+
+function enqueuePlinkoRequest(requestFn) {
+    plinkoRequestQueue.push(requestFn);
+    if (!plinkoIsProcessingQueue) {
+        processPlinkoQueue();
+    }
+}
+
+async function processPlinkoQueue() {
+    if (plinkoRequestQueue.length === 0) {
+        plinkoIsProcessingQueue = false;
+        return;
+    }
+    plinkoIsProcessingQueue = true;
+    const fn = plinkoRequestQueue.shift();
+    try {
+        await fn();
+    } catch (err) {
+        console.error('Plinko queued request error', err);
+    }
+    setTimeout(processPlinkoQueue, PLINKO_REQUEST_DELAY);
+}
+
+const plinkoResultQueue = []; // Holds results to be sent to the server
+let isSyncing = false;
+
+// Initializes the periodic sync and page unload safety net
+function initializePlinkoSync() {
+    // Sync every 3 seconds
+    setInterval(() => {
+        if (plinkoResultQueue.length > 0 && !isSyncing) {
+            syncPlinkoResults();
+        }
+    }, 3000);
+
+    // Sync when user switches tabs or closes the page
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === 'hidden' && plinkoResultQueue.length > 0) {
+            syncPlinkoResults(true); // Use synchronous fetch
+        }
+    };
+    
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', (e) => {
+        if (plinkoResultQueue.length > 0) {
+            syncPlinkoResults(true);
+        }
+    });
+}
+
+// Sends the collected results to the server
+async function syncPlinkoResults(useSyncFetch = false) {
+    if (isSyncing || plinkoResultQueue.length === 0) return;
+    
+    isSyncing = true;
+    const gamesToSync = [...plinkoResultQueue];
+    plinkoResultQueue.length = 0; // Clear the queue immediately
+
+    try {
+        const fetchOptions = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+            body: JSON.stringify({ games: gamesToSync })
+        };
+
+        if (useSyncFetch) {
+            navigator.sendBeacon(`${API_BASE_URL}/api/games/plinko/batch`, new Blob([fetchOptions.body], { type: 'application/json' }));
+            console.log('Sent beacon with', gamesToSync.length, 'results.');
+        } else {
+            const response = await fetch(`${API_BASE_URL}/api/games/plinko/batch`, fetchOptions);
+            if (!response.ok) throw new Error('Server sync failed');
+            const data = await response.json();
+
+            currentUser.balance = data.newBalance;
+            currentUser.xp = data.xp;
+            currentUser.level = data.level;
+            updateUserInterface();
+            if (data.leveledUp) {
+                notifications.levelUp('Level Up!', `You've reached level ${data.level}!`);
+            }
+        }
+    } catch (error) {
+        console.error('Plinko Sync Error:', error);
+        plinkoResultQueue.unshift(...gamesToSync);
+    } finally {
+        isSyncing = false;
+    }
+}
+
+// Collision categories for Matter.js
+const collisionCategories = {
+    ball: 0x0001,
+    peg: 0x0002,
+    bucket: 0x0004,
+    wall: 0x0008
+};
+
+// ... after plinkoState definition ...
+let lastDropTime = 0;
+const DROP_DEBOUNCE_MS = 200; // Minimum time between drops
