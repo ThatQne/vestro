@@ -2414,19 +2414,13 @@ function setupPlinkoGame() {
             if (otherBody.label.startsWith('bucket-')) {
                 const ballObj = plinkoState.balls.find(b => b.body === ballBody);
                 if (ballObj && !ballObj.hasLanded) {
+                    ballObj.hasLanded = true;
                     const bucketIndex = parseInt(otherBody.label.split('-')[1], 10);
-                    console.log(`🎯 Ball collision detected with bucket ${bucketIndex}`);
                     handlePlinkoBallLanding(ballObj, bucketIndex);
                 }
             }
             // Trigger peg hit animation + pinball impulse
             else if (otherBody.label === 'peg') {
-                const ballObj = plinkoState.balls.find(b => b.body === ballBody);
-                if (ballObj) {
-                    ballObj.pegCollisionCount++;
-                    ballObj.lastPegCollision = Date.now();
-                }
-                
                 plinkoState.pegAnimations[otherBody.id] = { startTime: Date.now() };
 
                 // Apply strong outward velocity like a pinball bumper
@@ -2434,17 +2428,24 @@ function setupPlinkoGame() {
                 const dx = ballBody.position.x - otherBody.position.x;
                 const dy = ballBody.position.y - otherBody.position.y;
                 const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                
-                // Normalize direction
                 const nx = dx / dist;
                 const ny = dy / dist;
+                const speedBoost = 2; // bumper kick velocity (pixels per tick)
                 
-                // Apply impulse away from peg
-                const speedBoost = 1.5;
+                // Find the ball object to get its target
+                const ballObj = plinkoState.balls.find(b => b.body === ballBody);
+                const now = Date.now();
                 
-                // Find the ball object to check for predetermined target
-                if (ballObj && ballObj.targetBucketIdx !== null) {
-                    // Get target bucket position
+                // Prevent rapid peg bouncing with cooldown
+                if (ballObj && now - ballObj.lastPegCollision < 200) {
+                    return; // Skip this collision
+                }
+                if (ballObj) {
+                    ballObj.lastPegCollision = now;
+                    ballObj.pegCollisionCount++;
+                }
+                
+                if (ballObj && ballObj.targetBucketIdx !== null && ballObj.targetBucketIdx !== undefined) {
                     const targetBucket = plinkoState.buckets[ballObj.targetBucketIdx];
                     if (targetBucket) {
                         const targetX = targetBucket.x + targetBucket.width / 2;
@@ -2486,52 +2487,22 @@ function setupPlinkoGame() {
                 const dist = Math.sqrt(dx * dx + dy * dy) || 1;
                 const nx = dx / dist;
                 const ny = dy / dist;
-                Body.setVelocity(ballBody, { x: nx * 1.2, y: ny * 1.2 });
+                const speedBoost = 1;
+                Body.setVelocity(ballBody, { x: nx * speedBoost, y: ny * speedBoost });
             }
         }
     });
 
-    // Add physics update loop for ball guidance and cleanup
+    // After collisionStart Events.on, add new beforeUpdate event once
     Events.off(engine, 'beforeUpdate');
     Events.on(engine, 'beforeUpdate', () => {
-        const maxHorizSpeed = 3;
         const { Body } = MatterModules;
-        
-        for (let i = plinkoState.balls.length - 1; i >= 0; i--) {
-            const ballObj = plinkoState.balls[i];
+        const maxHorizSpeed = 6; // Allow stronger guidance movement
+        for (const ballObj of plinkoState.balls) {
             const body = ballObj.body;
-            
-            if (!body || ballObj.hasLanded) continue;
-            
-            // Check if ball is stuck or moving too slowly
-            const currentPos = { x: body.position.x, y: body.position.y };
-            const distanceMoved = Math.sqrt(
-                Math.pow(currentPos.x - ballObj.lastPosition.x, 2) + 
-                Math.pow(currentPos.y - ballObj.lastPosition.y, 2)
-            );
-            
-            if (distanceMoved < 1 && body.velocity.x < 0.1 && body.velocity.y < 0.1) {
-                ballObj.stuckTimer++;
-                if (ballObj.stuckTimer > 60) { // 1 second at 60fps
-                    console.warn('Ball appears stuck, applying unstuck force');
-                    Body.applyForce(body, body.position, { x: (Math.random() - 0.5) * 0.001, y: 0.002 });
-                    ballObj.stuckTimer = 0;
-                }
-            } else {
-                ballObj.stuckTimer = 0;
-            }
-            
-            ballObj.lastPosition = currentPos;
-            
-            // Check if ball has fallen too far below buckets - emergency cleanup
-            if (body.position.y > plinkoCanvas.height + 200) {
-                console.warn('Ball fell too far, forcing landing in center bucket');
-                const centerBucket = Math.floor(plinkoState.buckets.length / 2);
-                handlePlinkoBallLanding(ballObj, centerBucket);
-                continue;
-            }
-            
-            // Apply slight downward guidance force to discourage horizontal gliding
+            if (!body) continue;
+
+            // Apply small downward guidance force to discourage horizontal gliding
             Body.applyForce(body, body.position, { x: 0, y: 0.00003 * body.mass });
 
             // Guide ball toward predetermined target bucket
@@ -2547,7 +2518,7 @@ function setupPlinkoGame() {
                     const guidanceForce = Math.sign(dx) * guidanceStrength * body.mass;
                     Body.applyForce(body, body.position, { x: guidanceForce, y: 0 });
                     
-                    // Additional strong guidance when close to bottom
+                                        // Additional strong guidance when close to bottom
                     if (body.position.y > plinkoCanvas.height * 0.7) {
                         const strongGuidance = Math.sign(dx) * 0.0003 * body.mass;
                         Body.applyForce(body, body.position, { x: strongGuidance, y: 0 });
@@ -2565,52 +2536,74 @@ function setupPlinkoGame() {
             if (Math.abs(body.velocity.x) > maxHorizSpeed) {
                 Body.setVelocity(body, { x: Math.sign(body.velocity.x) * maxHorizSpeed, y: body.velocity.y });
             }
+
+            // Anti-stuck nudge: if almost stationary
+            const speed = Math.hypot(body.velocity.x, body.velocity.y);
+            if (speed < 0.05) {
+                const nudgeX = (Math.random() - 0.5) * 0.00005;
+                const nudgeY = 0.0001;
+                Body.applyForce(body, body.position, { x: nudgeX, y: nudgeY });
+            }
+            
+            // Oscillation and stuck detection
+            const positionChange = Math.hypot(body.position.x - ballObj.lastPosition.x, body.position.y - ballObj.lastPosition.y);
+            
+            // Update position tracking
+            ballObj.lastPosition = { x: body.position.x, y: body.position.y };
+            
+            // If ball is moving very little vertically (stuck/oscillating)
+            if (Math.abs(body.velocity.y) < 0.5 && body.position.y > 150) {
+                ballObj.stuckTimer++;
+                
+                // After being stuck for too long, apply emergency escape
+                if (ballObj.stuckTimer > 60) { // ~1 second at 60fps
+                    const escapeForce = 0.002 * body.mass;
+                    Body.applyForce(body, body.position, { x: 0, y: escapeForce });
+                    ballObj.stuckTimer = 0; // Reset timer
+                }
+            } else {
+                ballObj.stuckTimer = 0; // Reset if moving normally
+            }
+            
+            // If ball has bounced too many times, reduce bounce strength
+            if (ballObj.pegCollisionCount > 15) {
+                // Dampen excessive bouncing
+                if (Math.abs(body.velocity.x) > 2) {
+                    Body.setVelocity(body, { x: body.velocity.x * 0.8, y: body.velocity.y });
+                }
+            }
         }
     });
 }
 
-// Modified ball landing handler - now handles balance updates
-function handlePlinkoBallLanding(ball, bucketIdx) {
-    // Prevent multiple landings for the same ball
-    if (ball.hasLanded) {
-        console.warn('Ball already landed, ignoring duplicate landing');
-        return;
-    }
+// Modified ball landing handler - uses server-confirmed data
+function handlePlinkoBallLanding(ball, bucketIdx, isForced = false) {
+    if (ball.hasLanded) return; // Prevent double processing
     
     ball.hasLanded = true;
+    
+    // Clear timeout if it exists
+    if (ball.timeoutId) {
+        clearTimeout(ball.timeoutId);
+        ball.timeoutId = null;
+    }
     
     // Use the predetermined bucket index from the server
     const actualBucketIdx = ball.targetBucketIdx !== null ? ball.targetBucketIdx : bucketIdx;
     const multiplier = plinkoState.multipliers[actualBucketIdx];
-    const winAmount = +(ball.betAmount * multiplier).toFixed(2);
-
-    console.log(`✅ Ball landed in bucket ${bucketIdx}, predetermined was ${ball.targetBucketIdx}, using ${actualBucketIdx} for display`);
-    console.log(`💰 Win amount: $${winAmount}, Multiplier: ${multiplier}x, Bet: $${ball.betAmount}`);
-
-    // Store the original balance for verification
-    const balanceBeforeUpdate = currentUser.balance;
     
-    // Always update balance with multiplier amount
-    currentUser.balance = Math.round((currentUser.balance + winAmount) * 100) / 100;
+    // Use server-confirmed win amount (already calculated on server)
+    const winAmount = ball.serverWinAmount;
     
-    console.log(`💵 Balance updated: $${balanceBeforeUpdate} → $${currentUser.balance}`);
-    
-    // Verify balance matches server if we have server data
-    if (ball.serverBalance !== undefined) {
-        const expectedBalance = Math.round(ball.serverBalance * 100) / 100;
-        const actualBalance = Math.round(currentUser.balance * 100) / 100;
-        
-        if (Math.abs(expectedBalance - actualBalance) > 0.01) {
-            console.warn(`⚠️ Balance mismatch detected! Expected: $${expectedBalance}, Actual: $${actualBalance}`);
-            console.warn(`🔄 Syncing balance with server...`);
-            currentUser.balance = expectedBalance;
-        } else {
-            console.log(`✅ Balance verified: $${actualBalance} matches server`);
-        }
+    if (isForced) {
+        console.log(`⚠️ Ball forced to land in bucket ${actualBucketIdx} (timeout), server win: $${winAmount}`);
+    } else {
+        console.log(`✅ Ball landed in bucket ${bucketIdx}, predetermined was ${ball.targetBucketIdx}, using ${actualBucketIdx} for display, server win: $${winAmount}`);
     }
-    
-    updateUserInterface();
 
+    // DON'T update balance here - it was already updated from server response
+    // The balance is already correct from the server
+    
     // Show visual notification - consider it a win if multiplier is 1 or greater
     const colors = getBucketColor(multiplier);
     showGameNotification(multiplier >= 1, winAmount, null, colors, multiplier);
@@ -2621,36 +2614,28 @@ function handlePlinkoBallLanding(ball, bucketIdx) {
         continuePlinkoAutobet(multiplier >= 1, winAmount - ball.betAmount);
     }
 
-    // Clean up the ball after a short delay to ensure visual feedback
-    setTimeout(() => {
-        if (ball.body && engine && engine.world) {
-            MatterModules.World.remove(engine.world, ball.body);
-        }
-        const ballIndex = plinkoState.balls.indexOf(ball);
-        if (ballIndex > -1) {
-            plinkoState.balls.splice(ballIndex, 1);
-        }
-        
-        // Mark dropping as complete if no balls remain
-        if (plinkoState.balls.length === 0) {
-            plinkoState.isDropping = false;
-            console.log('All balls cleared, dropping complete');
-        }
-    }, 100);
+    // Clean up the ball properly
+    ball.cleanup();
+    const ballIndex = plinkoState.balls.indexOf(ball);
+    if (ballIndex > -1) {
+        plinkoState.balls.splice(ballIndex, 1);
+    }
 }
 
 // Plinko ball class using Matter.js
 class PlinkoBall {
-    constructor(x, y, betAmount, targetBucketIdx = null) {
+    constructor(x, y, betAmount, targetBucketIdx = null, serverWinAmount = 0) {
         const { Bodies, World, Body } = MatterModules;
         this.betAmount = betAmount;
         this.targetBucketIdx = targetBucketIdx;
+        this.serverWinAmount = serverWinAmount; // Store server-confirmed win amount
         this.radius = plinkoState.currentBallSize / 2;
         this.hasLanded = false;
         this.lastPegCollision = 0; // Cooldown for peg collisions
         this.pegCollisionCount = 0; // Track total collisions
         this.lastPosition = { x: x, y: y }; // Track position for oscillation detection
         this.stuckTimer = 0; // Timer for detecting stuck balls
+        this.timeoutId = null; // For cleanup
 
         if (!engine || !engine.world) {
             throw new Error('Physics engine not initialized');
@@ -2666,7 +2651,6 @@ class PlinkoBall {
                 category: collisionCategories.ball,
                 mask: collisionCategories.peg | collisionCategories.bucket | collisionCategories.wall
             }
-            // No 'render' property
         });
         
         const startForce = 0.0005; // Smaller initial horizontal randomness for straighter drop
@@ -2678,8 +2662,20 @@ class PlinkoBall {
 
         World.add(engine.world, this.body);
     }
+    
     get x() { return this.body.position.x; }
     get y() { return this.body.position.y; }
+    
+    // Cleanup method
+    cleanup() {
+        if (this.timeoutId) {
+            clearTimeout(this.timeoutId);
+            this.timeoutId = null;
+        }
+        if (this.body && engine && engine.world) {
+            MatterModules.World.remove(engine.world, this.body);
+        }
+    }
 }
 
 function plinkoGameLoop() {
@@ -2783,57 +2779,35 @@ function plinkoGameLoop() {
         }
     }
     
-    // Cleanup any balls that might have escaped (rare)
+    // Cleanup any balls that might have escaped or are stuck
     for (let i = plinkoState.balls.length - 1; i >= 0; i--) {
         const ball = plinkoState.balls[i];
         
-        // Check if ball has fallen below the canvas
+        // Check if ball has fallen off screen
         if (ball.y > plinkoCanvas.height + 100) {
-            console.warn('Ball escaped canvas bounds, cleaning up');
-            MatterModules.World.remove(engine.world, ball.body);
-            plinkoState.balls.splice(i, 1);
+            console.warn('Ball fell off screen, forcing landing');
+            handlePlinkoBallLanding(ball, ball.targetBucketIdx || 0, true);
             continue;
         }
         
-        // Check if ball is in bucket area but hasn't landed yet (collision detection failure)
-        if (!ball.hasLanded && ball.y > plinkoCanvas.height - 80) {
-            // Find which bucket the ball is over
-            let bucketIndex = -1;
-            for (let j = 0; j < plinkoState.buckets.length; j++) {
-                const bucket = plinkoState.buckets[j];
-                if (ball.x >= bucket.x && ball.x <= bucket.x + bucket.width) {
-                    bucketIndex = j;
-                    break;
-                }
+        // Check for stuck balls (not moving for too long)
+        const distanceMoved = Math.abs(ball.x - ball.lastPosition.x) + Math.abs(ball.y - ball.lastPosition.y);
+        if (distanceMoved < 1) {
+            ball.stuckTimer += 16; // Approximate frame time
+            if (ball.stuckTimer > 5000) { // 5 seconds stuck
+                console.warn('Ball appears stuck, forcing landing');
+                handlePlinkoBallLanding(ball, ball.targetBucketIdx || 0, true);
+                continue;
             }
-            
-            // If we found a bucket, force the landing
-            if (bucketIndex >= 0) {
-                console.warn(`Force landing ball in bucket ${bucketIndex} due to missed collision`);
-                handlePlinkoBallLanding(ball, bucketIndex);
-            } else {
-                // If no bucket found, use the closest one
-                let closestBucket = 0;
-                let minDistance = Math.abs(ball.x - (plinkoState.buckets[0].x + plinkoState.buckets[0].width / 2));
-                
-                for (let j = 1; j < plinkoState.buckets.length; j++) {
-                    const bucket = plinkoState.buckets[j];
-                    const distance = Math.abs(ball.x - (bucket.x + bucket.width / 2));
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestBucket = j;
-                    }
-                }
-                
-                console.warn(`Force landing ball in closest bucket ${closestBucket}`);
-                handlePlinkoBallLanding(ball, closestBucket);
-            }
+        } else {
+            ball.stuckTimer = 0;
+            ball.lastPosition = { x: ball.x, y: ball.y };
         }
     }
 
+    // Update dropping state
     if (plinkoState.balls.length === 0 && plinkoState.isDropping) {
         plinkoState.isDropping = false;
-        console.log('Game loop: All balls cleared, dropping complete');
     }
     
     plinkoState.animationId = requestAnimationFrame(plinkoGameLoop);
@@ -2941,45 +2915,38 @@ function setPlinkoAmount(action) {
     }
 }
 
-// Drop a new ball - reworked to work like dice game
+// Drop a new ball - completely rewritten for proper sync
 async function dropBall() {
     if (!currentUser || plinkoState.isDropping) return;
     
-    // Rate limiting - prevent drops faster than 1/4 second
+    // Rate limiting - prevent drops faster than 500ms
     const now = Date.now();
     if (now - plinkoState.lastDropTime < PLINKO_DROP_DEBOUNCE_MS) {
+        console.log('Rate limited - please wait');
         return;
     }
+    
+    const betAmount = parseFloat(document.getElementById('plinko-bet-amount').value);
+    
+    if (!betAmount || betAmount <= 0) {
+        showGameNotification(false, null, 'Please enter a valid bet amount');
+        return;
+    }
+    
+    if (betAmount > currentUser.balance) {
+        showGameNotification(false, null, 'Insufficient balance');
+        return;
+    }
+    
+    // Set dropping state immediately to prevent multiple calls
+    plinkoState.isDropping = true;
     plinkoState.lastDropTime = now;
     
-    const betInput = document.getElementById('plinko-bet-amount');
-    let betAmount = parseFloat(betInput.value);
-    
-    if (isNaN(betAmount) || betAmount < 0.01) {
-        showError('Minimum bet amount is $0.01');
-        return;
-    }
-    
-    // Round bet amount to 2 decimal places to match server precision
-    betAmount = Math.round(betAmount * 100) / 100;
-    const userBalance = Math.round(currentUser.balance * 100) / 100;
-    
-    // Check balance with proper precision
-    if (betAmount > userBalance) {
-        showError('Insufficient balance');
-        return;
-    }
-    
-    // Update input with precise value
-    betInput.value = betAmount.toFixed(2);
-    
-    plinkoState.isDropping = true;
-    
-    // Immediately deduct bet amount from frontend balance
-    currentUser.balance = Math.round((currentUser.balance - betAmount) * 100) / 100;
-    updateUserInterface();
+    // Store original balance for potential rollback
+    const originalBalance = currentUser.balance;
     
     try {
+        // Make API call FIRST - don't touch balance until server confirms
         const response = await fetch(`${API_BASE_URL}/api/games/play`, {
             method: 'POST',
             headers: {
@@ -2990,111 +2957,118 @@ async function dropBall() {
                 gameType: 'plinko',
                 betAmount: betAmount,
                 playerChoice: `${plinkoConfig.risk}-${plinkoConfig.rows}`,
-                targetNumber: 0 // Not used for plinko but required by API
+                targetNumber: 0
             })
         });
 
         const data = await response.json();
         
-        if (data.success) {
-            // Parse the game result - check if it's already an object or needs parsing
-            let gameResult;
-            if (typeof data.result.gameResult === 'string') {
-                gameResult = JSON.parse(data.result.gameResult);
-            } else {
-                gameResult = data.result.gameResult;
-            }
-            
-            const bucketIndex = gameResult.bucketIndex;
-            const multiplier = gameResult.multiplier;
-            const winAmount = data.result.winAmount;
-            
-            // Update user data from server response (but NOT balance - we handle that on frontend)
-            if (data.result.newLevel !== undefined) {
-                currentUser.level = data.result.newLevel;
-            }
-            if (data.result.experienceGained !== undefined) {
-                currentUser.xp = (currentUser.xp || 0) + data.result.experienceGained;
-            }
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Server error');
+        }
 
-            // Update basic game stats locally
-            if (typeof currentUser.gamesPlayed === 'number') {
-                currentUser.gamesPlayed += 1;
-            }
-            if (data.result.won) {
-                if (typeof currentUser.wins === 'number') currentUser.wins += 1;
-                if (typeof currentUser.totalWon === 'number') currentUser.totalWon += winAmount;
-                if (typeof currentUser.currentWinStreak === 'number') {
-                    currentUser.currentWinStreak += 1;
-                    if (typeof currentUser.bestWinStreak === 'number' && currentUser.currentWinStreak > currentUser.bestWinStreak) {
-                        currentUser.bestWinStreak = currentUser.currentWinStreak;
-                    }
-                }
-                if (typeof currentUser.bestWin === 'number' && winAmount > currentUser.bestWin) {
-                    currentUser.bestWin = winAmount;
-                }
-            } else {
-                if (typeof currentUser.losses === 'number') currentUser.losses += 1;
-                if (typeof currentUser.currentWinStreak === 'number') currentUser.currentWinStreak = 0;
-            }
+        // Server confirmed the game - now we can proceed
+        console.log('✅ Server confirmed game:', data.result);
+        
+        // Parse game result
+        let gameResult;
+        if (typeof data.result.gameResult === 'string') {
+            gameResult = JSON.parse(data.result.gameResult);
+        } else {
+            gameResult = data.result.gameResult;
+        }
+        
+        const bucketIndex = gameResult.bucketIndex;
+        const multiplier = gameResult.multiplier;
+        const serverWinAmount = data.result.winAmount || 0;
+        
+        // Update user data from server response - use server balance as source of truth
+        currentUser.balance = data.result.balanceAfter;
+        
+        if (data.result.newLevel !== undefined) {
+            currentUser.level = data.result.newLevel;
+        }
+        if (data.result.experienceGained !== undefined) {
+            currentUser.xp = (currentUser.xp || 0) + data.result.experienceGained;
+        }
 
-            updateUserInterface();
-            
-            // Create ball with predetermined target
-            const logicalWidth = plinkoCanvas.logicalWidth || plinkoCanvas.width;
-            const ball = new PlinkoBall(logicalWidth / 2, 10, betAmount, bucketIndex); // Drop from y=10 to be above pegs
-            plinkoState.balls.push(ball);
-            
-            // Debug: Log the predetermined outcome
-            console.log(`🎯 Predetermined outcome: Bucket ${bucketIndex}, Multiplier ${multiplier}x, Win: $${winAmount}`);
-            
-            // Store server balance for verification
-            ball.serverBalance = data.result.newBalance;
-            ball.serverWinAmount = winAmount;
-            
-            // Display hash/seed at bottom of page
-            if (data.result.randomHash) {
-                displayRandomHash(data.result.randomHash, data.result.randomTimestamp);
+        // Update game stats locally
+        if (typeof currentUser.gamesPlayed === 'number') {
+            currentUser.gamesPlayed += 1;
+        }
+        if (data.result.won) {
+            if (typeof currentUser.wins === 'number') currentUser.wins += 1;
+            if (typeof currentUser.totalWon === 'number') currentUser.totalWon += serverWinAmount;
+            if (typeof currentUser.currentWinStreak === 'number') {
+                currentUser.currentWinStreak += 1;
+                if (typeof currentUser.bestWinStreak === 'number' && currentUser.currentWinStreak > currentUser.bestWinStreak) {
+                    currentUser.bestWinStreak = currentUser.currentWinStreak;
+                }
             }
-            
-            // Check for new badges
-            const newBadges = checkBadges(betAmount);
-            if (newBadges.length > 0) {
-                newBadges.forEach(badge => {
-                    setTimeout(() => {
-                        showBadgeNotification(badge);
-                    }, 1000);
-                });
-                updateBadges();
-            }
-            
-            // Check if levelUp data exists
-            if (data.result && data.result.leveledUp) {
-                setTimeout(() => {
-                    showGameNotification(true, null, 
-                        `Level Up! +${data.result.levelsGained} level(s)!`);
-                }, 500);
-            }
-            
-            // Update chart immediately after game result
-            drawBalanceChart();
-            
-            if (plinkoAutobet.isActive) {
-                continuePlinkoAutobet(data.result.won, data.result.winAmount - betAmount);
+            if (typeof currentUser.bestWin === 'number' && serverWinAmount > currentUser.bestWin) {
+                currentUser.bestWin = serverWinAmount;
             }
         } else {
-            // If server call fails, restore the balance
-            currentUser.balance = Math.round((currentUser.balance + betAmount) * 100) / 100;
-            updateUserInterface();
-            showError(data.message || 'Failed to play game');
+            if (typeof currentUser.losses === 'number') currentUser.losses += 1;
+            if (typeof currentUser.currentWinStreak === 'number') currentUser.currentWinStreak = 0;
         }
-    } catch (error) {
-        console.error('Plinko game error:', error);
-        // Restore balance on error
-        currentUser.balance = Math.round((currentUser.balance + betAmount) * 100) / 100;
+
+        // Update UI with server data
         updateUserInterface();
-        showError('Connection error. Please try again.');
+        
+        // NOW create the ball with server-confirmed data
+        const logicalWidth = plinkoCanvas.logicalWidth || plinkoCanvas.width;
+        const ball = new PlinkoBall(logicalWidth / 2, 10, betAmount, bucketIndex, serverWinAmount);
+        plinkoState.balls.push(ball);
+        
+        // Set a timeout to force ball landing if physics fails
+        ball.timeoutId = setTimeout(() => {
+            if (!ball.hasLanded && plinkoState.balls.includes(ball)) {
+                console.warn('⚠️ Ball timeout - forcing landing');
+                handlePlinkoBallLanding(ball, bucketIndex, true);
+            }
+        }, 10000); // 10 second timeout
+        
+        console.log(`🎯 Ball created: Bucket ${bucketIndex}, Multiplier ${multiplier}x, Win: $${serverWinAmount}`);
+        
+        // Display provably fair data
+        if (data.result.randomHash) {
+            displayRandomHash(data.result.randomHash, data.result.randomTimestamp);
+        }
+        
+        // Check for badges
+        const newBadges = checkBadges(betAmount);
+        if (newBadges.length > 0) {
+            newBadges.forEach(badge => {
+                setTimeout(() => {
+                    showBadgeNotification(badge);
+                }, 1000);
+            });
+            updateBadges();
+        }
+        
+        // Level up notification
+        if (data.result && data.result.leveledUp) {
+            setTimeout(() => {
+                showGameNotification(true, null, 
+                    `Level Up! +${data.result.levelsGained} level(s)!`);
+            }, 500);
+        }
+        
+        // Update chart
+        drawBalanceChart();
+        
+    } catch (error) {
+        console.error('❌ Plinko API error:', error);
+        
+        // Ensure balance is not modified on error
+        currentUser.balance = originalBalance;
+        updateUserInterface();
+        
+        // Show error to user
+        showGameNotification(false, null, error.message || 'Connection error. Please try again.');
     } finally {
+        // Always clear dropping state
         plinkoState.isDropping = false;
     }
 }
@@ -3216,7 +3190,7 @@ function stopPlinkoAutobet() {
         `Autobet completed: ${stats.totalBets} bets, ${winRate}% win rate, ${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)} profit`);
 }
 
-// Continue plinko autobet
+// Continue plinko autobet after a game completes
 function continuePlinkoAutobet(won, profit) {
     if (!plinkoAutobet.isActive) return;
     
@@ -3265,12 +3239,17 @@ function continuePlinkoAutobet(won, profit) {
     if ((!won && settings.onLoss === 'stop') || (won && settings.onWin === 'stop')) {
         stopPlinkoAutobet();
     } else {
-        // Next bet after delay (ensure we respect the rate limit)
+        // Next bet after delay - wait for ball to land before next drop
         setTimeout(() => {
-            if (plinkoAutobet.isActive) {
+            if (plinkoAutobet.isActive && plinkoState.balls.length === 0) {
                 dropBall();
+            } else if (plinkoAutobet.isActive) {
+                // If balls still exist, wait a bit more
+                setTimeout(() => {
+                    if (plinkoAutobet.isActive) dropBall();
+                }, 500);
             }
-        }, PLINKO_DROP_DEBOUNCE_MS + 100); // Add extra 100ms buffer
+        }, PLINKO_DROP_DEBOUNCE_MS + 200); // Extra buffer for autobet
     }
 }
 
@@ -3399,42 +3378,4 @@ function handlePlinkoMouseLeave() {
     if (tooltip) {
         tooltip.style.opacity = '0';
     }
-}
-
-// Add periodic balance verification
-let lastBalanceCheck = 0;
-const BALANCE_CHECK_INTERVAL = 30000; // Check every 30 seconds
-
-async function verifyBalance() {
-    if (!currentUser) return;
-    
-    const now = Date.now();
-    if (now - lastBalanceCheck < BALANCE_CHECK_INTERVAL) return;
-    lastBalanceCheck = now;
-    
-    try {
-        const response = await fetch('/api/user/profile', {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            const serverBalance = Math.round(data.user.balance * 100) / 100;
-            const clientBalance = Math.round(currentUser.balance * 100) / 100;
-            
-            if (Math.abs(serverBalance - clientBalance) > 0.01) {
-                console.warn(`⚠️ Periodic balance check: mismatch detected! Server: $${serverBalance}, Client: $${clientBalance}`);
-                console.warn(`🔄 Syncing balance with server...`);
-                currentUser.balance = serverBalance;
-                updateUserInterface();
-            }
-        }
-    } catch (error) {
-        console.warn('Balance verification failed:', error);
-    }
-}
-
-// Call balance verification periodically
-setInterval(verifyBalance, BALANCE_CHECK_INTERVAL);
+} 
