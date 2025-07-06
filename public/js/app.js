@@ -2085,7 +2085,7 @@ let plinkoState = {
 };
 
 // Rate limiting constants
-const PLINKO_DROP_DEBOUNCE_MS = 250; // 1/4 second minimum between drops
+const PLINKO_DROP_DEBOUNCE_MS = 500; // 1/4 second minimum between drops
 
 // Collision categories for Matter.js
 const collisionCategories = {
@@ -2509,6 +2509,7 @@ function setupPlinkoGame() {
     });
 }
 
+// Modified ball landing handler - now handles balance updates
 function handlePlinkoBallLanding(ball, bucketIdx) {
     // Use the predetermined bucket index from the server
     const actualBucketIdx = ball.targetBucketIdx !== null ? ball.targetBucketIdx : bucketIdx;
@@ -2517,7 +2518,13 @@ function handlePlinkoBallLanding(ball, bucketIdx) {
 
     console.log(`✅ Ball landed in bucket ${bucketIdx}, predetermined was ${ball.targetBucketIdx}, using ${actualBucketIdx} for display`);
 
-    // Show visual notification (balance already updated from server)
+    // Update balance immediately when ball lands (add winnings)
+    if (winAmount > 0) {
+        currentUser.balance = Math.round((currentUser.balance + winAmount) * 100) / 100;
+        updateUserInterface();
+    }
+
+    // Show visual notification
     const colors = getBucketColor(multiplier);
     showGameNotification(multiplier >= 1, winAmount, null, colors, multiplier);
     plinkoState.bucketAnimations[actualBucketIdx] = { start: Date.now(), won: multiplier >= 1 };
@@ -2861,10 +2868,7 @@ async function dropBall() {
             const multiplier = gameResult.multiplier;
             const winAmount = data.result.winAmount;
             
-            // Update user data from server response
-            if (data.result.balanceAfter !== undefined) {
-                currentUser.balance = data.result.balanceAfter;
-            }
+            // Update user data from server response (but NOT balance - we handle that on frontend)
             if (data.result.newLevel !== undefined) {
                 currentUser.level = data.result.newLevel;
             }
@@ -3196,4 +3200,4 @@ function cleanupPlinkoTooltips() {
     tooltips.forEach(tooltip => {
         tooltip.parentElement.removeChild(tooltip);
     });
-}
+} 
