@@ -140,7 +140,8 @@ router.post('/play', authenticateToken, async (req, res) => {
             const bucketIndex = Math.min(Math.max(sum, 0), bucketCount - 1);
             
             multiplier = validMultipliers[bucketIndex];
-            won = multiplier >= 1;
+            // Always calculate win amount for any positive multiplier
+            won = multiplier > 0;
             
             gameResult = {
                 bucketIndex,
@@ -159,13 +160,17 @@ router.post('/play', authenticateToken, async (req, res) => {
         const balanceBefore = userBalance;
         let newBalance = userBalance - betAmountRounded;
 
-        if (won) {
+        // Always calculate win amount for any positive multiplier
+        if (multiplier > 0) {
             // Calculate win amount with proper precision
             const rawWinAmount = betAmountRounded * multiplier;
             winAmount = Math.round(rawWinAmount * 100) / 100;
             newBalance = Math.round((newBalance + winAmount) * 100) / 100;
+            // Consider it a "win" if we get any money back
+            won = winAmount > 0;
         } else {
             newBalance = Math.round(newBalance * 100) / 100;
+            won = false;
         }
 
         // Update user balance
@@ -218,7 +223,7 @@ router.post('/play', authenticateToken, async (req, res) => {
             playerChoice: playerChoice.toLowerCase(),
             gameResult: typeof gameResult === 'object' ? JSON.stringify(gameResult) : gameResult,
             won,
-            winAmount: won ? winAmount : 0,
+            winAmount: winAmount,
             balanceBefore,
             balanceAfter: user.balance,
             experienceGained,
@@ -234,7 +239,7 @@ router.post('/play', authenticateToken, async (req, res) => {
                 playerChoice: playerChoice.toLowerCase(),
                 gameResult,
                 won,
-                winAmount: won ? winAmount : 0,
+                winAmount: winAmount,
                 balanceBefore,
                 balanceAfter: user.balance,
                 experienceGained,

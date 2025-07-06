@@ -2376,20 +2376,51 @@ function setupPlinkoGame() {
         canvasContainer.appendChild(fixedTooltip);
     }
 
-    // Buckets
+    // Buckets - create both visual buckets and collision sensors
     for (let i = 0; i < bucketCount; i++) {
         const x = bucketMargin + i * (bucketWidth + bucketMargin);
         const y = height - bucketHeight - bucketMarginFromBottom;
         const bucket = { x, y, width: bucketWidth, height: bucketHeight, index: i };
         plinkoState.buckets.push(bucket);
         
-        const sensor = Bodies.rectangle(x + bucketWidth / 2, y + bucketHeight / 2, bucketWidth * 0.8, bucketHeight, {
+        // Create a larger sensor that covers the entire bucket area + some extra height
+        const sensorHeight = bucketHeight + 20; // Extra height to catch balls
+        const sensorY = y - 10; // Position slightly above bucket
+        
+        const sensor = Bodies.rectangle(x + bucketWidth / 2, sensorY + sensorHeight / 2, bucketWidth, sensorHeight, {
             isStatic: true,
             isSensor: true,
             label: `bucket-${i}`,
             collisionFilter: { category: collisionCategories.bucket, mask: collisionCategories.ball }
         });
         worldBodies.push(sensor);
+        
+        // Also create solid bucket walls and bottom to prevent balls from falling through
+        const wallThickness = 3;
+        
+        // Left wall
+        const leftWall = Bodies.rectangle(x - wallThickness/2, y + bucketHeight/2, wallThickness, bucketHeight, {
+            isStatic: true,
+            label: `bucket-wall-${i}`,
+            collisionFilter: { category: collisionCategories.wall, mask: collisionCategories.ball }
+        });
+        worldBodies.push(leftWall);
+        
+        // Right wall
+        const rightWall = Bodies.rectangle(x + bucketWidth + wallThickness/2, y + bucketHeight/2, wallThickness, bucketHeight, {
+            isStatic: true,
+            label: `bucket-wall-${i}`,
+            collisionFilter: { category: collisionCategories.wall, mask: collisionCategories.ball }
+        });
+        worldBodies.push(rightWall);
+        
+        // Bottom wall
+        const bottomWall = Bodies.rectangle(x + bucketWidth/2, y + bucketHeight + wallThickness/2, bucketWidth, wallThickness, {
+            isStatic: true,
+            label: `bucket-bottom-${i}`,
+            collisionFilter: { category: collisionCategories.wall, mask: collisionCategories.ball }
+        });
+        worldBodies.push(bottomWall);
     }
 
     // Add canvas hover listener - remove any existing listeners first
@@ -2416,6 +2447,18 @@ function setupPlinkoGame() {
                 if (ballObj && !ballObj.hasLanded) {
                     ballObj.hasLanded = true;
                     const bucketIndex = parseInt(otherBody.label.split('-')[1], 10);
+                    console.log(`🎯 Ball hit bucket sensor ${bucketIndex}`);
+                    handlePlinkoBallLanding(ballObj, bucketIndex);
+                }
+            }
+            // Handle bucket walls/bottoms - if ball hits these, determine which bucket it should land in
+            else if (otherBody.label.startsWith('bucket-wall-') || otherBody.label.startsWith('bucket-bottom-')) {
+                const ballObj = plinkoState.balls.find(b => b.body === ballBody);
+                if (ballObj && !ballObj.hasLanded) {
+                    // Extract bucket index from wall/bottom label
+                    const bucketIndex = parseInt(otherBody.label.split('-')[2], 10);
+                    console.log(`🎯 Ball hit bucket wall/bottom for bucket ${bucketIndex}`);
+                    ballObj.hasLanded = true;
                     handlePlinkoBallLanding(ballObj, bucketIndex);
                 }
             }
@@ -2578,9 +2621,10 @@ function setupPlinkoGame() {
 
 // Modified ball landing handler - uses server-confirmed data
 function handlePlinkoBallLanding(ball, bucketIdx, isForced = false) {
-    if (ball.hasLanded) return; // Prevent double processing
+    // Note: hasLanded is already set to true before calling this function
+    // to prevent double processing at the collision detection level
     
-    ball.hasLanded = true;
+    console.log(`🎯 handlePlinkoBallLanding called: bucket ${bucketIdx}, target ${ball.targetBucketIdx}, win $${ball.serverWinAmount}`);
     
     // Clear timeout if it exists
     if (ball.timeoutId) {
@@ -2601,17 +2645,28 @@ function handlePlinkoBallLanding(ball, bucketIdx, isForced = false) {
         console.log(`✅ Ball landed in bucket ${bucketIdx}, predetermined was ${ball.targetBucketIdx}, using ${actualBucketIdx} for display, server win: $${winAmount}`);
     }
 
-    // DON'T update balance here - it was already updated from server response
-    // The balance is already correct from the server
+    // INSTANT WIN UPDATE: Add win amount immediately for instant feedback
+    const balanceBeforeWin = currentUser.balance;
+    currentUser.balance += winAmount;
+    console.log(`💰 Instant win: +$${winAmount} (${balanceBeforeWin} → ${currentUser.balance})`);
     
-    // Show visual notification - consider it a win if multiplier is 1 or greater
+    // RECONCILE: If we have expected final balance from server, use it as source of truth
+    if (ball.expectedFinalBalance !== undefined) {
+        console.log(`💰 Server reconciliation: ${currentUser.balance} → ${ball.expectedFinalBalance}`);
+        currentUser.balance = ball.expectedFinalBalance;
+    }
+    
+    updateUserInterface();
+    
+    // Show visual notification - consider it a win if we got any money back (multiplier > 0)
     const colors = getBucketColor(multiplier);
-    showGameNotification(multiplier >= 1, winAmount, null, colors, multiplier);
-    plinkoState.bucketAnimations[actualBucketIdx] = { start: Date.now(), won: multiplier >= 1 };
+    const isWin = winAmount > 0; // Any positive win amount counts as a win
+    showGameNotification(isWin, winAmount, null, colors, multiplier);
+    plinkoState.bucketAnimations[actualBucketIdx] = { start: Date.now(), won: isWin };
     
     // Continue autobet if active
     if (plinkoAutobet.isActive) {
-        continuePlinkoAutobet(multiplier >= 1, winAmount - ball.betAmount);
+        continuePlinkoAutobet(isWin, winAmount - ball.betAmount);
     }
 
     // Clean up the ball properly
@@ -2783,10 +2838,39 @@ function plinkoGameLoop() {
     for (let i = plinkoState.balls.length - 1; i >= 0; i--) {
         const ball = plinkoState.balls[i];
         
+        // Get current canvas dimensions for calculations
+        const canvasHeight = plinkoCanvas.logicalHeight || plinkoCanvas.height;
+        const canvasWidth = plinkoCanvas.logicalWidth || plinkoCanvas.width;
+        const baseCanvasWidth = 400;
+        const canvasScaleFactor = canvasWidth / baseCanvasWidth;
+        const bucketHeight = 40 * canvasScaleFactor;
+        const bucketMarginFromBottom = 10;
+        
         // Check if ball has fallen off screen
-        if (ball.y > plinkoCanvas.height + 100) {
+        if (ball.y > canvasHeight + 100) {
             console.warn('Ball fell off screen, forcing landing');
             handlePlinkoBallLanding(ball, ball.targetBucketIdx || 0, true);
+            continue;
+        }
+        
+        // Fallback detection: if ball is at bucket level but hasn't landed, find closest bucket
+        if (!ball.hasLanded && ball.y >= (canvasHeight - bucketHeight - bucketMarginFromBottom - 10)) {
+            let closestBucketIdx = 0;
+            let closestDistance = Infinity;
+            
+            for (let j = 0; j < plinkoState.buckets.length; j++) {
+                const bucket = plinkoState.buckets[j];
+                const bucketCenterX = bucket.x + bucket.width / 2;
+                const distance = Math.abs(ball.x - bucketCenterX);
+                
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestBucketIdx = j;
+                }
+            }
+            
+            console.warn(`⚠️ Ball reached bucket level without collision detection, forcing landing in closest bucket ${closestBucketIdx}`);
+            handlePlinkoBallLanding(ball, closestBucketIdx, true);
             continue;
         }
         
@@ -2945,8 +3029,13 @@ async function dropBall() {
     // Store original balance for potential rollback
     const originalBalance = currentUser.balance;
     
+    // OPTIMISTIC UPDATE: Deduct bet amount immediately for instant feedback
+    console.log(`💰 Instant deduction: $${betAmount} (${originalBalance} → ${originalBalance - betAmount})`);
+    currentUser.balance -= betAmount;
+    updateUserInterface();
+    
     try {
-        // Make API call FIRST - don't touch balance until server confirms
+        // Make API call - server will validate and return actual result
         const response = await fetch(`${API_BASE_URL}/api/games/play`, {
             method: 'POST',
             headers: {
@@ -2982,8 +3071,9 @@ async function dropBall() {
         const multiplier = gameResult.multiplier;
         const serverWinAmount = data.result.winAmount || 0;
         
-        // Update user data from server response - use server balance as source of truth
-        currentUser.balance = data.result.balanceAfter;
+        // RECONCILE: Use server balance as source of truth (handles any discrepancies)
+        // Note: We don't update balance here since it will be updated when ball lands
+        // We'll store the server balance on the ball object for final reconciliation
         
         if (data.result.newLevel !== undefined) {
             currentUser.level = data.result.newLevel;
@@ -3019,6 +3109,7 @@ async function dropBall() {
         // NOW create the ball with server-confirmed data
         const logicalWidth = plinkoCanvas.logicalWidth || plinkoCanvas.width;
         const ball = new PlinkoBall(logicalWidth / 2, 10, betAmount, bucketIndex, serverWinAmount);
+        ball.expectedFinalBalance = data.result.balanceAfter; // Store server balance for reconciliation
         plinkoState.balls.push(ball);
         
         // Set a timeout to force ball landing if physics fails
@@ -3061,7 +3152,7 @@ async function dropBall() {
     } catch (error) {
         console.error('❌ Plinko API error:', error);
         
-        // Ensure balance is not modified on error
+        // ROLLBACK: Restore original balance on error
         currentUser.balance = originalBalance;
         updateUserInterface();
         
