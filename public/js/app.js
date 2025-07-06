@@ -2849,8 +2849,14 @@ async function dropBall() {
         const data = await response.json();
         
         if (data.success) {
-            // Parse the game result
-            const gameResult = JSON.parse(data.result.gameResult);
+            // Parse the game result - check if it's already an object or needs parsing
+            let gameResult;
+            if (typeof data.result.gameResult === 'string') {
+                gameResult = JSON.parse(data.result.gameResult);
+            } else {
+                gameResult = data.result.gameResult;
+            }
+            
             const bucketIndex = gameResult.bucketIndex;
             const multiplier = gameResult.multiplier;
             const winAmount = data.result.winAmount;
