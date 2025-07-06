@@ -3029,11 +3029,12 @@ input, textarea {
     font-size: 0.9rem;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.15s ease;
     white-space: nowrap;
     border: 1px solid rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
     z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .probability-tooltip::after {
@@ -3058,5 +3059,61 @@ input, textarea {
 
 .bucket-hover:hover + .probability-tooltip {
     opacity: 1;
+    transform: translateX(-50%) translateY(-4px);
+    transition: all 0.2s ease;
+}
+
+#plinko-probability-tooltip {
+    position: absolute;
+    background: rgba(15, 15, 15, 0.95);
+    color: #f1f1f1;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    text-align: center;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 500;
+}
+
+.plinko-fixed-tooltip {
+    position: relative;
+    background: rgba(15, 15, 15, 0.95);
+    color: #f1f1f1;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    text-align: center;
+    margin-top: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    font-family: 'Outfit', sans-serif;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.2s ease;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.plinko-fixed-tooltip:hover {
+    background: rgba(20, 20, 20, 0.95);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Remove old tooltip styles that are no longer needed */
+.probability-tooltip,
+.bucket-hover,
+.bucket-hover:hover + .probability-tooltip {
+    display: none;
 }
 
