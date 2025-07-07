@@ -251,18 +251,23 @@ router.post('/play', authenticateToken, async (req, res) => {
 
         // Calculate results with proper precision
         const balanceBefore = userBalance;
-        let newBalance = userBalance - betAmountRounded;
+        let newBalance = userBalance - betAmountRounded; // Deduct bet amount immediately
 
         // Calculate win amount for winning games or games with positive multiplier
         if (won || ((gameType === 'plinko' || gameType === 'mines') && multiplier > 0)) {
             // Calculate win amount with proper precision
             const rawWinAmount = betAmountRounded * multiplier;
             winAmount = Math.round(rawWinAmount * 100) / 100;
-            newBalance = Math.round((newBalance + winAmount) * 100) / 100;
             
             // For plinko and mines: consider it a "win" if we get any money back
             if (gameType === 'plinko' || gameType === 'mines') {
                 won = winAmount > 0;
+                // For mines, we don't add the win amount here - it's handled in cashout
+                if (gameType !== 'mines') {
+                    newBalance = Math.round((newBalance + winAmount) * 100) / 100;
+                }
+            } else {
+                newBalance = Math.round((newBalance + winAmount) * 100) / 100;
             }
         } else {
             newBalance = Math.round(newBalance * 100) / 100;
@@ -554,7 +559,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
                 newLevel: user.level
             }
         });
-        
+
     } catch (error) {
         console.error('Mines cashout error:', error);
         res.status(500).json({

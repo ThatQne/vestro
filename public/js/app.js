@@ -3988,13 +3988,9 @@ async function revealTile(tileIndex) {
                 document.getElementById('mines-cashout-btn').style.display = 'none';
                 document.getElementById('mines-count-slider').disabled = false;
                 
-                // Update balance from server - bet amount was already deducted at game start
-                if (result.balanceAfter !== undefined) {
-                    // Don't add the bet amount back since we lost
-                    currentUser.balance = result.balanceAfter;
-                    console.log('💸 Lost bet, new balance:', result.balanceAfter);
-                    updateUserInterface();
-                }
+                // On mine hit, we keep the deducted balance (no changes needed)
+                // The bet amount was already deducted at game start and we lost it
+                console.log('💸 Lost bet, keeping deducted balance:', currentUser.balance);
                 
                 // Show notification with the actual loss amount
                 showGameNotification(false, -minesState.betAmount, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
@@ -4056,9 +4052,10 @@ async function cashOutMines() {
         
         const result = data.result;
         
-        // Update balance - we already deducted the bet amount at game start, 
-        // so we only add the winAmount (if any) to our current balance
-        currentUser.balance += result.winAmount;
+        // Update balance with the win amount from server
+        // The bet was already deducted at game start, and winAmount is the total win (not profit)
+        currentUser.balance = result.balanceAfter;
+        console.log('💰 Won bet, new balance:', result.balanceAfter);
         updateUserInterface();
         
         // Game complete
