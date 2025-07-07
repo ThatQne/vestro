@@ -3870,13 +3870,17 @@ async function startMinesGame() {
         }
         
         // Initialize game state
-        minesState.gameId = data.result._id;  // Remove fallback ID since server will always provide a valid ObjectId
+        minesState.gameId = data.result._id;
         minesState.gameActive = true;
         minesState.revealedTiles = 0;
         minesState.currentMultiplier = gameResult.multiplier;
         minesState.betAmount = betAmount;
         minesState.mines = gameResult.mines;
         minesState.currentProfit = 0;
+        minesState.gridState = gameResult.gridState;
+        minesState.gridHash = gameResult.gridHash;
+        minesState.pendingRevealedTiles = new Set(); // Track tiles revealed client-side
+        minesState.serverVerified = false; // Track if server has verified our moves
         
         // Reset and activate tiles with animation
         minesState.tiles.forEach((tile, index) => {
@@ -3926,7 +3930,8 @@ async function revealTile(tileIndex) {
     // Add check for game active state and revealing animation
     if (!minesState.gameActive || 
         minesState.tiles[tileIndex].classList.contains('revealed') ||
-        minesState.tiles[tileIndex].classList.contains('revealing')) {
+        minesState.tiles[tileIndex].classList.contains('revealing') ||
+        minesState.pendingRevealedTiles.has(tileIndex)) {
         return;
     }
     
@@ -3935,100 +3940,125 @@ async function revealTile(tileIndex) {
     // Add revealing animation
     tile.classList.add('revealing');
     
-    try {
-        const data = await handleRateLimit(async () => {
-            const response = await fetch(`${API_BASE_URL}/api/games/mines/reveal`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({
-                    gameId: minesState.gameId,
-                    tileIndex: tileIndex
-                })
+    // Check against local grid state
+    const hitMine = minesState.gridState[tileIndex];
+    
+    // Add to pending revealed tiles
+    minesState.pendingRevealedTiles.add(tileIndex);
+    
+    // Calculate new multiplier locally
+    const revealedTiles = minesState.pendingRevealedTiles.size;
+    const mineCount = minesState.mines.length;
+    const totalTiles = 25;
+    const safeTiles = totalTiles - mineCount;
+    
+    // Calculate probability of revealing N safe tiles
+    let multiplier = 1;
+    for (let i = 0; i < revealedTiles; i++) {
+        const remainingSafeTiles = safeTiles - i;
+        const remainingTiles = totalTiles - i;
+        const probability = remainingSafeTiles / remainingTiles;
+        multiplier *= (1 / probability);
+    }
+    
+    // Apply house edge (97% RTP)
+    multiplier *= 0.97;
+    multiplier = Math.max(multiplier, 0.01); // Minimum 0.01x multiplier
+    
+    setTimeout(() => {
+        tile.classList.remove('revealing');
+        
+        if (hitMine) {
+            // Hit a mine - game over
+            // Set game state to inactive FIRST before revealing tiles
+            minesState.gameActive = false;
+            document.getElementById('mines-start-btn').style.display = 'inline-block';
+            document.getElementById('mines-cashout-btn').style.display = 'none';
+            document.getElementById('mines-count-slider').disabled = false;
+            
+            // Remove active state from all tiles BEFORE revealing
+            minesState.tiles.forEach(t => t.classList.remove('active'));
+            
+            // Now reveal the hit mine
+            tile.classList.add('revealed', 'mine');
+            tile.innerHTML = '<i data-lucide="bomb"></i>';
+            
+            // Reveal all other mines
+            minesState.gridState.forEach((isMine, idx) => {
+                if (isMine && idx !== tileIndex) {
+                    const mineTile = minesState.tiles[idx];
+                    mineTile.classList.add('revealed', 'mine');
+                    mineTile.innerHTML = '<i data-lucide="bomb"></i>';
+                }
             });
             
-            if (response.status === 429) {
-                throw new Error('Too many requests');
-            }
+            // Verify with server
+            verifyGameState(tileIndex, true);
             
-            const data = await response.json();
+        } else {
+            // Safe tile
+            tile.classList.add('revealed', 'safe');
+            tile.innerHTML = '<i data-lucide="gem"></i>';
             
-            if (!response.ok || !data.success) {
-                throw new Error(data.message || 'Server error');
-            }
+            // Update game state
+            minesState.revealedTiles = revealedTiles;
+            minesState.currentMultiplier = multiplier;
+            // Calculate profit: potential win minus bet amount
+            minesState.currentProfit = (minesState.betAmount * multiplier) - minesState.betAmount;
             
-            return data;
+            // Update UI with animations
+            updateMinesStats(true);
+        }
+        
+        // Re-initialize Lucide icons for new icons
+        lucide.createIcons();
+    }, 300);
+}
+
+// Verify game state with server
+async function verifyGameState(lastRevealedTile, isGameOver = false) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/mines/verify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                gameId: minesState.gameId,
+                revealedTiles: Array.from(minesState.pendingRevealedTiles),
+                lastRevealedTile,
+                gridHash: minesState.gridHash,
+                isGameOver
+            })
         });
         
-        const result = data.result;
+        const data = await response.json();
         
-        // Wait for flip animation to complete
-        setTimeout(() => {
-            tile.classList.remove('revealing');
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Server error');
+        }
+        
+        // Update balance if game is over
+        if (isGameOver) {
+            currentUser.balance = data.result.balanceAfter;
+            updateUserInterface();
             
-            if (result.hitMine) {
-                // Hit a mine - game over
-                // Set game state to inactive FIRST before revealing tiles
-                minesState.gameActive = false;
-                document.getElementById('mines-start-btn').style.display = 'inline-block';
-                document.getElementById('mines-cashout-btn').style.display = 'none';
-                document.getElementById('mines-count-slider').disabled = false;
-                
-                // Remove active state from all tiles BEFORE revealing
-                minesState.tiles.forEach(t => t.classList.remove('active'));
-                
-                // Now reveal the hit mine
-                tile.classList.add('revealed', 'mine');
-                tile.innerHTML = '<i data-lucide="bomb"></i>';
-                
-                // Reveal all other mines
-                result.mines.forEach(mineIndex => {
-                    if (mineIndex !== tileIndex) {
-                        const mineTile = minesState.tiles[mineIndex];
-                        mineTile.classList.add('revealed', 'mine');
-                        mineTile.innerHTML = '<i data-lucide="bomb"></i>';
-                    }
-                });
-                
-                // On mine hit, we keep the deducted balance (no changes needed)
-                // The bet amount was already deducted at game start and we lost it
-                console.log('💸 Lost bet, keeping deducted balance:', currentUser.balance);
-                
-                // Show notification with the actual loss amount
-                showGameNotification(false, -minesState.betAmount, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
-                
-                // Continue autobet if active
-                if (minesAutobet.isActive) {
-                    continueMinesAutobet(false, -minesState.betAmount);
-                }
-                
-            } else {
-                // Safe tile
-                tile.classList.add('revealed', 'safe');
-                tile.innerHTML = '<i data-lucide="gem"></i>';
-                
-                // Update game state
-                minesState.revealedTiles = result.revealedTiles;
-                minesState.currentMultiplier = result.multiplier;
-                // Calculate profit: potential win minus bet amount
-                minesState.currentProfit = (minesState.betAmount * result.multiplier) - minesState.betAmount;
-                
-                // Update UI with animations
-                updateMinesStats(true);
-                
-
+            // Show notification with the actual loss amount
+            showGameNotification(false, -minesState.betAmount, 'You hit a mine!', 
+                { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
+            
+            // Continue autobet if active
+            if (minesAutobet.isActive) {
+                continueMinesAutobet(false, -minesState.betAmount);
             }
-            
-            // Re-initialize Lucide icons for new icons
-            lucide.createIcons();
-        }, 300);
+        }
+        
+        minesState.serverVerified = true;
         
     } catch (error) {
-        console.error('❌ Mines reveal error:', error);
+        console.error('❌ Mines verify error:', error);
         showGameNotification(false, null, error.message || 'Connection error. Please try again.');
-        tile.classList.remove('revealing');
     }
 }
 
@@ -4044,7 +4074,9 @@ async function cashOutMines() {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
             },
             body: JSON.stringify({
-                gameId: minesState.gameId
+                gameId: minesState.gameId,
+                revealedTiles: Array.from(minesState.pendingRevealedTiles),
+                gridHash: minesState.gridHash
             })
         });
         
@@ -4057,7 +4089,6 @@ async function cashOutMines() {
         const result = data.result;
         
         // Update balance with the win amount from server
-        // The bet was already deducted at game start, and winAmount is the total win (not profit)
         currentUser.balance = result.balanceAfter;
         console.log('💰 Won bet, new balance:', result.balanceAfter);
         updateUserInterface();
@@ -4074,17 +4105,18 @@ async function cashOutMines() {
         document.getElementById('mines-count-slider').disabled = false;
         document.querySelectorAll('.mines-control-btn').forEach(btn => btn.disabled = false);
         
-        
         // Reveal all mines with animation
-        minesState.mines.forEach((mineIndex, i) => {
-            setTimeout(() => {
-                const mineTile = minesState.tiles[mineIndex];
-                if (!mineTile.classList.contains('revealed')) {
-                    mineTile.classList.add('revealed', 'mine');
-                    mineTile.innerHTML = '<i data-lucide="bomb"></i>';
-                    lucide.createIcons();
-                }
-            }, i * 100); // Stagger the reveal animations
+        minesState.gridState.forEach((isMine, index) => {
+            if (isMine) {
+                setTimeout(() => {
+                    const mineTile = minesState.tiles[index];
+                    if (!mineTile.classList.contains('revealed')) {
+                        mineTile.classList.add('revealed', 'mine');
+                        mineTile.innerHTML = '<i data-lucide="bomb"></i>';
+                        lucide.createIcons();
+                    }
+                }, index * 100); // Stagger the reveal animations
+            }
         });
         
         // Remove active state from all tiles
@@ -4092,7 +4124,7 @@ async function cashOutMines() {
             tile.classList.remove('active');
         });
         
-        // Show notification with profit (winAmount - betAmount)
+        // Show notification with profit
         const profit = result.winAmount - minesState.betAmount;
         showGameNotification(true, profit, null, 
             { bg: 'rgba(34, 197, 94, 0.3)', border: 'rgba(34, 197, 94, 0.8)', text: '#22c55e' }, 
@@ -4102,28 +4134,12 @@ async function cashOutMines() {
         const newBadges = checkBadges(minesState.betAmount);
         if (newBadges.length > 0) {
             newBadges.forEach(badge => {
-                setTimeout(() => {
-                    showBadgeNotification(badge);
-                }, 1000);
+                showBadgeNotification(badge);
             });
-            updateBadges();
         }
-        
-        // Level up notification
-        if (result.leveledUp) {
-            setTimeout(() => {
-                showGameNotification(true, null, 
-                    `Level Up! +${result.levelsGained} level(s)!`);
-            }, 500);
-        }
-        
-        // Update chart
-        drawBalanceChart();
         
         // Continue autobet if active
         if (minesAutobet.isActive) {
-            // winAmount already includes the bet amount, so we don't need to subtract it
-            const profit = result.winAmount - minesState.betAmount;
             continueMinesAutobet(true, profit);
         }
         

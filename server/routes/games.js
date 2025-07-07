@@ -235,6 +235,18 @@ router.post('/play', authenticateToken, async (req, res) => {
             
             // Take first N positions as mines
             const mines = positions.slice(0, mineCount);
+
+            // Create a grid state for client-side prediction
+            const gridState = Array(25).fill(false);
+            mines.forEach(mineIndex => {
+                gridState[mineIndex] = true;
+            });
+
+            // Create a verification hash of the grid state
+            const gridHash = require('crypto')
+                .createHash('sha256')
+                .update(JSON.stringify(gridState) + randomResult.hash)
+                .digest('hex');
             
             gameResult = {
                 mines,
@@ -242,8 +254,11 @@ router.post('/play', authenticateToken, async (req, res) => {
                 multiplier: 1,
                 revealedTiles: 0,
                 betAmount: betAmountRounded,
-                active: true, // Track if game is still active
-                cashedOut: false // Track if game has been cashed out
+                active: true,
+                cashedOut: false,
+                gridState: gridState, // Add grid state for client
+                gridHash: gridHash, // Add verification hash
+                revealedTilesMap: {} // Track which tiles have been revealed server-side
             };
             
             // Update game history with initial game state
@@ -630,6 +645,138 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
     } catch (error) {
         await session.abortTransaction();
         console.error('Mines cashout error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    } finally {
+        session.endSession();
+    }
+});
+
+// Mines verify endpoint
+router.post('/mines/verify', authenticateToken, async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
+    try {
+        const { gameId, revealedTiles, lastRevealedTile, gridHash, isGameOver } = req.body;
+        
+        // Validation
+        if (!gameId || !revealedTiles || lastRevealedTile === undefined || !gridHash) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameters'
+            });
+        }
+        
+        // Get the game with session
+        const gameHistory = await GameHistory.findOne({
+            userId: req.user.userId,
+            gameType: 'mines',
+            _id: gameId
+        }).session(session);
+        
+        if (!gameHistory) {
+            await session.abortTransaction();
+            return res.status(400).json({
+                success: false,
+                message: 'Game not found'
+            });
+        }
+        
+        // Parse game result
+        const gameResult = JSON.parse(gameHistory.gameResult);
+        const { active, cashedOut, gridState: serverGridState, gridHash: serverGridHash } = gameResult;
+        
+        // Check if game is still active
+        if (!active || cashedOut) {
+            await session.abortTransaction();
+            return res.status(400).json({
+                success: false,
+                message: 'Game is no longer active'
+            });
+        }
+        
+        // Verify grid hash matches
+        if (gridHash !== serverGridHash) {
+            await session.abortTransaction();
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid game state'
+            });
+        }
+        
+        // Verify all revealed tiles
+        for (const tileIndex of revealedTiles) {
+            if (tileIndex < 0 || tileIndex > 24) {
+                await session.abortTransaction();
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid tile index'
+                });
+            }
+            
+            // Add to revealed tiles map
+            gameResult.revealedTilesMap[tileIndex] = true;
+        }
+        
+        // If game over, update game state and user stats
+        if (isGameOver) {
+            // Get user in the same transaction
+            const user = await User.findById(req.user.userId).session(session);
+            if (!user) {
+                await session.abortTransaction();
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+            }
+            
+            // Update game state
+            gameResult.active = false;
+            gameResult.multiplier = 0;
+            gameHistory.gameResult = JSON.stringify(gameResult);
+            gameHistory.won = false;
+            gameHistory.winAmount = 0;
+            gameHistory.balanceAfter = user.balance;
+            await gameHistory.save({ session });
+            
+            // Update user stats
+            user.losses += 1;
+            user.currentWinStreak = 0;
+            user.balanceHistory.push(user.balance);
+            await user.save({ session });
+            
+            // Commit transaction
+            await session.commitTransaction();
+            
+            return res.json({
+                success: true,
+                result: {
+                    verified: true,
+                    balanceAfter: user.balance
+                }
+            });
+        }
+        
+        // Save updated game state
+        gameHistory.gameResult = JSON.stringify(gameResult);
+        await gameHistory.save({ session });
+        
+        // Commit transaction
+        await session.commitTransaction();
+        
+        res.json({
+            success: true,
+            result: {
+                verified: true
+            }
+        });
+        
+    } catch (error) {
+        await session.abortTransaction();
+        console.error('Mines verify error:', error);
         res.status(500).json({
             success: false,
             message: 'Server error'
