@@ -265,23 +265,26 @@ router.post('/play', authenticateToken, async (req, res) => {
         let finalNewBalance = userBalance - betAmountRounded; // Deduct bet amount immediately
 
         // Calculate win amount for winning games or games with positive multiplier
-        if (won || ((gameType === 'plinko' || gameType === 'mines') && multiplier > 0)) {
+        if (won || (gameType === 'plinko' && multiplier > 0)) {
             // Calculate win amount with proper precision
             const rawWinAmount = betAmountRounded * multiplier;
             winAmount = Math.round(rawWinAmount * 100) / 100;
             
-            // For plinko and mines: consider it a "win" if we get any money back
-            if (gameType === 'plinko' || gameType === 'mines') {
+            // For plinko: consider it a "win" if we get any money back
+            if (gameType === 'plinko') {
                 won = winAmount > 0;
-                // For mines, we don't add the win amount here - it's handled in cashout
-                if (gameType !== 'mines') {
-                    finalNewBalance = Math.round((finalNewBalance + winAmount) * 100) / 100;
-                }
+                finalNewBalance = Math.round((finalNewBalance + winAmount) * 100) / 100;
             } else {
                 finalNewBalance = Math.round((finalNewBalance + winAmount) * 100) / 100;
             }
         } else {
             finalNewBalance = Math.round(finalNewBalance * 100) / 100;
+        }
+        
+        // For mines, don't mark as won or add win amount - this is handled in cashout
+        if (gameType === 'mines') {
+            won = false;
+            winAmount = 0;
         }
 
         // Update user balance
