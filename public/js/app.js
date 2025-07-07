@@ -3846,7 +3846,8 @@ async function revealTile(tileIndex) {
                 // Update game state
                 minesState.revealedTiles = result.revealedTiles;
                 minesState.currentMultiplier = result.multiplier;
-                minesState.currentProfit = minesState.betAmount * result.multiplier - minesState.betAmount;
+                // Calculate profit: potential win minus bet amount
+                minesState.currentProfit = (minesState.betAmount * result.multiplier) - minesState.betAmount;
                 
                 // Update UI with animations
                 updateMinesStats(true);
@@ -3916,8 +3917,9 @@ async function cashOutMines() {
             tile.classList.remove('active');
         });
         
-        // Show notification
-        showGameNotification(true, result.winAmount, null, 
+        // Show notification with profit (winAmount - betAmount)
+        const profit = result.winAmount - minesState.betAmount;
+        showGameNotification(true, profit, null, 
             { bg: 'rgba(34, 197, 94, 0.3)', border: 'rgba(34, 197, 94, 0.8)', text: '#22c55e' }, 
             minesState.currentMultiplier);
         
@@ -3945,6 +3947,7 @@ async function cashOutMines() {
         
         // Continue autobet if active
         if (minesAutobet.isActive) {
+            // winAmount already includes the bet amount, so we don't need to subtract it
             const profit = result.winAmount - minesState.betAmount;
             continueMinesAutobet(true, profit);
         }
