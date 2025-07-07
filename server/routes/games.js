@@ -86,7 +86,6 @@ router.post('/play', authenticateToken, async (req, res) => {
         const startBalanceBefore = userBalance;
         const startNewBalance = Math.round((userBalance - betAmountRounded) * 100) / 100;
         user.balance = startNewBalance;
-        user.balanceHistory.push(startNewBalance);
         await user.save({ session });
 
         // Create game history with session
@@ -301,9 +300,6 @@ router.post('/play', authenticateToken, async (req, res) => {
         // Update user balance
         user.balance = finalNewBalance;
         
-        // Only add final balance to history after all calculations are done
-        user.balanceHistory.push(user.balance);
-
         // Add experience (5 XP for playing, +5 XP for winning)
         const experienceGained = won ? 10 : 5;
         const levelUpResult = user.addExperience(experienceGained);
@@ -472,12 +468,12 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             gameHistory.balanceAfter = user.balance;
             await gameHistory.save({ session });
             
-            // Update user stats
-            user.losses += 1;
-            user.currentWinStreak = 0;
-            // Critical: Add current balance to history to mark it as final
-            user.balanceHistory.push(user.balance);
-            await user.save({ session });
+            // Update user stats - only if not already updated
+            if (user.balanceHistory[user.balanceHistory.length - 1] !== user.balance) {
+                user.losses += 1;
+                user.currentWinStreak = 0;
+                await user.save({ session });
+            }
             
             // Commit transaction AFTER all updates
             await session.commitTransaction();
@@ -758,7 +754,6 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
             if (user.balanceHistory[user.balanceHistory.length - 1] !== user.balance) {
                 user.losses += 1;
                 user.currentWinStreak = 0;
-                user.balanceHistory.push(user.balance);
                 await user.save({ session });
             }
             
