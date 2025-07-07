@@ -430,6 +430,15 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         const gameResult = JSON.parse(gameHistory.gameResult);
         const { mines, mineCount, active, cashedOut } = gameResult;
         
+        console.log('🎯 Reveal Debug:', {
+            gameId,
+            tileIndex,
+            active,
+            cashedOut,
+            gameHistoryWon: gameHistory.won,
+            mines
+        });
+        
         // Check if game is still active
         if (!active || cashedOut) {
             throw new Error('Game is no longer active');
@@ -449,14 +458,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
                 });
             }
             
-            // Check if game is already finished (prevent double updates)
-            if (!gameResult.active) {
-                await session.abortTransaction();
-                return res.status(400).json({
-                    success: false,
-                    message: 'Game is no longer active'
-                });
-            }
+            // No need for additional check - already verified game is active above
             
             // Update game state
             gameResult.active = false;
@@ -524,6 +526,12 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         
     } catch (error) {
         console.error('Mines reveal error:', error);
+        console.error('Error details:', {
+            gameId: req.body.gameId,
+            tileIndex: req.body.tileIndex,
+            errorMessage: error.message,
+            errorStack: error.stack
+        });
         if (session) {
             try {
                 await session.abortTransaction();
