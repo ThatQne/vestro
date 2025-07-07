@@ -4004,8 +4004,8 @@ async function revealTile(tileIndex) {
                 }
             });
             
-            // Verify with server
-            verifyGameState(tileIndex, true);
+            // Send mine hit to server (this will handle notifications and control re-enabling)
+            sendMineHitToServer(tileIndex);
             
         } else {
             // Safe tile
@@ -4512,3 +4512,69 @@ function shouldStopMinesAutobet(won, profit) {
     
     return false;
 } 
+
+// Send mine hit to server
+async function sendMineHitToServer(tileIndex) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/mines/reveal`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                gameId: minesState.gameId,
+                tileIndex: tileIndex
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Server error');
+        }
+        
+        // Update balance after mine hit
+        if (data.result.balanceAfter !== undefined) {
+            currentUser.balance = data.result.balanceAfter;
+            updateUserInterface();
+        }
+        
+        // Show notification with the actual loss amount
+        showGameNotification(false, -minesState.betAmount, 'You hit a mine!', 
+            { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
+        
+        // Re-enable controls
+        minesState.isLoading = false;
+        document.getElementById('mines-start-btn').disabled = false;
+        document.getElementById('mines-bet-amount').disabled = false;
+        document.querySelectorAll('.mines-control-btn').forEach(btn => btn.disabled = false);
+        
+        // Continue autobet if active
+        if (minesAutobet.isActive) {
+            continueMinesAutobet(false, -minesState.betAmount);
+        }
+        
+    } catch (error) {
+        console.error('❌ Mine hit error:', error);
+        showGameNotification(false, null, error.message || 'Connection error. Please try again.');
+        
+        // Re-enable controls on error
+        minesState.isLoading = false;
+        document.getElementById('mines-start-btn').disabled = false;
+        document.getElementById('mines-bet-amount').disabled = false;
+        document.querySelectorAll('.mines-control-btn').forEach(btn => btn.disabled = false);
+        
+        // Reset game state on error
+        minesState.gameActive = false;
+        minesState.gameId = null;
+        minesState.revealedTiles = 0;
+        minesState.currentMultiplier = 1.0;
+        minesState.currentProfit = 0;
+        minesState.pendingRevealedTiles = new Set();
+        minesState.serverVerified = false;
+    }
+}
+
+// Cash out mines game
+// ... existing code ...
