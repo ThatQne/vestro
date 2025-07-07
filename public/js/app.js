@@ -3709,11 +3709,6 @@ async function startMinesGame() {
         
     } catch (error) {
         console.error('❌ Mines start error:', error);
-        
-        // Rollback balance on error
-        currentUser.balance = originalBalance;
-        updateUserInterface();
-        
         showGameNotification(false, null, error.message || 'Connection error. Please try again.');
     }
 }
