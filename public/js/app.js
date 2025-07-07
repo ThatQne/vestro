@@ -3682,7 +3682,7 @@ async function startMinesGame() {
         }
         
         // Initialize game state
-        minesState.gameId = data.result._id || Date.now().toString(); // Fallback ID
+        minesState.gameId = data.result._id;  // Remove fallback ID since server will always provide a valid ObjectId
         minesState.gameActive = true;
         minesState.revealedTiles = 0;
         minesState.currentMultiplier = gameResult.multiplier;

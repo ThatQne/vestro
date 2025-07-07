@@ -4,6 +4,7 @@ const Badge = require('../models/Badge');
 const GameHistory = require('../models/GameHistory');
 const { authenticateToken } = require('../middleware/auth');
 const { getRandomNumber } = require('../utils/random');
+const mongoose = require('mongoose');
 
 const router = express.Router();
 
@@ -74,6 +75,21 @@ router.post('/play', authenticateToken, async (req, res) => {
                 }
             });
         }
+
+        // Create game history first to get a valid ObjectId
+        const gameHistory = new GameHistory({
+            userId: req.user.userId,
+            gameType,
+            betAmount: betAmountRounded,
+            playerChoice,
+            gameResult: '{}',  // Will update after game logic
+            won: false,
+            balanceBefore: userBalance,
+            balanceAfter: userBalance
+        });
+        
+        // Save to get _id
+        await gameHistory.save();
 
         let gameResult;
         let won = false;
@@ -199,27 +215,21 @@ router.post('/play', authenticateToken, async (req, res) => {
             // Use the random result to seed mine placement
             let seed = randomResult.value;
             for (let i = 0; i < mineCount; i++) {
-                seed = (seed * 1103515245 + 12345) % (2 ** 31);
                 const index = seed % positions.length;
                 mines.push(positions.splice(index, 1)[0]);
+                seed = Math.floor(seed / positions.length);
             }
             
-            // Calculate multiplier based on mines and revealed tiles
-            // For initial bet, assume player will reveal 1 tile
-            const revealedTiles = 1;
-            multiplier = calculateMinesMultiplier(mineCount, revealedTiles);
-            
-            // For mines, we consider it a win if multiplier > 0
-            won = multiplier > 0;
-            
             gameResult = {
+                mines,
                 mineCount,
-                mines: mines.sort((a, b) => a - b), // Sort for consistency
-                totalTiles,
-                safeTiles,
-                multiplier,
-                revealedTiles
+                multiplier: 1,
+                revealedTiles: 0
             };
+            
+            // Update game history with initial game state
+            gameHistory.gameResult = JSON.stringify(gameResult);
+            await gameHistory.save();
         } else {
             return res.status(400).json({
                 success: false,
@@ -289,31 +299,24 @@ router.post('/play', authenticateToken, async (req, res) => {
         }
 
         // Save game history
-        const gameHistory = new GameHistory({
-            userId: user._id,
-            gameType,
-            betAmount: betAmountRounded,
-            playerChoice: playerChoice.toLowerCase(),
-            gameResult: typeof gameResult === 'object' ? JSON.stringify(gameResult) : gameResult,
-            won,
-            winAmount: winAmount,
-            balanceBefore,
-            balanceAfter: user.balance,
-            experienceGained,
-            leveledUp: levelUpResult.leveledUp
-        });
+        gameHistory.won = won;
+        gameHistory.winAmount = winAmount;
+        gameHistory.balanceAfter = user.balance;
+        gameHistory.experienceGained = experienceGained;
+        gameHistory.leveledUp = levelUpResult.leveledUp;
         await gameHistory.save();
 
         // Send response
         res.json({
             success: true,
             result: {
+                _id: gameHistory._id,  // Send the valid ObjectId
                 gameType,
-                playerChoice: playerChoice.toLowerCase(),
+                playerChoice,
                 gameResult,
                 won,
-                winAmount: winAmount,
-                balanceBefore,
+                winAmount,
+                balanceBefore: userBalance,
                 balanceAfter: user.balance,
                 experienceGained,
                 leveledUp: levelUpResult.leveledUp,
@@ -338,7 +341,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         const { gameId, tileIndex } = req.body;
         
         // Validation
-        if (gameId === undefined || tileIndex === undefined) {
+        if (!gameId || tileIndex === undefined) {
             return res.status(400).json({
                 success: false,
                 message: 'Game ID and tile index are required'
@@ -349,6 +352,14 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: 'Invalid tile index (0-24)'
+            });
+        }
+        
+        // Ensure gameId is a valid ObjectId
+        if (!mongoose.Types.ObjectId.isValid(gameId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid game ID format'
             });
         }
         
