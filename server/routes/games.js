@@ -575,6 +575,15 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         const gameResult = JSON.parse(gameHistory.gameResult);
         const { multiplier, active, cashedOut, betAmount } = gameResult;
         
+        console.log('💰 Cashout Debug:', {
+            gameId,
+            multiplier,
+            betAmount,
+            active,
+            cashedOut,
+            revealedTiles: gameResult.revealedTiles
+        });
+        
         // Check if game can be cashed out
         if (!active || cashedOut) {
             await session.abortTransaction();
@@ -586,6 +595,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         
         // Calculate win amount (multiplier includes the bet)
         const winAmount = Math.round(betAmount * multiplier * 100) / 100;
+        console.log('💰 Win amount calculation:', { betAmount, multiplier, winAmount });
         
         // Update user balance (add win amount, bet amount was already deducted at game start)
         const newBalance = Math.round((user.balance + winAmount) * 100) / 100;
