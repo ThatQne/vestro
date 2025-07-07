@@ -3791,36 +3791,47 @@ function setupMinesAutoBetStrategy(prefix, type) {
 
 // Start mines game
 async function startMinesGame() {
-    if (minesState.gameActive) return;
+    if (minesState.isLoading) return;
+    minesState.isLoading = true;
     
-    // Rate limiting - prevent requests more frequent than debounce time
-    const now = Date.now();
-    if (now - minesState.lastRequestTime < MINES_REQUEST_DEBOUNCE_MS) {
-        console.log('Rate limited - please wait');
-        return;
-    }
+    // Reset game state
+    minesState.gameId = null;
+    minesState.gameActive = false;
+    minesState.revealedTiles = 0;
+    minesState.currentMultiplier = 1.0;
+    minesState.currentProfit = 0;
+    minesState.mines = [];
+    minesState.pendingRevealedTiles = new Set();
+    minesState.serverVerified = false;
     
+    // Reset all tiles
+    minesState.tiles.forEach(tile => {
+        tile.className = 'mines-tile';
+        tile.innerHTML = '';
+    });
+    
+    // Update UI
+    updateMinesStats();
+    
+    // Get bet amount
     const betAmount = parseFloat(document.getElementById('mines-bet-amount').value);
-    
     if (!betAmount || betAmount <= 0) {
         showGameNotification(false, null, 'Please enter a valid bet amount');
-        if (minesAutobet.isActive) {
-            stopMinesAutobet();
-        }
+        minesState.isLoading = false;
         return;
     }
     
+    // Check balance
     if (betAmount > currentUser.balance) {
         showGameNotification(false, null, 'Insufficient balance');
-        if (minesAutobet.isActive) {
-            stopMinesAutobet();
-        }
+        minesState.isLoading = false;
         return;
     }
     
-    // Set state immediately to prevent multiple calls
-    minesState.isLoading = true;
-    minesState.lastRequestTime = now;
+    // Disable controls
+    document.getElementById('mines-start-btn').disabled = true;
+    document.getElementById('mines-bet-amount').disabled = true;
+    document.querySelectorAll('.mines-control-btn').forEach(btn => btn.disabled = true);
     
     try {
         // Store original balance for potential rollback

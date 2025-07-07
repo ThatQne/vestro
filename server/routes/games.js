@@ -32,11 +32,11 @@ function calculateMinesMultiplier(mineCount, revealedTiles) {
 
 // Play a game
 router.post('/play', authenticateToken, async (req, res) => {
-    // Start a MongoDB session for transaction
-    const session = await mongoose.startSession();
-    session.startTransaction();
-    
+    let session;
     try {
+        session = await mongoose.startSession();
+        session.startTransaction();
+        
         const { gameType, betAmount, playerChoice } = req.body;
         
         // Validation
@@ -57,11 +57,7 @@ router.post('/play', authenticateToken, async (req, res) => {
         // Get user with session
         const user = await User.findById(req.user.userId).session(session);
         if (!user) {
-            await session.abortTransaction();
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
+            throw new Error('User not found');
         }
 
         // Fix precision issues by rounding to 2 decimal places
@@ -70,16 +66,7 @@ router.post('/play', authenticateToken, async (req, res) => {
 
         // Check balance with small tolerance for floating point errors
         if (userBalance < betAmountRounded) {
-            await session.abortTransaction();
-            return res.status(400).json({
-                success: false,
-                message: 'Insufficient balance',
-                debug: {
-                    userBalance: userBalance,
-                    betAmount: betAmountRounded,
-                    difference: userBalance - betAmountRounded
-                }
-            });
+            throw new Error('Insufficient balance');
         }
 
         // Deduct bet amount immediately for all games
@@ -365,46 +352,46 @@ router.post('/play', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        await session.abortTransaction();
         console.error('Play game error:', error);
-        res.status(500).json({
+        if (session) {
+            try {
+                await session.abortTransaction();
+            } catch (abortError) {
+                console.error('Error aborting transaction:', abortError);
+            }
+        }
+        return res.status(error.status || 500).json({
             success: false,
-            message: 'Server error'
+            message: error.message || 'Server error'
         });
     } finally {
-        session.endSession();
+        if (session) {
+            await session.endSession();
+        }
     }
 });
 
 // Mines tile reveal endpoint
 router.post('/mines/reveal', authenticateToken, async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-    
+    let session;
     try {
+        session = await mongoose.startSession();
+        session.startTransaction();
+        
         const { gameId, tileIndex } = req.body;
         
         // Validation
         if (!gameId || tileIndex === undefined) {
-            return res.status(400).json({
-                success: false,
-                message: 'Game ID and tile index are required'
-            });
+            throw new Error('Game ID and tile index are required');
         }
         
         if (tileIndex < 0 || tileIndex > 24) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid tile index (0-24)'
-            });
+            throw new Error('Invalid tile index (0-24)');
         }
         
         // Ensure gameId is a valid ObjectId
         if (!mongoose.Types.ObjectId.isValid(gameId)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid game ID format'
-            });
+            throw new Error('Invalid game ID format');
         }
         
         // Get the game with session
@@ -415,11 +402,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         }).session(session);
         
         if (!gameHistory) {
-            await session.abortTransaction();
-            return res.status(400).json({
-                success: false,
-                message: 'Game not found'
-            });
+            throw new Error('Game not found');
         }
         
         // Parse game result
@@ -428,11 +411,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         
         // Check if game is still active
         if (!active || cashedOut) {
-            await session.abortTransaction();
-            return res.status(400).json({
-                success: false,
-                message: 'Game is no longer active'
-            });
+            throw new Error('Game is no longer active');
         }
         
         // Check if tile is a mine
@@ -522,14 +501,22 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         }
         
     } catch (error) {
-        await session.abortTransaction();
         console.error('Mines reveal error:', error);
-        res.status(500).json({
+        if (session) {
+            try {
+                await session.abortTransaction();
+            } catch (abortError) {
+                console.error('Error aborting transaction:', abortError);
+            }
+        }
+        return res.status(error.status || 500).json({
             success: false,
-            message: 'Server error'
+            message: error.message || 'Server error'
         });
     } finally {
-        session.endSession();
+        if (session) {
+            await session.endSession();
+        }
     }
 });
 
@@ -652,18 +639,16 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
 
 // Mines verify endpoint
 router.post('/mines/verify', authenticateToken, async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-    
+    let session;
     try {
+        session = await mongoose.startSession();
+        session.startTransaction();
+        
         const { gameId, revealedTiles, lastRevealedTile, gridHash, isGameOver } = req.body;
         
         // Validation
         if (!gameId || !revealedTiles || lastRevealedTile === undefined || !gridHash) {
-            return res.status(400).json({
-                success: false,
-                message: 'Missing required parameters'
-            });
+            throw new Error('Missing required parameters');
         }
         
         // Get the game with session
@@ -674,11 +659,7 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
         }).session(session);
         
         if (!gameHistory) {
-            await session.abortTransaction();
-            return res.status(400).json({
-                success: false,
-                message: 'Game not found'
-            });
+            throw new Error('Game not found');
         }
         
         // Parse game result
@@ -687,30 +668,18 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
         
         // Check if game is still active
         if (!active || cashedOut) {
-            await session.abortTransaction();
-            return res.status(400).json({
-                success: false,
-                message: 'Game is no longer active'
-            });
+            throw new Error('Game is no longer active');
         }
         
         // Verify grid hash matches
         if (gridHash !== serverGridHash) {
-            await session.abortTransaction();
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid game state'
-            });
+            throw new Error('Invalid game state');
         }
         
         // Verify all revealed tiles
         for (const tileIndex of revealedTiles) {
             if (tileIndex < 0 || tileIndex > 24) {
-                await session.abortTransaction();
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid tile index'
-                });
+                throw new Error('Invalid tile index');
             }
             
             // Add to revealed tiles map
@@ -722,11 +691,7 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
             // Get user in the same transaction
             const user = await User.findById(req.user.userId).session(session);
             if (!user) {
-                await session.abortTransaction();
-                return res.status(404).json({
-                    success: false,
-                    message: 'User not found'
-                });
+                throw new Error('User not found');
             }
             
             // Check if game is already marked as lost (prevent double updates)
@@ -783,14 +748,22 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
         });
 
     } catch (error) {
-        await session.abortTransaction();
         console.error('Mines verify error:', error);
-        res.status(500).json({
+        if (session) {
+            try {
+                await session.abortTransaction();
+            } catch (abortError) {
+                console.error('Error aborting transaction:', abortError);
+            }
+        }
+        return res.status(error.status || 500).json({
             success: false,
-            message: 'Server error'
+            message: error.message || 'Server error'
         });
     } finally {
-        session.endSession();
+        if (session) {
+            await session.endSession();
+        }
     }
 });
 
