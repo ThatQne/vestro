@@ -733,6 +733,18 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
                 });
             }
             
+            // Check if game is already marked as lost (prevent double updates)
+            if (gameHistory.won === false) {
+                // Game is already marked as lost, just return the current state
+                await session.commitTransaction();
+                return res.json({
+                    success: true,
+                    result: {
+                        balanceAfter: user.balance
+                    }
+                });
+            }
+            
             // Update game state
             gameResult.active = false;
             gameResult.multiplier = 0;
@@ -742,19 +754,20 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
             gameHistory.balanceAfter = user.balance;
             await gameHistory.save({ session });
             
-            // Update user stats
-            user.losses += 1;
-            user.currentWinStreak = 0;
-            user.balanceHistory.push(user.balance);
-            await user.save({ session });
+            // Update user stats - only if not already updated
+            if (user.balanceHistory[user.balanceHistory.length - 1] !== user.balance) {
+                user.losses += 1;
+                user.currentWinStreak = 0;
+                user.balanceHistory.push(user.balance);
+                await user.save({ session });
+            }
             
             // Commit transaction
             await session.commitTransaction();
             
-            return res.json({
+            res.json({
                 success: true,
                 result: {
-                    verified: true,
                     balanceAfter: user.balance
                 }
             });

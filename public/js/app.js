@@ -4121,9 +4121,8 @@ async function cashOutMines() {
             tile.classList.remove('active');
         });
         
-        // Show notification with profit
-        const profit = result.winAmount - minesState.betAmount;
-        showGameNotification(true, profit, null, 
+        // Show notification with win amount
+        showGameNotification(true, result.winAmount, null, 
             { bg: 'rgba(34, 197, 94, 0.3)', border: 'rgba(34, 197, 94, 0.8)', text: '#22c55e' }, 
             minesState.currentMultiplier);
         
