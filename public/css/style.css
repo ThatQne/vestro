@@ -3285,56 +3285,68 @@ input, textarea {
 }
 
 /* Mines Game Animations */
+.mines-tile {
+    background: #1a1a1a;
+    border: 2px solid #333;
+    border-radius: 8px;
+    cursor: not-allowed;
+    transition: all 0.3s ease;
+    transform: scale(0.95);
+    opacity: 0.7;
+}
+
+.mines-tile.active {
+    background: #2a2a2a;
+    border-color: #444;
+    cursor: pointer;
+    transform: scale(1);
+    opacity: 1;
+    animation: tileActivate 0.5s ease;
+}
+
 .mines-tile.revealing {
-    animation: tileReveal 0.3s ease-out;
+    animation: tileFlip 0.6s ease;
 }
 
-@keyframes tileReveal {
+.mines-tile.revealed {
+    background: #2d2d2d;
+    border-color: #555;
+}
+
+.mines-tile.revealed.safe {
+    background: #2d3b2d;
+    border-color: #4a5;
+}
+
+.mines-tile.revealed.mine {
+    background: #3b2d2d;
+    border-color: #a45;
+}
+
+@keyframes tileActivate {
     0% {
         transform: scale(0.95);
+        opacity: 0.7;
     }
     50% {
         transform: scale(1.05);
+        opacity: 0.85;
     }
     100% {
-        transform: scale(0.95);
+        transform: scale(1);
+        opacity: 1;
     }
 }
 
-.mines-multiplier-update {
-    animation: multiplierPulse 0.5s ease-out;
-}
-
-@keyframes multiplierPulse {
+@keyframes tileFlip {
     0% {
-        transform: scale(1);
+        transform: scale(1) rotateY(0deg);
     }
     50% {
-        transform: scale(1.1);
-        color: #10b981;
+        transform: scale(1.1) rotateY(90deg);
     }
     100% {
-        transform: scale(1);
-    }
-}
-
-.mines-profit-update {
-    animation: profitGlow 0.5s ease-out;
-}
-
-@keyframes profitGlow {
-    0% {
-        transform: scale(1);
-        color: inherit;
-    }
-    50% {
-        transform: scale(1.05);
-        color: #10b981;
-        text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
-    }
-    100% {
-        transform: scale(1);
-        color: inherit;
+        transform: scale(1) rotateY(180deg);
     }
 }
 
@@ -3611,4 +3623,5 @@ input, textarea {
         padding: 1rem;
     }
 }
+
 

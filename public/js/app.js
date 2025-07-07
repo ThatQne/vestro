@@ -3690,10 +3690,14 @@ async function startMinesGame() {
         minesState.mines = gameResult.mines;
         minesState.currentProfit = 0;
         
-        // Reset tiles
+        // Reset and activate tiles with animation
         minesState.tiles.forEach(tile => {
             tile.className = 'mines-tile';
             tile.innerHTML = '';
+            // Add active class with slight delay for each tile
+            setTimeout(() => {
+                tile.classList.add('active');
+            }, Math.random() * 200);
         });
         
         // Update UI
@@ -3710,6 +3714,12 @@ async function startMinesGame() {
     } catch (error) {
         console.error('❌ Mines start error:', error);
         showGameNotification(false, null, error.message || 'Connection error. Please try again.');
+        
+        // Rollback balance on error
+        if (originalBalance !== undefined) {
+            currentUser.balance = originalBalance;
+            updateUserInterface();
+        }
     }
 }
 
@@ -3745,64 +3755,66 @@ async function revealTile(tileIndex) {
         
         const result = data.result;
         
-        // Remove revealing animation
-        setTimeout(() => tile.classList.remove('revealing'), 300);
-        
-        if (result.hitMine) {
-            // Hit a mine - game over
-            tile.classList.add('revealed', 'mine');
-            tile.innerHTML = '<i data-lucide="bomb"></i>';
+        // Wait for flip animation to complete
+        setTimeout(() => {
+            tile.classList.remove('revealing');
             
-            // Reveal all mines
-            result.mines.forEach(mineIndex => {
-                if (mineIndex !== tileIndex) {
-                    const mineTile = minesState.tiles[mineIndex];
-                    mineTile.classList.add('revealed', 'mine');
-                    mineTile.innerHTML = '<i data-lucide="bomb"></i>';
+            if (result.hitMine) {
+                // Hit a mine - game over
+                tile.classList.add('revealed', 'mine');
+                tile.innerHTML = '<i data-lucide="bomb"></i>';
+                
+                // Reveal all mines
+                result.mines.forEach(mineIndex => {
+                    if (mineIndex !== tileIndex) {
+                        const mineTile = minesState.tiles[mineIndex];
+                        mineTile.classList.add('revealed', 'mine');
+                        mineTile.innerHTML = '<i data-lucide="bomb"></i>';
+                    }
+                });
+                
+                // Remove active state from all tiles
+                minesState.tiles.forEach(t => t.classList.remove('active'));
+                
+                // Game over
+                minesState.gameActive = false;
+                document.getElementById('mines-start-btn').style.display = 'inline-block';
+                document.getElementById('mines-cashout-btn').style.display = 'none';
+                document.getElementById('mines-status-text').textContent = 'Game Over! You hit a mine.';
+                
+                // Show notification
+                showGameNotification(false, 0, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
+                
+                // Continue autobet if active
+                if (minesAutobet.isActive) {
+                    continueMinesAutobet(false, -minesState.betAmount);
                 }
-            });
-            
-            // Disable all tiles
-            minesState.tiles.forEach(t => t.classList.add('disabled'));
-            
-            // Game over
-            minesState.gameActive = false;
-            document.getElementById('mines-start-btn').style.display = 'inline-block';
-            document.getElementById('mines-cashout-btn').style.display = 'none';
-            document.getElementById('mines-status-text').textContent = 'Game Over! You hit a mine.';
-            
-            // Show notification
-            showGameNotification(false, 0, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
-            
-            // Continue autobet if active
-            if (minesAutobet.isActive) {
-                continueMinesAutobet(false, -minesState.betAmount);
+                
+            } else {
+                // Safe tile
+                tile.classList.add('revealed', 'safe');
+                tile.innerHTML = '<i data-lucide="gem"></i>';
+                
+                // Update game state
+                minesState.revealedTiles = result.revealedTiles;
+                minesState.currentMultiplier = result.multiplier;
+                minesState.currentProfit = minesState.betAmount * result.multiplier - minesState.betAmount;
+                
+                // Update UI with animations
+                updateMinesStats(true);
+                
+                document.getElementById('mines-status-text').textContent = 
+                    `Safe! ${result.revealedTiles} tiles revealed. Multiplier: ${result.multiplier.toFixed(2)}x`;
             }
             
-        } else {
-            // Safe tile
-            tile.classList.add('revealed', 'safe');
-            tile.innerHTML = '<i data-lucide="gem"></i>';
-            
-            // Update game state
-            minesState.revealedTiles = result.revealedTiles;
-            minesState.currentMultiplier = result.multiplier;
-            minesState.currentProfit = minesState.betAmount * result.multiplier - minesState.betAmount;
-            
-            // Update UI with animations
-            updateMinesStats(true);
-            
-            document.getElementById('mines-status-text').textContent = 
-                `Safe! ${result.revealedTiles} tiles revealed. Multiplier: ${result.multiplier.toFixed(2)}x`;
-        }
-        
-        // Re-initialize Lucide icons for new icons
-        lucide.createIcons();
+            // Re-initialize Lucide icons for new icons
+            lucide.createIcons();
+        }, 300);
         
     } catch (error) {
         console.error('❌ Mines reveal error:', error);
-        tile.classList.remove('revealing');
         showGameNotification(false, null, error.message || 'Connection error. Please try again.');
+        tile.classList.remove('revealing');
     }
 }
 
