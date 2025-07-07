@@ -18,6 +18,8 @@ let minesPattern = {
     isPatternMode: false
 };
 
+
+
 // API Base URL - use Render backend for both dev and prod
 const API_BASE_URL = 'https://vestro-lz81.onrender.com';
 
@@ -169,6 +171,20 @@ document.addEventListener('DOMContentLoaded', function() {
             initializePlinko();
         }, 500);
     }
+
+// Rate limiting for game requests
+const requestLimiter = {
+    lastRequestTime: 0,
+    minInterval: 500, // minimum time between requests in ms
+    canMakeRequest() {
+        const now = Date.now();
+        if (now - this.lastRequestTime < this.minInterval) {
+            return false;
+        }
+        this.lastRequestTime = now;
+        return true;
+    }
+};
 });
 
 function initializeApp() {
@@ -263,12 +279,19 @@ function hideLoginPage() {
 }
 
 async function checkUserExists() {
-    const username = document.getElementById('username').value.trim();
+    const username = document.getElementById('username').value;
     const statusIndicator = document.getElementById('status-indicator');
     const statusText = document.getElementById('status-text');
 
     if (username.length < 3) {
         statusIndicator.classList.add('hidden');
+        return;
+    }
+    
+    if (!authRequestLimiter.canMakeRequest('check')) {
+        statusIndicator.classList.remove('hidden');
+        statusIndicator.className = 'status-indicator error';
+        statusText.textContent = '⚠ Please wait before checking again...';
         return;
     }
 
@@ -283,6 +306,7 @@ async function checkUserExists() {
 
         // Handle rate limiting
         if (response.status === 429) {
+            authRequestLimiter.handleTooManyRequests();
             statusIndicator.classList.remove('hidden');
             statusIndicator.className = 'status-indicator error';
             statusText.textContent = '⚠ Too many attempts – please wait…';
@@ -295,7 +319,12 @@ async function checkUserExists() {
             throw new Error('Non-JSON response');
         }
 
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch (e) {
+            throw new Error('Invalid server response');
+        }
         
         statusIndicator.classList.remove('hidden');
         if (data.exists) {
@@ -306,15 +335,20 @@ async function checkUserExists() {
             statusText.textContent = 'New user - will create account';
         }
     } catch (error) {
-        console.error('Error checking user:', error);
+        console.error('❌ Error checking user:', error);
         statusIndicator.classList.remove('hidden');
         statusIndicator.className = 'status-indicator error';
-        statusText.textContent = '⚠ Connection error - please try again';
+        statusText.textContent = '⚠ ' + (error.message || 'Connection error - please try again');
     }
 }
 
 async function handleLogin(e) {
     e.preventDefault();
+    
+    if (!authRequestLimiter.canMakeRequest('login')) {
+        showError('Please wait a moment before trying to log in again.');
+        return;
+    }
     
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
@@ -334,7 +368,24 @@ async function handleLogin(e) {
             body: JSON.stringify({ username, password })
         });
 
-        const data = await response.json();
+        // Handle rate limiting
+        if (response.status === 429) {
+            authRequestLimiter.handleTooManyRequests();
+            throw new Error('Too many login attempts. Please wait a few seconds and try again.');
+        }
+
+        // Ensure we only parse JSON if the response is JSON
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error('Invalid server response. Please try again.');
+        }
+
+        let data;
+        try {
+            data = await response.json();
+        } catch (e) {
+            throw new Error('Invalid server response. Please try again.');
+        }
 
         if (data.success) {
             localStorage.setItem('token', data.token);
@@ -348,8 +399,8 @@ async function handleLogin(e) {
             showError(data.message || 'Login failed');
         }
     } catch (error) {
-        showError('Connection error. Please try again.');
-        console.error('Login error:', error);
+        showError(error.message || 'Connection error. Please try again.');
+        console.error('❌ Login error:', error);
     } finally {
         buttonText.textContent = 'Continue';
         button.disabled = false;
@@ -3484,8 +3535,47 @@ function handlePlinkoMouseLeave() {
     }
 }
 
+// Constants
+const MINES_REQUEST_DEBOUNCE_MS = 500;
+const AUTH_REQUEST_DEBOUNCE_MS = 2000; // Auth endpoints need more aggressive rate limiting
+
+// Rate limiting for auth requests
+const authRequestLimiter = {
+    lastLoginTime: 0,
+    lastCheckTime: 0,
+    isRateLimited: false,
+    
+    canMakeRequest(type) {
+        const now = Date.now();
+        const lastTime = type === 'login' ? this.lastLoginTime : this.lastCheckTime;
+        
+        if (this.isRateLimited) {
+            return false;
+        }
+        
+        if (now - lastTime < AUTH_REQUEST_DEBOUNCE_MS) {
+            return false;
+        }
+        
+        if (type === 'login') {
+            this.lastLoginTime = now;
+        } else {
+            this.lastCheckTime = now;
+        }
+        return true;
+    },
+    
+    handleTooManyRequests() {
+        this.isRateLimited = true;
+        setTimeout(() => {
+            this.isRateLimited = false;
+        }, 5000); // Wait 5 seconds before allowing new requests
+    }
+};
+
 // Mines Game Implementation
 const minesState = {
+    isLoading: false,
     gameId: null,
     gameActive: false,
     revealedTiles: 0,
@@ -3494,7 +3584,8 @@ const minesState = {
     currentProfit: 0,
     betAmount: 0,
     tiles: [],
-    mines: []
+    mines: [],
+    lastRequestTime: 0
 };
 
 const minesAutobet = {
@@ -3575,6 +3666,10 @@ function setupMinesControls() {
     const valueDisplay = document.getElementById('mines-count-value');
     
     slider.addEventListener('input', (e) => {
+        if (minesState.gameActive || minesState.isLoading) {
+            e.preventDefault();
+            return;
+        }
         const count = parseInt(e.target.value);
         minesState.mineCount = count;
         valueDisplay.textContent = count;
@@ -3674,6 +3769,13 @@ function setupMinesAutoBetStrategy(prefix, type) {
 async function startMinesGame() {
     if (minesState.gameActive) return;
     
+    // Rate limiting - prevent requests more frequent than debounce time
+    const now = Date.now();
+    if (now - minesState.lastRequestTime < MINES_REQUEST_DEBOUNCE_MS) {
+        console.log('Rate limited - please wait');
+        return;
+    }
+    
     const betAmount = parseFloat(document.getElementById('mines-bet-amount').value);
     
     if (!betAmount || betAmount <= 0) {
@@ -3692,11 +3794,16 @@ async function startMinesGame() {
         return;
     }
     
+    // Set state immediately to prevent multiple calls
+    minesState.isLoading = true;
+    minesState.lastRequestTime = now;
+    
     try {
         // Store original balance for potential rollback
         const originalBalance = currentUser.balance;
         
-        // Optimistic update: Deduct bet amount immediately
+        // OPTIMISTIC UPDATE: Deduct bet amount immediately for instant feedback
+        console.log(`💰 Instant deduction: $${betAmount} (${originalBalance} → ${originalBalance - betAmount})`);
         currentUser.balance -= betAmount;
         updateUserInterface();
         
@@ -3755,6 +3862,7 @@ async function startMinesGame() {
         updateMinesStats();
         document.getElementById('mines-start-btn').style.display = 'none';
         document.getElementById('mines-cashout-btn').style.display = 'inline-block';
+        document.getElementById('mines-count-slider').disabled = true;
         
         // Display provably fair data
         if (data.result.randomHash) {
@@ -3769,6 +3877,14 @@ async function startMinesGame() {
         if (originalBalance !== undefined) {
             currentUser.balance = originalBalance;
             updateUserInterface();
+        }
+    } finally {
+        // Re-enable controls if game failed to start
+        if (!minesState.gameActive) {
+            minesState.isLoading = false;
+            document.getElementById('mines-start-btn').disabled = false;
+            document.getElementById('mines-bet-amount').disabled = false;
+            document.querySelectorAll('.mines-control-btn').forEach(btn => btn.disabled = false);
         }
     }
 }
@@ -3830,6 +3946,7 @@ async function revealTile(tileIndex) {
                 minesState.gameActive = false;
                 document.getElementById('mines-start-btn').style.display = 'inline-block';
                 document.getElementById('mines-cashout-btn').style.display = 'none';
+                document.getElementById('mines-count-slider').disabled = false;
                 // Show notification - we already deducted the bet amount at game start
                 showGameNotification(false, 0, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
                 
@@ -3897,8 +4014,15 @@ async function cashOutMines() {
         
         // Game complete
         minesState.gameActive = false;
+        minesState.isLoading = false;
+        
+        // Re-enable all controls
         document.getElementById('mines-start-btn').style.display = 'inline-block';
+        document.getElementById('mines-start-btn').disabled = false;
         document.getElementById('mines-cashout-btn').style.display = 'none';
+        document.getElementById('mines-bet-amount').disabled = false;
+        document.getElementById('mines-count-slider').disabled = false;
+        document.querySelectorAll('.mines-control-btn').forEach(btn => btn.disabled = false);
         
         
         // Reveal all mines with animation
