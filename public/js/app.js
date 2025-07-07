@@ -3537,6 +3537,30 @@ function handlePlinkoMouseLeave() {
 
 // Constants
 const MINES_REQUEST_DEBOUNCE_MS = 500;
+const MINES_REVEAL_DELAY_MS = 300;  // Delay between revealing tiles
+const MINES_RETRY_DELAY_MS = 1000;  // Delay before retrying on rate limit
+const MINES_MAX_RETRIES = 3;       // Maximum number of retries for rate limited requests
+
+// Helper for handling rate limits
+async function handleRateLimit(operation, maxRetries = MINES_MAX_RETRIES) {
+    let retries = 0;
+    while (retries < maxRetries) {
+        try {
+            return await operation();
+        } catch (error) {
+            if (error.message && error.message.includes('Too many')) {
+                retries++;
+                if (retries < maxRetries) {
+                    console.log(`Rate limited, retry ${retries}/${maxRetries} in ${MINES_RETRY_DELAY_MS}ms`);
+                    await new Promise(resolve => setTimeout(resolve, MINES_RETRY_DELAY_MS));
+                    continue;
+                }
+            }
+            throw error;
+        }
+    }
+    throw new Error('Max retries exceeded');
+}
 const AUTH_REQUEST_DEBOUNCE_MS = 2000; // Auth endpoints need more aggressive rate limiting
 
 // Rate limiting for auth requests
@@ -3807,25 +3831,33 @@ async function startMinesGame() {
         currentUser.balance -= betAmount;
         updateUserInterface();
         
-        const response = await fetch(`${API_BASE_URL}/api/games/play`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({
-                gameType: 'mines',
-                betAmount: betAmount,
-                playerChoice: minesState.mineCount.toString(),
-                targetNumber: 0
-            })
+        const data = await handleRateLimit(async () => {
+            const response = await fetch(`${API_BASE_URL}/api/games/play`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({
+                    gameType: 'mines',
+                    betAmount: betAmount,
+                    playerChoice: minesState.mineCount.toString(),
+                    targetNumber: 0
+                })
+            });
+            
+            if (response.status === 429) {
+                throw new Error('Too many requests');
+            }
+            
+            const data = await response.json();
+            
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Server error');
+            }
+            
+            return data;
         });
-        
-        const data = await response.json();
-        
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Server error');
-        }
         
         console.log('✅ Mines game started:', data.result);
         
@@ -3901,23 +3933,31 @@ async function revealTile(tileIndex) {
     tile.classList.add('revealing');
     
     try {
-        const response = await fetch(`${API_BASE_URL}/api/games/mines/reveal`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({
-                gameId: minesState.gameId,
-                tileIndex: tileIndex
-            })
+        const data = await handleRateLimit(async () => {
+            const response = await fetch(`${API_BASE_URL}/api/games/mines/reveal`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({
+                    gameId: minesState.gameId,
+                    tileIndex: tileIndex
+                })
+            });
+            
+            if (response.status === 429) {
+                throw new Error('Too many requests');
+            }
+            
+            const data = await response.json();
+            
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Server error');
+            }
+            
+            return data;
         });
-        
-        const data = await response.json();
-        
-        if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Server error');
-        }
         
         const result = data.result;
         
@@ -3947,8 +3987,17 @@ async function revealTile(tileIndex) {
                 document.getElementById('mines-start-btn').style.display = 'inline-block';
                 document.getElementById('mines-cashout-btn').style.display = 'none';
                 document.getElementById('mines-count-slider').disabled = false;
-                // Show notification - we already deducted the bet amount at game start
-                showGameNotification(false, 0, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
+                
+                // Update balance from server - bet amount was already deducted at game start
+                if (result.balanceAfter !== undefined) {
+                    // Don't add the bet amount back since we lost
+                    currentUser.balance = result.balanceAfter;
+                    console.log('💸 Lost bet, new balance:', result.balanceAfter);
+                    updateUserInterface();
+                }
+                
+                // Show notification with the actual loss amount
+                showGameNotification(false, -minesState.betAmount, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
                 
                 // Continue autobet if active
                 if (minesAutobet.isActive) {
@@ -4131,7 +4180,7 @@ function setupMinesAutobet() {
 }
 
 // Start mines autobet
-function startMinesAutobet() {
+async function startMinesAutobet() {
     if (minesAutobet.isActive) return;
     
     const betCount = parseInt(document.getElementById('mines-auto-bet-count').value) || 10;
@@ -4175,15 +4224,76 @@ function startMinesAutobet() {
     document.getElementById('mines-stop-auto-bet').classList.remove('hidden');
     document.getElementById('mines-auto-bet-btn').classList.add('active');
     
-    // If a game is in progress, cash it out first
-    if (minesState.gameActive) {
-        cashOutMines().then(() => {
-            // Start first game after cashout
-            startMinesGame();
-        });
-    } else {
-        // Start first game immediately if no game is active
-        startMinesGame();
+    try {
+        // If a game is in progress, cash it out first
+        if (minesState.gameActive) {
+            await cashOutMines();
+        }
+        
+        // Start first game
+        await startMinesGame();
+        
+        // Wait for game to be active
+        if (!minesState.gameActive) {
+            throw new Error('Game failed to start');
+        }
+        
+        // Small delay to ensure game is ready
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Get tiles to reveal
+        const tilesToReveal = minesAutobet.settings.pattern && minesAutobet.settings.pattern.length > 0 
+            ? minesAutobet.settings.pattern 
+            : (() => {
+                const autoReveal = minesAutobet.settings.autoRevealCount;
+                const availableTiles = Array.from({length: 25}, (_, i) => i);
+                const tiles = [];
+                for (let i = 0; i < autoReveal; i++) {
+                    const randomIndex = Math.floor(Math.random() * availableTiles.length);
+                    tiles.push(availableTiles.splice(randomIndex, 1)[0]);
+                }
+                return tiles;
+            })();
+        
+        // Reveal tiles one by one with proper delays
+        for (const tileIndex of tilesToReveal) {
+            if (!minesAutobet.isActive || !minesState.gameActive) break;
+            
+            try {
+                // Wait before revealing next tile
+                await new Promise(resolve => setTimeout(resolve, MINES_REVEAL_DELAY_MS));
+                
+                // Try to reveal tile with retries
+                await handleRateLimit(async () => {
+                    await revealTile(tileIndex);
+                });
+                
+            } catch (error) {
+                if (error.message.includes('Max retries exceeded')) {
+                    console.error('❌ Rate limit retries exceeded, stopping autobet');
+                    stopMinesAutobet();
+                    return;
+                }
+                console.error('❌ Error revealing tile:', error);
+                break;
+            }
+        }
+        
+        // If game is still active, cash out
+        if (minesAutobet.isActive && minesState.gameActive) {
+            try {
+                await handleRateLimit(async () => {
+                    await cashOutMines();
+                });
+            } catch (error) {
+                console.error('❌ Error cashing out:', error);
+                stopMinesAutobet();
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Error starting autobet:', error);
+        stopMinesAutobet();
     }
 }
 
@@ -4229,21 +4339,9 @@ function continueMinesAutobet(won, profit) {
         stopMinesAutobet();
         return;
     }
-
-    // Check if we have enough balance for next bet
+    
+    // Adjust bet amount based on win/loss
     const currentBet = parseFloat(document.getElementById('mines-bet-amount').value);
-    if (currentBet > currentUser.balance) {
-        showGameNotification(false, null, 'Insufficient balance for next bet');
-        stopMinesAutobet();
-        return;
-    }
-    
-    // Start next game with a delay
-    setTimeout(() => {
-        startMinesGame();
-    }, 800);
-    
-    // Adjust bet amount
     let newBet = currentBet;
     
     if (won && settings.onWin === 'multiply') {
@@ -4258,40 +4356,95 @@ function continueMinesAutobet(won, profit) {
         newBet = stats.baseBet;
     }
     
-    // Update bet amount
-    document.getElementById('mines-bet-amount').value = Math.min(newBet, currentUser.balance).toFixed(2);
+    // Update bet amount and check if we can afford it
+    newBet = Math.min(newBet, currentUser.balance);
+    document.getElementById('mines-bet-amount').value = newBet.toFixed(2);
     
-    // Continue if conditions are met
+    if (newBet <= 0 || newBet > currentUser.balance) {
+        showGameNotification(false, null, 'Insufficient balance for next bet');
+        stopMinesAutobet();
+        return;
+    }
+    
+    // Stop if strategy says to stop
     if ((!won && settings.onLoss === 'stop') || (won && settings.onWin === 'stop')) {
         stopMinesAutobet();
-    } else {
-        // Start next game after delay
-        setTimeout(async () => {
-            if (minesAutobet.isActive) {
-                await startMinesGame();
+        return;
+    }
+    
+    // Start next game after delay
+    setTimeout(async () => {
+        if (!minesAutobet.isActive) return;
+        
+        // Start new game
+        try {
+            await startMinesGame();
+            
+            // Wait for game to be active
+            if (!minesState.gameActive) {
+                console.error('❌ Game failed to start');
+                stopMinesAutobet();
+                return;
+            }
+            
+            // Small delay to ensure game is ready
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Get tiles to reveal
+            const tilesToReveal = settings.pattern && settings.pattern.length > 0 
+                ? settings.pattern 
+                : (() => {
+                    const autoReveal = settings.autoRevealCount;
+                    const availableTiles = Array.from({length: 25}, (_, i) => i);
+                    const tiles = [];
+                    for (let i = 0; i < autoReveal; i++) {
+                        const randomIndex = Math.floor(Math.random() * availableTiles.length);
+                        tiles.push(availableTiles.splice(randomIndex, 1)[0]);
+                    }
+                    return tiles;
+                })();
+            
+            // Reveal tiles one by one with proper delays
+            for (const tileIndex of tilesToReveal) {
+                if (!minesAutobet.isActive || !minesState.gameActive) break;
                 
-                // If we have a pattern, use it, otherwise use auto reveal count
-                const tilesToReveal = settings.pattern && settings.pattern.length > 0 
-                    ? settings.pattern 
-                    : (() => {
-                        const autoReveal = settings.autoRevealCount;
-                        const availableTiles = Array.from({length: 25}, (_, i) => i);
-                        const tiles = [];
-                        for (let i = 0; i < autoReveal; i++) {
-                            const randomIndex = Math.floor(Math.random() * availableTiles.length);
-                            tiles.push(availableTiles.splice(randomIndex, 1)[0]);
-                        }
-                        return tiles;
-                    })();
-
-                // Reveal all tiles simultaneously
-                if (minesAutobet.isActive) {
-                    await Promise.all(tilesToReveal.map(tileIndex => revealTile(tileIndex)));
-                    await cashOutMines();
+                try {
+                    // Wait before revealing next tile
+                    await new Promise(resolve => setTimeout(resolve, MINES_REVEAL_DELAY_MS));
+                    
+                    // Try to reveal tile with retries
+                    await handleRateLimit(async () => {
+                        await revealTile(tileIndex);
+                    });
+                    
+                } catch (error) {
+                    if (error.message.includes('Max retries exceeded')) {
+                        console.error('❌ Rate limit retries exceeded, stopping autobet');
+                        stopMinesAutobet();
+                        return;
+                    }
+                    console.error('❌ Error revealing tile:', error);
+                    break;
                 }
             }
-        }, 1000);
-    }
+            
+            // If game is still active, cash out with retries
+            if (minesAutobet.isActive && minesState.gameActive) {
+                try {
+                    await handleRateLimit(async () => {
+                        await cashOutMines();
+                    });
+                } catch (error) {
+                    console.error('❌ Error cashing out:', error);
+                    stopMinesAutobet();
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Error in autobet cycle:', error);
+            stopMinesAutobet();
+        }
+    }, 800);
 }
 
 // Should stop mines autobet helper
