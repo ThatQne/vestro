@@ -3923,7 +3923,10 @@ async function startMinesGame() {
 
 // Reveal a tile
 async function revealTile(tileIndex) {
-    if (!minesState.gameActive || minesState.tiles[tileIndex].classList.contains('revealed')) {
+    // Add check for game active state and revealing animation
+    if (!minesState.gameActive || 
+        minesState.tiles[tileIndex].classList.contains('revealed') ||
+        minesState.tiles[tileIndex].classList.contains('revealing')) {
         return;
     }
     
@@ -3967,10 +3970,20 @@ async function revealTile(tileIndex) {
             
             if (result.hitMine) {
                 // Hit a mine - game over
+                // Set game state to inactive FIRST before revealing tiles
+                minesState.gameActive = false;
+                document.getElementById('mines-start-btn').style.display = 'inline-block';
+                document.getElementById('mines-cashout-btn').style.display = 'none';
+                document.getElementById('mines-count-slider').disabled = false;
+                
+                // Remove active state from all tiles BEFORE revealing
+                minesState.tiles.forEach(t => t.classList.remove('active'));
+                
+                // Now reveal the hit mine
                 tile.classList.add('revealed', 'mine');
                 tile.innerHTML = '<i data-lucide="bomb"></i>';
                 
-                // Reveal all mines
+                // Reveal all other mines
                 result.mines.forEach(mineIndex => {
                     if (mineIndex !== tileIndex) {
                         const mineTile = minesState.tiles[mineIndex];
@@ -3978,15 +3991,6 @@ async function revealTile(tileIndex) {
                         mineTile.innerHTML = '<i data-lucide="bomb"></i>';
                     }
                 });
-                
-                // Remove active state from all tiles
-                minesState.tiles.forEach(t => t.classList.remove('active'));
-                
-                // Game over
-                minesState.gameActive = false;
-                document.getElementById('mines-start-btn').style.display = 'inline-block';
-                document.getElementById('mines-cashout-btn').style.display = 'none';
-                document.getElementById('mines-count-slider').disabled = false;
                 
                 // On mine hit, we keep the deducted balance (no changes needed)
                 // The bet amount was already deducted at game start and we lost it
