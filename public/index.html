@@ -228,13 +228,16 @@
                     </div>
                 </div>
                 
-                <div class="game-card coming-soon">
+                <div class="game-card" onclick="showPage('mines-game')">
                     <div class="game-icon">
-                        <i data-lucide="coins"></i>
+                        <i data-lucide="bomb"></i>
                     </div>
                     <div class="game-info">
-                        <h3>Coin Flip</h3>
-                        <p>Coming Soon</p>
+                        <h3>Mines</h3>
+                        <p>Reveal tiles and avoid the mines</p>
+                        <div class="game-stats">
+                            <span class="game-payout">Up to 5000x</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -635,6 +638,135 @@
                     </div>
                     </div>
                 </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mines Game Page -->
+        <div id="mines-game-page" class="page-content hidden">
+            <div class="game-page-header">
+                <button onclick="showPage('games')" class="back-btn">
+                    <i data-lucide="arrow-left"></i>
+                    <span>Back to Games</span>
+                </button>
+                <h1>Mines</h1>
+            </div>
+            
+            <!-- Mines Game -->
+            <div class="dice-game-container">
+                <div class="dice-game-header">
+                    <h3 class="dice-game-title"><i data-lucide="bomb"></i> Mines</h3>
+                    <div class="dice-game-stats">
+                        <span>Mines: <span id="mines-count" class="formatted-number">3</span></span>
+                        <span>Multiplier: <span id="mines-multiplier" class="formatted-number">1.00x</span></span>
+                        <span>Profit: <span id="mines-profit" class="formatted-number">$0.00</span></span>
+                    </div>
+                </div>
+                
+                <div class="dice-game-body">
+                    <div class="mines-visual">
+                        <div class="mines-grid" id="mines-grid">
+                            <!-- 5x5 grid will be generated here -->
+                        </div>
+                        <div class="mines-status" id="mines-status">
+                            <div class="mines-status-text" id="mines-status-text">Click "Start Game" to begin</div>
+                        </div>
+                    </div>
+                    
+                    <div class="dice-controls">
+                        <div class="control-group">
+                            <label class="control-label">Bet Amount</label>
+                            <input type="number" id="mines-bet-amount" class="bet-input" placeholder="0.00" min="0.01" step="0.01">
+                            <div class="bet-buttons">
+                                <button class="bet-btn" onclick="setMinesAmount('half')">½</button>
+                                <button class="bet-btn" onclick="setMinesAmount('double')">2x</button>
+                                <button class="bet-btn" onclick="setMinesAmount('max')">Max</button>
+                                <button class="bet-btn" onclick="setMinesAmount('clear')">Clear</button>
+                            </div>
+                        </div>
+                        
+                        <div class="control-group">
+                            <label class="control-label">Number of Mines</label>
+                            <div class="mines-count-slider">
+                                <input type="range" id="mines-count-slider" class="slider-input" min="1" max="24" value="3" step="1">
+                                <div class="slider-value">
+                                    <span id="mines-count-value">3</span> mines
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button class="roll-btn" id="mines-start-btn" onclick="startMinesGame()">
+                                <span id="mines-start-text">Start Game</span>
+                            </button>
+                            <button class="roll-btn secondary" id="mines-cashout-btn" onclick="cashOutMines()" style="display: none;">
+                                <span id="mines-cashout-text">Cash Out</span>
+                            </button>
+                            <button class="auto-bet-btn" id="mines-auto-bet-btn">Auto</button>
+                        </div>
+                        
+                        <div class="auto-bet-settings" id="mines-auto-bet-settings">
+                            <div class="control-group">
+                                <label class="control-label">Auto Bet Settings</label>
+                                <div class="auto-bet-grid">
+                                    <div>
+                                        <label class="control-label">Number of Bets</label>
+                                        <div class="input-with-toggle">
+                                            <input type="number" id="mines-auto-bet-count" class="auto-bet-input" placeholder="10" min="1">
+                                            <button id="mines-infinite-bets-toggle" class="toggle-btn" title="Run indefinitely">∞</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="control-label">Stop on Win ($)</label>
+                                        <input type="number" id="mines-auto-stop-win" class="auto-bet-input" placeholder="100.00" min="0" step="0.01">
+                                    </div>
+                                    <div>
+                                        <label class="control-label">Stop on Loss ($)</label>
+                                        <input type="number" id="mines-auto-stop-loss" class="auto-bet-input" placeholder="50.00" min="0" step="0.01">
+                                    </div>
+                                    <div>
+                                        <label class="control-label">Auto Reveal Tiles</label>
+                                        <input type="number" id="mines-auto-reveal-count" class="auto-bet-input" placeholder="3" min="1" max="20">
+                                    </div>
+                                </div>
+
+                                <div class="control-group">
+                                    <label class="control-label">On Loss</label>
+                                    <div class="bet-strategy-grid">
+                                        <button id="mines-on-loss-reset" class="strategy-btn active">Reset</button>
+                                        <button id="mines-on-loss-multiply" class="strategy-btn">Multiply</button>
+                                        <button id="mines-on-loss-stop" class="strategy-btn">Stop</button>
+                                    </div>
+                                    <div id="mines-on-loss-settings" class="strategy-settings">
+                                        <div class="input-with-label">
+                                            <input type="number" id="mines-on-loss-multiplier" class="auto-bet-input" placeholder="2.0" min="0.1" step="0.1" value="2.0">
+                                            <span class="input-label">× multiplier</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="control-group">
+                                    <label class="control-label">On Win</label>
+                                    <div class="bet-strategy-grid">
+                                        <button id="mines-on-win-reset" class="strategy-btn active">Reset</button>
+                                        <button id="mines-on-win-multiply" class="strategy-btn">Multiply</button>
+                                        <button id="mines-on-win-stop" class="strategy-btn">Stop</button>
+                                    </div>
+                                    <div id="mines-on-win-settings" class="strategy-settings">
+                                        <div class="input-with-label">
+                                            <input type="number" id="mines-on-win-multiplier" class="auto-bet-input" placeholder="2.0" min="0.1" step="0.1" value="2.0">
+                                            <span class="input-label">× multiplier</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="auto-bet-actions">
+                                    <button id="mines-start-auto-bet" class="start-auto-btn">Start Auto Bet</button>
+                                    <button id="mines-stop-auto-bet" class="stop-auto-btn hidden">Stop</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

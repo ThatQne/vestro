@@ -7,6 +7,28 @@ const { getRandomNumber } = require('../utils/random');
 
 const router = express.Router();
 
+// Calculate mines multiplier based on mine count and revealed tiles
+function calculateMinesMultiplier(mineCount, revealedTiles) {
+    if (revealedTiles <= 0) return 1;
+    
+    const totalTiles = 25;
+    const safeTiles = totalTiles - mineCount;
+    
+    // Calculate probability of revealing N safe tiles
+    let multiplier = 1;
+    for (let i = 0; i < revealedTiles; i++) {
+        const remainingSafeTiles = safeTiles - i;
+        const remainingTiles = totalTiles - i;
+        const probability = remainingSafeTiles / remainingTiles;
+        multiplier *= (1 / probability);
+    }
+    
+    // Apply house edge (97% RTP)
+    multiplier *= 0.97;
+    
+    return Math.max(multiplier, 0.01); // Minimum 0.01x multiplier
+}
+
 // Play a game
 router.post('/play', authenticateToken, async (req, res) => {
     try {
@@ -149,6 +171,55 @@ router.post('/play', authenticateToken, async (req, res) => {
                 risk,
                 rows: rowCount
             };
+        } else if (gameType === 'mines') {
+            // Mines game logic - generate minefield server-side
+            const mineCount = parseInt(playerChoice) || 3; // Default to 3 mines
+            
+            // Generate random hash for provably fair
+            const randomResult = await getRandomNumber(0, 1000000);
+            randomHash = randomResult.hash;
+            randomTimestamp = randomResult.timestamp;
+            
+            // Validate mine count (1-24 mines in 5x5 grid)
+            if (mineCount < 1 || mineCount > 24) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid mine count (1-24)'
+                });
+            }
+            
+            // Generate minefield (5x5 = 25 tiles)
+            const totalTiles = 25;
+            const safeTiles = totalTiles - mineCount;
+            
+            // Create array of positions and shuffle to place mines
+            const positions = Array.from({ length: totalTiles }, (_, i) => i);
+            const mines = [];
+            
+            // Use the random result to seed mine placement
+            let seed = randomResult.value;
+            for (let i = 0; i < mineCount; i++) {
+                seed = (seed * 1103515245 + 12345) % (2 ** 31);
+                const index = seed % positions.length;
+                mines.push(positions.splice(index, 1)[0]);
+            }
+            
+            // Calculate multiplier based on mines and revealed tiles
+            // For initial bet, assume player will reveal 1 tile
+            const revealedTiles = 1;
+            multiplier = calculateMinesMultiplier(mineCount, revealedTiles);
+            
+            // For mines, we consider it a win if multiplier > 0
+            won = multiplier > 0;
+            
+            gameResult = {
+                mineCount,
+                mines: mines.sort((a, b) => a - b), // Sort for consistency
+                totalTiles,
+                safeTiles,
+                multiplier,
+                revealedTiles
+            };
         } else {
             return res.status(400).json({
                 success: false,
@@ -160,15 +231,15 @@ router.post('/play', authenticateToken, async (req, res) => {
         const balanceBefore = userBalance;
         let newBalance = userBalance - betAmountRounded;
 
-        // Calculate win amount for winning games or plinko games with positive multiplier
-        if (won || (gameType === 'plinko' && multiplier > 0)) {
+        // Calculate win amount for winning games or games with positive multiplier
+        if (won || ((gameType === 'plinko' || gameType === 'mines') && multiplier > 0)) {
             // Calculate win amount with proper precision
             const rawWinAmount = betAmountRounded * multiplier;
             winAmount = Math.round(rawWinAmount * 100) / 100;
             newBalance = Math.round((newBalance + winAmount) * 100) / 100;
             
-            // For plinko: consider it a "win" if we get any money back
-            if (gameType === 'plinko') {
+            // For plinko and mines: consider it a "win" if we get any money back
+            if (gameType === 'plinko' || gameType === 'mines') {
                 won = winAmount > 0;
             }
         } else {
@@ -254,6 +325,186 @@ router.post('/play', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Play game error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+});
+
+// Mines tile reveal endpoint
+router.post('/mines/reveal', authenticateToken, async (req, res) => {
+    try {
+        const { gameId, tileIndex } = req.body;
+        
+        // Validation
+        if (gameId === undefined || tileIndex === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: 'Game ID and tile index are required'
+            });
+        }
+        
+        if (tileIndex < 0 || tileIndex > 24) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid tile index (0-24)'
+            });
+        }
+        
+        // Get the most recent mines game for this user
+        const gameHistory = await GameHistory.findOne({
+            userId: req.user.userId,
+            gameType: 'mines',
+            _id: gameId
+        });
+        
+        if (!gameHistory) {
+            return res.status(404).json({
+                success: false,
+                message: 'Game not found'
+            });
+        }
+        
+        // Parse game result
+        const gameResult = JSON.parse(gameHistory.gameResult);
+        const { mines, mineCount } = gameResult;
+        
+        // Check if tile is a mine
+        const hitMine = mines.includes(tileIndex);
+        
+        if (hitMine) {
+            // Game over - hit a mine
+            res.json({
+                success: true,
+                result: {
+                    tileIndex,
+                    hitMine: true,
+                    gameOver: true,
+                    mines: mines,
+                    multiplier: 0,
+                    winAmount: 0
+                }
+            });
+        } else {
+            // Safe tile - calculate new multiplier
+            const revealedTiles = (gameResult.revealedTiles || 0) + 1;
+            const newMultiplier = calculateMinesMultiplier(mineCount, revealedTiles);
+            
+            // Update game result
+            gameResult.revealedTiles = revealedTiles;
+            gameResult.multiplier = newMultiplier;
+            gameHistory.gameResult = JSON.stringify(gameResult);
+            await gameHistory.save();
+            
+            res.json({
+                success: true,
+                result: {
+                    tileIndex,
+                    hitMine: false,
+                    gameOver: false,
+                    multiplier: newMultiplier,
+                    revealedTiles: revealedTiles,
+                    canCashOut: true
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error('Mines reveal error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+});
+
+// Mines cash out endpoint
+router.post('/mines/cashout', authenticateToken, async (req, res) => {
+    try {
+        const { gameId } = req.body;
+        
+        if (!gameId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Game ID is required'
+            });
+        }
+        
+        // Get the game
+        const gameHistory = await GameHistory.findOne({
+            userId: req.user.userId,
+            gameType: 'mines',
+            _id: gameId
+        });
+        
+        if (!gameHistory) {
+            return res.status(404).json({
+                success: false,
+                message: 'Game not found'
+            });
+        }
+        
+        // Get user
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        // Parse game result
+        const gameResult = JSON.parse(gameHistory.gameResult);
+        const { multiplier } = gameResult;
+        const betAmount = gameHistory.betAmount;
+        
+        // Calculate win amount
+        const winAmount = Math.round(betAmount * multiplier * 100) / 100;
+        
+        // Update user balance
+        user.balance = Math.round((user.balance + winAmount) * 100) / 100;
+        user.balanceHistory.push(user.balance);
+        
+        // Update stats
+        user.wins += 1;
+        user.totalWon = Math.round((user.totalWon + winAmount) * 100) / 100;
+        user.currentWinStreak += 1;
+        user.bestWinStreak = Math.max(user.bestWinStreak, user.currentWinStreak);
+        
+        if (winAmount > user.bestWin) {
+            user.bestWin = winAmount;
+        }
+        
+        // Add experience for winning
+        const experienceGained = 10;
+        const levelUpResult = user.addExperience(experienceGained);
+        
+        await user.save();
+        
+        // Update game history
+        gameHistory.won = true;
+        gameHistory.winAmount = winAmount;
+        gameHistory.balanceAfter = user.balance;
+        gameHistory.experienceGained = experienceGained;
+        gameHistory.leveledUp = levelUpResult.leveledUp;
+        await gameHistory.save();
+        
+        res.json({
+            success: true,
+            result: {
+                winAmount,
+                multiplier,
+                balanceAfter: user.balance,
+                experienceGained,
+                leveledUp: levelUpResult.leveledUp,
+                levelsGained: levelUpResult.levelsGained,
+                newLevel: user.level
+            }
+        });
+        
+    } catch (error) {
+        console.error('Mines cashout error:', error);
         res.status(500).json({
             success: false,
             message: 'Server error'

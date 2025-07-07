@@ -637,6 +637,13 @@ function showPage(pageId) {
         }, 300);
     }
     
+    // Initialize Mines when showing the mines game page
+    if (pageId === 'mines-game') {
+        setTimeout(() => {
+            initializeMinesGame();
+        }, 100);
+    }
+    
     // Reinitialize icons after page change
     if (typeof lucide !== 'undefined') {
         setTimeout(() => lucide.createIcons(), 50);
@@ -3469,4 +3476,602 @@ function handlePlinkoMouseLeave() {
     if (tooltip) {
         tooltip.style.opacity = '0';
     }
+}
+
+// Mines Game Implementation
+const minesState = {
+    gameId: null,
+    gameActive: false,
+    revealedTiles: 0,
+    mineCount: 3,
+    currentMultiplier: 1.0,
+    currentProfit: 0,
+    betAmount: 0,
+    tiles: [],
+    mines: []
+};
+
+const minesAutobet = {
+    isActive: false,
+    settings: {
+        betCount: 10,
+        isInfinite: false,
+        stopOnWin: 0,
+        stopOnLoss: 0,
+        autoRevealCount: 3,
+        onWin: 'reset',
+        onLoss: 'reset',
+        winMultiplier: 2.0,
+        lossMultiplier: 2.0
+    },
+    stats: {
+        totalBets: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalProfit: 0,
+        startBalance: 0,
+        baseBet: 0,
+        currentStreak: 0,
+        longestStreak: 0
+    }
+};
+
+// Initialize mines game
+function initializeMinesGame() {
+    setupMinesGrid();
+    setupMinesControls();
+    setupMinesAutobet();
+    updateMinesStats();
+}
+
+// Setup mines grid (5x5)
+function setupMinesGrid() {
+    const grid = document.getElementById('mines-grid');
+    grid.innerHTML = '';
+    
+    for (let i = 0; i < 25; i++) {
+        const tile = document.createElement('div');
+        tile.className = 'mines-tile';
+        tile.dataset.index = i;
+        tile.addEventListener('click', () => revealTile(i));
+        grid.appendChild(tile);
+    }
+    
+    minesState.tiles = Array.from(grid.children);
+}
+
+// Setup mines controls
+function setupMinesControls() {
+    // Mine count slider
+    const slider = document.getElementById('mines-count-slider');
+    const valueDisplay = document.getElementById('mines-count-value');
+    
+    slider.addEventListener('input', (e) => {
+        const count = parseInt(e.target.value);
+        minesState.mineCount = count;
+        valueDisplay.textContent = count;
+        document.getElementById('mines-count').textContent = count;
+        updateMinesStats();
+    });
+    
+    // Auto bet button
+    const autoBetBtn = document.getElementById('mines-auto-bet-btn');
+    const autoBetSettings = document.getElementById('mines-auto-bet-settings');
+    
+    autoBetBtn.addEventListener('click', () => {
+        autoBetSettings.classList.toggle('show');
+    });
+    
+    // Strategy buttons
+    setupMinesAutoBetStrategy('mines-on-loss', 'loss');
+    setupMinesAutoBetStrategy('mines-on-win', 'win');
+    
+    // Start/stop auto bet
+    document.getElementById('mines-start-auto-bet').addEventListener('click', startMinesAutobet);
+    document.getElementById('mines-stop-auto-bet').addEventListener('click', stopMinesAutobet);
+    
+    // Infinite toggle
+    const infiniteToggle = document.getElementById('mines-infinite-bets-toggle');
+    infiniteToggle.addEventListener('click', () => {
+        minesAutobet.settings.isInfinite = !minesAutobet.settings.isInfinite;
+        infiniteToggle.classList.toggle('active', minesAutobet.settings.isInfinite);
+        document.getElementById('mines-auto-bet-count').disabled = minesAutobet.settings.isInfinite;
+    });
+}
+
+// Setup auto bet strategy for mines
+function setupMinesAutoBetStrategy(prefix, type) {
+    const resetBtn = document.getElementById(`${prefix}-reset`);
+    const multiplyBtn = document.getElementById(`${prefix}-multiply`);
+    const stopBtn = document.getElementById(`${prefix}-stop`);
+    const settings = document.getElementById(`${prefix}-settings`);
+    
+    if (!resetBtn) return;
+    
+    const buttons = [resetBtn, multiplyBtn, stopBtn];
+    
+    buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            buttons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            const strategy = btn.id.includes('reset') ? 'reset' : 
+                           btn.id.includes('multiply') ? 'multiply' : 'stop';
+            
+            if (type === 'loss') {
+                minesAutobet.settings.onLoss = strategy;
+            } else {
+                minesAutobet.settings.onWin = strategy;
+            }
+            
+            // Show/hide multiplier input
+            if (strategy === 'multiply') {
+                settings.classList.add('show');
+            } else {
+                settings.classList.remove('show');
+            }
+        });
+    });
+    
+    // Update multiplier values
+    const multiplierInput = document.getElementById(`${prefix}-multiplier`);
+    if (multiplierInput) {
+        multiplierInput.addEventListener('change', (e) => {
+            const value = parseFloat(e.target.value) || 2.0;
+            if (type === 'loss') {
+                minesAutobet.settings.lossMultiplier = value;
+            } else {
+                minesAutobet.settings.winMultiplier = value;
+            }
+        });
+    }
+}
+
+// Start mines game
+async function startMinesGame() {
+    if (minesState.gameActive) return;
+    
+    const betAmount = parseFloat(document.getElementById('mines-bet-amount').value);
+    
+    if (!betAmount || betAmount <= 0) {
+        showGameNotification(false, null, 'Please enter a valid bet amount');
+        return;
+    }
+    
+    if (betAmount > currentUser.balance) {
+        showGameNotification(false, null, 'Insufficient balance');
+        return;
+    }
+    
+    try {
+        // Store original balance for potential rollback
+        const originalBalance = currentUser.balance;
+        
+        // Optimistic update: Deduct bet amount immediately
+        currentUser.balance -= betAmount;
+        updateUserInterface();
+        
+        const response = await fetch(`${API_BASE_URL}/api/games/play`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                gameType: 'mines',
+                betAmount: betAmount,
+                playerChoice: minesState.mineCount.toString(),
+                targetNumber: 0
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Server error');
+        }
+        
+        console.log('✅ Mines game started:', data.result);
+        
+        // Parse game result
+        let gameResult;
+        if (typeof data.result.gameResult === 'string') {
+            gameResult = JSON.parse(data.result.gameResult);
+        } else {
+            gameResult = data.result.gameResult;
+        }
+        
+        // Initialize game state
+        minesState.gameId = data.result._id || Date.now().toString(); // Fallback ID
+        minesState.gameActive = true;
+        minesState.revealedTiles = 0;
+        minesState.currentMultiplier = gameResult.multiplier;
+        minesState.betAmount = betAmount;
+        minesState.mines = gameResult.mines;
+        minesState.currentProfit = 0;
+        
+        // Reset tiles
+        minesState.tiles.forEach(tile => {
+            tile.className = 'mines-tile';
+            tile.innerHTML = '';
+        });
+        
+        // Update UI
+        updateMinesStats();
+        document.getElementById('mines-start-btn').style.display = 'none';
+        document.getElementById('mines-cashout-btn').style.display = 'inline-block';
+        document.getElementById('mines-status-text').textContent = 'Click tiles to reveal them. Avoid the mines!';
+        
+        // Display provably fair data
+        if (data.result.randomHash) {
+            displayRandomHash(data.result.randomHash, data.result.randomTimestamp);
+        }
+        
+    } catch (error) {
+        console.error('❌ Mines start error:', error);
+        
+        // Rollback balance on error
+        currentUser.balance = originalBalance;
+        updateUserInterface();
+        
+        showGameNotification(false, null, error.message || 'Connection error. Please try again.');
+    }
+}
+
+// Reveal a tile
+async function revealTile(tileIndex) {
+    if (!minesState.gameActive || minesState.tiles[tileIndex].classList.contains('revealed')) {
+        return;
+    }
+    
+    const tile = minesState.tiles[tileIndex];
+    
+    // Add revealing animation
+    tile.classList.add('revealing');
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/mines/reveal`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                gameId: minesState.gameId,
+                tileIndex: tileIndex
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Server error');
+        }
+        
+        const result = data.result;
+        
+        // Remove revealing animation
+        setTimeout(() => tile.classList.remove('revealing'), 300);
+        
+        if (result.hitMine) {
+            // Hit a mine - game over
+            tile.classList.add('revealed', 'mine');
+            tile.innerHTML = '<i data-lucide="bomb"></i>';
+            
+            // Reveal all mines
+            result.mines.forEach(mineIndex => {
+                if (mineIndex !== tileIndex) {
+                    const mineTile = minesState.tiles[mineIndex];
+                    mineTile.classList.add('revealed', 'mine');
+                    mineTile.innerHTML = '<i data-lucide="bomb"></i>';
+                }
+            });
+            
+            // Disable all tiles
+            minesState.tiles.forEach(t => t.classList.add('disabled'));
+            
+            // Game over
+            minesState.gameActive = false;
+            document.getElementById('mines-start-btn').style.display = 'inline-block';
+            document.getElementById('mines-cashout-btn').style.display = 'none';
+            document.getElementById('mines-status-text').textContent = 'Game Over! You hit a mine.';
+            
+            // Show notification
+            showGameNotification(false, 0, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
+            
+            // Continue autobet if active
+            if (minesAutobet.isActive) {
+                continueMinesAutobet(false, -minesState.betAmount);
+            }
+            
+        } else {
+            // Safe tile
+            tile.classList.add('revealed', 'safe');
+            tile.innerHTML = '<i data-lucide="gem"></i>';
+            
+            // Update game state
+            minesState.revealedTiles = result.revealedTiles;
+            minesState.currentMultiplier = result.multiplier;
+            minesState.currentProfit = minesState.betAmount * result.multiplier - minesState.betAmount;
+            
+            // Update UI with animations
+            updateMinesStats(true);
+            
+            document.getElementById('mines-status-text').textContent = 
+                `Safe! ${result.revealedTiles} tiles revealed. Multiplier: ${result.multiplier.toFixed(2)}x`;
+        }
+        
+        // Re-initialize Lucide icons for new icons
+        lucide.createIcons();
+        
+    } catch (error) {
+        console.error('❌ Mines reveal error:', error);
+        tile.classList.remove('revealing');
+        showGameNotification(false, null, error.message || 'Connection error. Please try again.');
+    }
+}
+
+// Cash out mines game
+async function cashOutMines() {
+    if (!minesState.gameActive) return;
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/mines/cashout`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                gameId: minesState.gameId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Server error');
+        }
+        
+        const result = data.result;
+        
+        // Update balance
+        currentUser.balance = result.balanceAfter;
+        updateUserInterface();
+        
+        // Game complete
+        minesState.gameActive = false;
+        document.getElementById('mines-start-btn').style.display = 'inline-block';
+        document.getElementById('mines-cashout-btn').style.display = 'none';
+        document.getElementById('mines-status-text').textContent = 
+            `Cashed out! Won $${result.winAmount.toFixed(2)} with ${minesState.currentMultiplier.toFixed(2)}x multiplier`;
+        
+        // Disable all tiles
+        minesState.tiles.forEach(tile => tile.classList.add('disabled'));
+        
+        // Show notification
+        showGameNotification(true, result.winAmount, null, 
+            { bg: 'rgba(34, 197, 94, 0.3)', border: 'rgba(34, 197, 94, 0.8)', text: '#22c55e' }, 
+            minesState.currentMultiplier);
+        
+        // Check for badges
+        const newBadges = checkBadges(minesState.betAmount);
+        if (newBadges.length > 0) {
+            newBadges.forEach(badge => {
+                setTimeout(() => {
+                    showBadgeNotification(badge);
+                }, 1000);
+            });
+            updateBadges();
+        }
+        
+        // Level up notification
+        if (result.leveledUp) {
+            setTimeout(() => {
+                showGameNotification(true, null, 
+                    `Level Up! +${result.levelsGained} level(s)!`);
+            }, 500);
+        }
+        
+        // Update chart
+        drawBalanceChart();
+        
+        // Continue autobet if active
+        if (minesAutobet.isActive) {
+            const profit = result.winAmount - minesState.betAmount;
+            continueMinesAutobet(true, profit);
+        }
+        
+    } catch (error) {
+        console.error('❌ Mines cashout error:', error);
+        showGameNotification(false, null, error.message || 'Connection error. Please try again.');
+    }
+}
+
+// Update mines stats display
+function updateMinesStats(animate = false) {
+    document.getElementById('mines-count').textContent = minesState.mineCount;
+    
+    const multiplierEl = document.getElementById('mines-multiplier');
+    const profitEl = document.getElementById('mines-profit');
+    
+    multiplierEl.textContent = `${minesState.currentMultiplier.toFixed(2)}x`;
+    profitEl.textContent = `$${minesState.currentProfit.toFixed(2)}`;
+    
+    if (animate) {
+        multiplierEl.classList.add('mines-multiplier-update');
+        profitEl.classList.add('mines-profit-update');
+        
+        setTimeout(() => {
+            multiplierEl.classList.remove('mines-multiplier-update');
+            profitEl.classList.remove('mines-profit-update');
+        }, 500);
+    }
+}
+
+// Set mines bet amount
+function setMinesAmount(action) {
+    const input = document.getElementById('mines-bet-amount');
+    const currentValue = parseFloat(input.value) || 0;
+    
+    switch (action) {
+        case 'half':
+            input.value = (currentValue / 2).toFixed(2);
+            break;
+        case 'double':
+            input.value = Math.min(currentValue * 2, currentUser.balance).toFixed(2);
+            break;
+        case 'max':
+            input.value = currentUser.balance.toFixed(2);
+            break;
+        case 'clear':
+            input.value = '';
+            break;
+    }
+}
+
+// Setup mines autobet
+function setupMinesAutobet() {
+    // This is called from setupMinesControls, no additional setup needed here
+}
+
+// Start mines autobet
+function startMinesAutobet() {
+    if (minesAutobet.isActive) return;
+    
+    const betCount = parseInt(document.getElementById('mines-auto-bet-count').value) || 10;
+    const stopWin = parseFloat(document.getElementById('mines-auto-stop-win').value) || 0;
+    const stopLoss = parseFloat(document.getElementById('mines-auto-stop-loss').value) || 0;
+    const autoReveal = parseInt(document.getElementById('mines-auto-reveal-count').value) || 3;
+    const baseBet = parseFloat(document.getElementById('mines-bet-amount').value) || 1;
+    
+    if (baseBet <= 0) {
+        showGameNotification(false, null, 'Please enter a valid bet amount');
+        return;
+    }
+    
+    // Initialize autobet
+    minesAutobet.isActive = true;
+    minesAutobet.settings.betCount = betCount;
+    minesAutobet.settings.stopOnWin = stopWin;
+    minesAutobet.settings.stopOnLoss = stopLoss;
+    minesAutobet.settings.autoRevealCount = autoReveal;
+    
+    minesAutobet.stats = {
+        totalBets: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalProfit: 0,
+        startBalance: currentUser.balance,
+        baseBet: baseBet,
+        currentStreak: 0,
+        longestStreak: 0
+    };
+    
+    // Update UI
+    document.getElementById('mines-start-auto-bet').classList.add('hidden');
+    document.getElementById('mines-stop-auto-bet').classList.remove('hidden');
+    document.getElementById('mines-auto-bet-btn').classList.add('active');
+    
+    // Start first game
+    startMinesGame();
+}
+
+// Stop mines autobet
+function stopMinesAutobet() {
+    minesAutobet.isActive = false;
+    
+    // Update UI
+    document.getElementById('mines-start-auto-bet').classList.remove('hidden');
+    document.getElementById('mines-stop-auto-bet').classList.add('hidden');
+    document.getElementById('mines-auto-bet-btn').classList.remove('active');
+    
+    // Show final stats
+    const { stats } = minesAutobet;
+    const winRate = stats.totalBets > 0 ? (stats.totalWins / stats.totalBets * 100).toFixed(1) : '0.0';
+    
+    showGameNotification(stats.totalProfit > 0, stats.totalProfit, 
+        `Autobet completed: ${stats.totalBets} bets, ${winRate}% win rate, ${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)} profit`);
+}
+
+// Continue mines autobet
+function continueMinesAutobet(won, profit) {
+    if (!minesAutobet.isActive) return;
+    
+    const { settings, stats } = minesAutobet;
+    
+    // Update stats
+    stats.totalBets++;
+    stats.totalProfit += profit;
+    
+    if (won) {
+        stats.totalWins++;
+        stats.currentStreak = stats.currentStreak > 0 ? stats.currentStreak + 1 : 1;
+    } else {
+        stats.totalLosses++;
+        stats.currentStreak = stats.currentStreak < 0 ? stats.currentStreak - 1 : -1;
+    }
+    
+    stats.longestStreak = Math.max(stats.longestStreak, Math.abs(stats.currentStreak));
+    
+    // Check stopping conditions
+    if (shouldStopMinesAutobet(won, profit)) {
+        stopMinesAutobet();
+        return;
+    }
+    
+    // Adjust bet amount
+    const currentBet = parseFloat(document.getElementById('mines-bet-amount').value);
+    let newBet = currentBet;
+    
+    if (won && settings.onWin === 'multiply') {
+        newBet = currentBet * settings.winMultiplier;
+    } else if (won && settings.onWin === 'reset') {
+        newBet = stats.baseBet;
+    }
+    
+    if (!won && settings.onLoss === 'multiply') {
+        newBet = currentBet * settings.lossMultiplier;
+    } else if (!won && settings.onLoss === 'reset') {
+        newBet = stats.baseBet;
+    }
+    
+    // Update bet amount
+    document.getElementById('mines-bet-amount').value = Math.min(newBet, currentUser.balance).toFixed(2);
+    
+    // Continue if conditions are met
+    if ((!won && settings.onLoss === 'stop') || (won && settings.onWin === 'stop')) {
+        stopMinesAutobet();
+    } else {
+        // Start next game after delay
+        setTimeout(() => {
+            if (minesAutobet.isActive) {
+                startMinesGame();
+            }
+        }, 1000);
+    }
+}
+
+// Should stop mines autobet helper
+function shouldStopMinesAutobet(won, profit) {
+    const { settings, stats } = minesAutobet;
+    
+    // Check bet count
+    if (!settings.isInfinite && stats.totalBets >= settings.betCount) {
+        showGameNotification(profit >= 0, profit, 'Auto bet completed!');
+        return true;
+    }
+    
+    // Check stop conditions
+    if (settings.stopOnWin > 0 && stats.totalProfit >= settings.stopOnWin) {
+        showGameNotification(true, profit, 'Stop win reached!');
+        return true;
+    }
+    
+    if (settings.stopOnLoss > 0 && stats.totalProfit <= -settings.stopOnLoss) {
+        showGameNotification(false, profit, 'Stop loss reached!');
+        return true;
+    }
+    
+    return false;
 } 
