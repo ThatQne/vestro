@@ -3833,9 +3833,10 @@ async function startMinesGame() {
     document.getElementById('mines-bet-amount').disabled = true;
     document.querySelectorAll('.mines-control-btn').forEach(btn => btn.disabled = true);
     
+    // Store original balance for potential rollback
+    const originalBalance = currentUser.balance;
+    
     try {
-        // Store original balance for potential rollback
-        const originalBalance = currentUser.balance;
         
         // OPTIMISTIC UPDATE: Deduct bet amount immediately for instant feedback
         console.log(`💰 Instant deduction: $${betAmount} (${originalBalance} → ${originalBalance - betAmount})`);

@@ -290,11 +290,15 @@ router.post('/play', authenticateToken, async (req, res) => {
         // Update user balance
         user.balance = finalNewBalance;
         
+        // Initialize default values
+        let experienceGained = 0;
+        let levelUpResult = { leveledUp: false, levelsGained: 0 };
+        
         // For mines, don't update stats until game ends
         if (gameType !== 'mines') {
             // Add experience (5 XP for playing, +5 XP for winning)
-            const experienceGained = won ? 10 : 5;
-            const levelUpResult = user.addExperience(experienceGained);
+            experienceGained = won ? 10 : 5;
+            levelUpResult = user.addExperience(experienceGained);
 
             // Update game statistics but don't check badges (they're client-side now)
             user.gamesPlayed += 1;
@@ -313,6 +317,10 @@ router.post('/play', authenticateToken, async (req, res) => {
                 user.losses += 1;
                 user.currentWinStreak = 0;
             }
+        } else {
+            // For mines, just give 5 XP for starting the game
+            experienceGained = 5;
+            levelUpResult = user.addExperience(experienceGained);
         }
 
         // Save user
