@@ -32,6 +32,10 @@ function calculateMinesMultiplier(mineCount, revealedTiles) {
 
 // Play a game
 router.post('/play', authenticateToken, async (req, res) => {
+    // Start a MongoDB session for transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
         const { gameType, betAmount, playerChoice } = req.body;
         
@@ -50,9 +54,10 @@ router.post('/play', authenticateToken, async (req, res) => {
             });
         }
 
-        // Get user
-        const user = await User.findById(req.user.userId);
+        // Get user with session
+        const user = await User.findById(req.user.userId).session(session);
         if (!user) {
+            await session.abortTransaction();
             return res.status(404).json({
                 success: false,
                 message: 'User not found'
@@ -65,6 +70,7 @@ router.post('/play', authenticateToken, async (req, res) => {
 
         // Check balance with small tolerance for floating point errors
         if (userBalance < betAmountRounded) {
+            await session.abortTransaction();
             return res.status(400).json({
                 success: false,
                 message: 'Insufficient balance',
@@ -80,9 +86,10 @@ router.post('/play', authenticateToken, async (req, res) => {
         const balanceBefore = userBalance;
         const newBalance = Math.round((userBalance - betAmountRounded) * 100) / 100;
         user.balance = newBalance;
-        await user.save();
+        user.balanceHistory.push(newBalance);
+        await user.save({ session });
 
-        // Create game history
+        // Create game history with session
         const gameHistory = new GameHistory({
             userId: req.user.userId,
             gameType,
@@ -94,8 +101,8 @@ router.post('/play', authenticateToken, async (req, res) => {
             balanceAfter: newBalance
         });
         
-        // Save to get _id
-        await gameHistory.save();
+        // Save with session
+        await gameHistory.save({ session });
 
         let gameResult;
         let won = false;
@@ -241,7 +248,10 @@ router.post('/play', authenticateToken, async (req, res) => {
             
             // Update game history with initial game state
             gameHistory.gameResult = JSON.stringify(gameResult);
-            await gameHistory.save();
+            await gameHistory.save({ session });
+            
+            // Commit the transaction
+            await session.commitTransaction();
         } else {
             return res.status(400).json({
                 success: false,
@@ -302,7 +312,7 @@ router.post('/play', authenticateToken, async (req, res) => {
         }
 
         // Save user
-        await user.save();
+        await user.save({ session });
 
         // Clean up old game history (keep only last 30 games)
         const gameHistoryCount = await GameHistory.countDocuments({ userId: user._id });
@@ -321,7 +331,7 @@ router.post('/play', authenticateToken, async (req, res) => {
         gameHistory.balanceAfter = user.balance;
         gameHistory.experienceGained = experienceGained;
         gameHistory.leveledUp = levelUpResult.leveledUp;
-        await gameHistory.save();
+        await gameHistory.save({ session });
 
         // Send response
         res.json({
@@ -344,16 +354,22 @@ router.post('/play', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
+        await session.abortTransaction();
         console.error('Play game error:', error);
         res.status(500).json({
             success: false,
             message: 'Server error'
         });
+    } finally {
+        session.endSession();
     }
 });
 
 // Mines tile reveal endpoint
 router.post('/mines/reveal', authenticateToken, async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
         const { gameId, tileIndex } = req.body;
         
@@ -380,14 +396,15 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             });
         }
         
-        // Get the game
+        // Get the game with session
         const gameHistory = await GameHistory.findOne({
             userId: req.user.userId,
             gameType: 'mines',
             _id: gameId
-        });
+        }).session(session);
         
         if (!gameHistory) {
+            await session.abortTransaction();
             return res.status(400).json({
                 success: false,
                 message: 'Game not found'
@@ -400,6 +417,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         
         // Check if game is still active
         if (!active || cashedOut) {
+            await session.abortTransaction();
             return res.status(400).json({
                 success: false,
                 message: 'Game is no longer active'
@@ -414,7 +432,10 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             gameResult.active = false;
             gameResult.multiplier = 0;
             gameHistory.gameResult = JSON.stringify(gameResult);
-            await gameHistory.save();
+            await gameHistory.save({ session });
+            
+            // Commit transaction since we're just updating game state
+            await session.commitTransaction();
             
             res.json({
                 success: true,
@@ -437,10 +458,13 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             gameResult.revealedTiles = revealedTiles;
             gameResult.multiplier = newMultiplier;
             gameHistory.gameResult = JSON.stringify(gameResult);
-            await gameHistory.save();
+            await gameHistory.save({ session });
             
             // Calculate potential win amount (don't add to balance yet)
             const potentialWinAmount = Math.round(gameResult.betAmount * newMultiplier * 100) / 100;
+            
+            // Commit transaction
+            await session.commitTransaction();
             
             res.json({
                 success: true,
@@ -457,43 +481,52 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         }
         
     } catch (error) {
+        await session.abortTransaction();
         console.error('Mines reveal error:', error);
         res.status(500).json({
             success: false,
             message: 'Server error'
         });
+    } finally {
+        session.endSession();
     }
 });
 
 // Mines cash out endpoint
 router.post('/mines/cashout', authenticateToken, async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
         const { gameId } = req.body;
         
         if (!gameId) {
+            await session.abortTransaction();
             return res.status(400).json({
                 success: false,
                 message: 'Game ID is required'
             });
         }
         
-        // Get the game
+        // Get the game with session
         const gameHistory = await GameHistory.findOne({
             userId: req.user.userId,
             gameType: 'mines',
             _id: gameId
-        });
+        }).session(session);
         
         if (!gameHistory) {
+            await session.abortTransaction();
             return res.status(400).json({
                 success: false,
                 message: 'Game not found'
             });
         }
         
-        // Get user
-        const user = await User.findById(req.user.userId);
+        // Get user with session
+        const user = await User.findById(req.user.userId).session(session);
         if (!user) {
+            await session.abortTransaction();
             return res.status(404).json({
                 success: false,
                 message: 'User not found'
@@ -506,6 +539,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         
         // Check if game can be cashed out
         if (!active || cashedOut) {
+            await session.abortTransaction();
             return res.status(400).json({
                 success: false,
                 message: 'Game cannot be cashed out'
@@ -534,7 +568,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         const experienceGained = 10;
         const levelUpResult = user.addExperience(experienceGained);
         
-        await user.save();
+        await user.save({ session });
         
         // Update game history
         gameResult.active = false;
@@ -545,7 +579,10 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         gameHistory.balanceAfter = newBalance;
         gameHistory.experienceGained = experienceGained;
         gameHistory.leveledUp = levelUpResult.leveledUp;
-        await gameHistory.save();
+        await gameHistory.save({ session });
+        
+        // Commit transaction
+        await session.commitTransaction();
         
         res.json({
             success: true,
@@ -559,13 +596,16 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
                 newLevel: user.level
             }
         });
-
+        
     } catch (error) {
+        await session.abortTransaction();
         console.error('Mines cashout error:', error);
         res.status(500).json({
             success: false,
             message: 'Server error'
         });
+    } finally {
+        session.endSession();
     }
 });
 
