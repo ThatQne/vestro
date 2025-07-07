@@ -83,10 +83,10 @@ router.post('/play', authenticateToken, async (req, res) => {
         }
 
         // Deduct bet amount immediately for all games
-        const balanceBefore = userBalance;
-        const newBalance = Math.round((userBalance - betAmountRounded) * 100) / 100;
-        user.balance = newBalance;
-        user.balanceHistory.push(newBalance);
+        const startBalanceBefore = userBalance;
+        const startNewBalance = Math.round((userBalance - betAmountRounded) * 100) / 100;
+        user.balance = startNewBalance;
+        user.balanceHistory.push(startNewBalance);
         await user.save({ session });
 
         // Create game history with session
@@ -97,8 +97,8 @@ router.post('/play', authenticateToken, async (req, res) => {
             playerChoice,
             gameResult: '{}',  // Will update after game logic
             won: false,
-            balanceBefore: balanceBefore,
-            balanceAfter: newBalance
+            balanceBefore: startBalanceBefore,
+            balanceAfter: startNewBalance
         });
         
         // Save with session
@@ -260,8 +260,8 @@ router.post('/play', authenticateToken, async (req, res) => {
         }
 
         // Calculate results with proper precision
-        const balanceBefore = userBalance;
-        let newBalance = userBalance - betAmountRounded; // Deduct bet amount immediately
+        const finalBalanceBefore = userBalance;
+        let finalNewBalance = userBalance - betAmountRounded; // Deduct bet amount immediately
 
         // Calculate win amount for winning games or games with positive multiplier
         if (won || ((gameType === 'plinko' || gameType === 'mines') && multiplier > 0)) {
@@ -274,17 +274,17 @@ router.post('/play', authenticateToken, async (req, res) => {
                 won = winAmount > 0;
                 // For mines, we don't add the win amount here - it's handled in cashout
                 if (gameType !== 'mines') {
-                    newBalance = Math.round((newBalance + winAmount) * 100) / 100;
+                    finalNewBalance = Math.round((finalNewBalance + winAmount) * 100) / 100;
                 }
             } else {
-                newBalance = Math.round((newBalance + winAmount) * 100) / 100;
+                finalNewBalance = Math.round((finalNewBalance + winAmount) * 100) / 100;
             }
         } else {
-            newBalance = Math.round(newBalance * 100) / 100;
+            finalNewBalance = Math.round(finalNewBalance * 100) / 100;
         }
 
         // Update user balance
-        user.balance = newBalance;
+        user.balance = finalNewBalance;
         
         // Only add final balance to history after all calculations are done
         user.balanceHistory.push(user.balance);
@@ -343,8 +343,8 @@ router.post('/play', authenticateToken, async (req, res) => {
                 gameResult,
                 won,
                 winAmount,
-                balanceBefore,
-                balanceAfter: newBalance,
+                balanceBefore: finalBalanceBefore,
+                balanceAfter: finalNewBalance,
                 experienceGained,
                 leveledUp: levelUpResult.leveledUp,
                 levelsGained: levelUpResult.levelsGained,
@@ -428,13 +428,34 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         const hitMine = mines.includes(tileIndex);
         
         if (hitMine) {
-            // Game over - hit a mine
+            // Get user in the same transaction
+            const user = await User.findById(req.user.userId).session(session);
+            if (!user) {
+                await session.abortTransaction();
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+            }
+            
+            // Update game state
             gameResult.active = false;
             gameResult.multiplier = 0;
             gameHistory.gameResult = JSON.stringify(gameResult);
+            gameHistory.won = false;
+            gameHistory.winAmount = 0;
+            // Critical: Mark the current balance as final
+            gameHistory.balanceAfter = user.balance;
             await gameHistory.save({ session });
             
-            // Commit transaction since we're just updating game state
+            // Update user stats
+            user.losses += 1;
+            user.currentWinStreak = 0;
+            // Critical: Add current balance to history to mark it as final
+            user.balanceHistory.push(user.balance);
+            await user.save({ session });
+            
+            // Commit transaction AFTER all updates
             await session.commitTransaction();
             
             res.json({
@@ -446,7 +467,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
                     mines: mines,
                     multiplier: 0,
                     winAmount: 0,
-                    balanceAfter: gameHistory.balanceAfter // Return the balance after initial bet deduction
+                    balanceAfter: user.balance
                 }
             });
         } else {
