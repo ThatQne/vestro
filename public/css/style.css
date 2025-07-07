@@ -3218,26 +3218,6 @@ input, textarea {
     font-size: 1.5rem;
 }
 
-.mines-status {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    padding: 1rem;
-    background: rgba(10, 10, 10, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    width: 100%;
-    max-width: 600px;
-    margin: 0 auto 1.5rem;
-}
-
-.mines-status-text {
-    font-size: 1.1rem;
-    font-weight: 500;
-    color: #f1f1f1;
-}
-
 .mines-count-slider {
     width: 100%;
     max-width: 100%;
@@ -3517,23 +3497,6 @@ input, textarea {
     border-color: rgba(239, 68, 68, 0.5);
     color: #ef4444;
     box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
-}
-
-.mines-status {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    padding: 1rem;
-    background: rgba(10, 10, 10, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-}
-
-.mines-status-text {
-    font-size: 1.1rem;
-    font-weight: 500;
-    color: #f1f1f1;
 }
 
 .mines-controls {

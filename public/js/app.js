@@ -3704,7 +3704,6 @@ async function startMinesGame() {
         updateMinesStats();
         document.getElementById('mines-start-btn').style.display = 'none';
         document.getElementById('mines-cashout-btn').style.display = 'inline-block';
-        document.getElementById('mines-status-text').textContent = 'Click tiles to reveal them. Avoid the mines!';
         
         // Display provably fair data
         if (data.result.randomHash) {
@@ -3780,8 +3779,6 @@ async function revealTile(tileIndex) {
                 minesState.gameActive = false;
                 document.getElementById('mines-start-btn').style.display = 'inline-block';
                 document.getElementById('mines-cashout-btn').style.display = 'none';
-                document.getElementById('mines-status-text').textContent = 'Game Over! You hit a mine.';
-                
                 // Show notification
                 showGameNotification(false, 0, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
                 
@@ -3803,8 +3800,7 @@ async function revealTile(tileIndex) {
                 // Update UI with animations
                 updateMinesStats(true);
                 
-                document.getElementById('mines-status-text').textContent = 
-                    `Safe! ${result.revealedTiles} tiles revealed. Multiplier: ${result.multiplier.toFixed(2)}x`;
+
             }
             
             // Re-initialize Lucide icons for new icons
@@ -3850,11 +3846,24 @@ async function cashOutMines() {
         minesState.gameActive = false;
         document.getElementById('mines-start-btn').style.display = 'inline-block';
         document.getElementById('mines-cashout-btn').style.display = 'none';
-        document.getElementById('mines-status-text').textContent = 
-            `Cashed out! Won $${result.winAmount.toFixed(2)} with ${minesState.currentMultiplier.toFixed(2)}x multiplier`;
         
-        // Disable all tiles
-        minesState.tiles.forEach(tile => tile.classList.add('disabled'));
+        
+        // Reveal all mines with animation
+        minesState.mines.forEach((mineIndex, i) => {
+            setTimeout(() => {
+                const mineTile = minesState.tiles[mineIndex];
+                if (!mineTile.classList.contains('revealed')) {
+                    mineTile.classList.add('revealed', 'mine');
+                    mineTile.innerHTML = '<i data-lucide="bomb"></i>';
+                    lucide.createIcons();
+                }
+            }, i * 100); // Stagger the reveal animations
+        });
+        
+        // Remove active state from all tiles
+        minesState.tiles.forEach(tile => {
+            tile.classList.remove('active');
+        });
         
         // Show notification
         showGameNotification(true, result.winAmount, null, 

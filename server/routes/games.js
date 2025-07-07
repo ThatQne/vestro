@@ -208,17 +208,20 @@ router.post('/play', authenticateToken, async (req, res) => {
             const totalTiles = 25;
             const safeTiles = totalTiles - mineCount;
             
-            // Create array of positions and shuffle to place mines
+            // Create array of positions
             const positions = Array.from({ length: totalTiles }, (_, i) => i);
-            const mines = [];
             
-            // Use the random result to seed mine placement
+            // Fisher-Yates shuffle using the random result as seed
             let seed = randomResult.value;
-            for (let i = 0; i < mineCount; i++) {
-                const index = seed % positions.length;
-                mines.push(positions.splice(index, 1)[0]);
-                seed = Math.floor(seed / positions.length);
+            for (let i = positions.length - 1; i > 0; i--) {
+                // Use a different part of the seed for each swap
+                seed = (seed * 16807) % 2147483647; // Park-Miller LCG
+                const j = seed % (i + 1);
+                [positions[i], positions[j]] = [positions[j], positions[i]];
             }
+            
+            // Take first N positions as mines
+            const mines = positions.slice(0, mineCount);
             
             gameResult = {
                 mines,
@@ -470,16 +473,17 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         const { multiplier } = gameResult;
         const betAmount = gameHistory.betAmount;
         
-        // Calculate win amount
+        // Calculate win amount (multiplier already includes the bet amount)
         const winAmount = Math.round(betAmount * multiplier * 100) / 100;
+        const profitAmount = Math.round((winAmount - betAmount) * 100) / 100;
         
-        // Update user balance
+        // Update user balance (only add the profit since bet was already subtracted)
         user.balance = Math.round((user.balance + winAmount) * 100) / 100;
         user.balanceHistory.push(user.balance);
         
         // Update stats
         user.wins += 1;
-        user.totalWon = Math.round((user.totalWon + winAmount) * 100) / 100;
+        user.totalWon = Math.round((user.totalWon + profitAmount) * 100) / 100;
         user.currentWinStreak += 1;
         user.bestWinStreak = Math.max(user.bestWinStreak, user.currentWinStreak);
         
