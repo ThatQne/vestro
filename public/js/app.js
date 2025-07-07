@@ -3830,7 +3830,7 @@ async function revealTile(tileIndex) {
                 minesState.gameActive = false;
                 document.getElementById('mines-start-btn').style.display = 'inline-block';
                 document.getElementById('mines-cashout-btn').style.display = 'none';
-                // Show notification
+                // Show notification - we already deducted the bet amount at game start
                 showGameNotification(false, 0, 'You hit a mine!', { bg: 'rgba(239, 68, 68, 0.3)', border: 'rgba(239, 68, 68, 0.8)', text: '#ef4444' });
                 
                 // Continue autobet if active
@@ -3890,8 +3890,9 @@ async function cashOutMines() {
         
         const result = data.result;
         
-        // Update balance
-        currentUser.balance = result.balanceAfter;
+        // Update balance - we already deducted the bet amount at game start, 
+        // so we only add the winAmount (if any) to our current balance
+        currentUser.balance += result.winAmount;
         updateUserInterface();
         
         // Game complete
