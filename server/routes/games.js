@@ -449,12 +449,12 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
                 });
             }
             
-            // Check if game is already marked as lost (prevent double updates)
-            if (gameHistory.won === false) {
+            // Check if game is already finished (prevent double updates)
+            if (!gameResult.active) {
                 await session.abortTransaction();
                 return res.status(400).json({
                     success: false,
-                    message: 'Game is already marked as lost'
+                    message: 'Game is no longer active'
                 });
             }
             
