@@ -12,6 +12,12 @@ if (typeof Matter !== 'undefined') {
     MatterModules = { Engine, World, Bodies, Body, Events, Runner };
 }
 
+// Mines game state
+let minesPattern = {
+    selectedTiles: new Set(),
+    isPatternMode: false
+};
+
 // API Base URL - use Render backend for both dev and prod
 const API_BASE_URL = 'https://vestro-lz81.onrender.com';
 
@@ -3533,11 +3539,33 @@ function setupMinesGrid() {
         const tile = document.createElement('div');
         tile.className = 'mines-tile';
         tile.dataset.index = i;
-        tile.addEventListener('click', () => revealTile(i));
+        tile.addEventListener('click', () => {
+            if (minesPattern.isPatternMode) {
+                togglePatternTile(i);
+            } else {
+                revealTile(i);
+            }
+        });
         grid.appendChild(tile);
     }
     
     minesState.tiles = Array.from(grid.children);
+}
+
+function togglePatternTile(index) {
+    const tile = document.querySelector(`.mines-tile[data-index="${index}"]`);
+    if (!tile) return;
+
+    if (minesPattern.selectedTiles.has(index)) {
+        minesPattern.selectedTiles.delete(index);
+        tile.classList.remove('pattern-selected');
+    } else {
+        minesPattern.selectedTiles.add(index);
+        tile.classList.add('pattern-selected');
+        
+        // Update auto reveal count to match selected tiles
+        document.getElementById('mines-auto-reveal-count').value = minesPattern.selectedTiles.size;
+    }
 }
 
 // Setup mines controls
@@ -3576,6 +3604,21 @@ function setupMinesControls() {
         minesAutobet.settings.isInfinite = !minesAutobet.settings.isInfinite;
         infiniteToggle.classList.toggle('active', minesAutobet.settings.isInfinite);
         document.getElementById('mines-auto-bet-count').disabled = minesAutobet.settings.isInfinite;
+    });
+
+    // Pattern mode toggle
+    const patternToggle = document.getElementById('mines-pattern-toggle');
+    patternToggle.addEventListener('click', () => {
+        minesPattern.isPatternMode = !minesPattern.isPatternMode;
+        patternToggle.classList.toggle('active', minesPattern.isPatternMode);
+        
+        // Clear pattern when disabling pattern mode
+        if (!minesPattern.isPatternMode) {
+            minesPattern.selectedTiles.clear();
+            document.querySelectorAll('.mines-tile').forEach(tile => {
+                tile.classList.remove('pattern-selected');
+            });
+        }
     });
 }
 
@@ -3635,11 +3678,17 @@ async function startMinesGame() {
     
     if (!betAmount || betAmount <= 0) {
         showGameNotification(false, null, 'Please enter a valid bet amount');
+        if (minesAutobet.isActive) {
+            stopMinesAutobet();
+        }
         return;
     }
     
     if (betAmount > currentUser.balance) {
         showGameNotification(false, null, 'Insufficient balance');
+        if (minesAutobet.isActive) {
+            stopMinesAutobet();
+        }
         return;
     }
     
@@ -3691,13 +3740,15 @@ async function startMinesGame() {
         minesState.currentProfit = 0;
         
         // Reset and activate tiles with animation
-        minesState.tiles.forEach(tile => {
+        minesState.tiles.forEach((tile, index) => {
             tile.className = 'mines-tile';
             tile.innerHTML = '';
-            // Add active class with slight delay for each tile
-            setTimeout(() => {
-                tile.classList.add('active');
-            }, Math.random() * 200);
+            // Add active class immediately
+            tile.classList.add('active');
+            // Restore pattern selection if in pattern mode
+            if (minesPattern.isPatternMode && minesPattern.selectedTiles.has(index)) {
+                tile.classList.add('pattern-selected');
+            }
         });
         
         // Update UI
@@ -3973,6 +4024,13 @@ function startMinesAutobet() {
     minesAutobet.settings.stopOnLoss = stopLoss;
     minesAutobet.settings.autoRevealCount = autoReveal;
     
+    // Store pattern if in pattern mode
+    if (minesPattern.isPatternMode && minesPattern.selectedTiles.size > 0) {
+        minesAutobet.settings.pattern = Array.from(minesPattern.selectedTiles).sort((a, b) => a - b);
+    } else {
+        minesAutobet.settings.pattern = null;
+    }
+    
     minesAutobet.stats = {
         totalBets: 0,
         totalWins: 0,
@@ -3989,8 +4047,16 @@ function startMinesAutobet() {
     document.getElementById('mines-stop-auto-bet').classList.remove('hidden');
     document.getElementById('mines-auto-bet-btn').classList.add('active');
     
-    // Start first game
-    startMinesGame();
+    // If a game is in progress, cash it out first
+    if (minesState.gameActive) {
+        cashOutMines().then(() => {
+            // Start first game after cashout
+            startMinesGame();
+        });
+    } else {
+        // Start first game immediately if no game is active
+        startMinesGame();
+    }
 }
 
 // Stop mines autobet
@@ -4035,9 +4101,21 @@ function continueMinesAutobet(won, profit) {
         stopMinesAutobet();
         return;
     }
+
+    // Check if we have enough balance for next bet
+    const currentBet = parseFloat(document.getElementById('mines-bet-amount').value);
+    if (currentBet > currentUser.balance) {
+        showGameNotification(false, null, 'Insufficient balance for next bet');
+        stopMinesAutobet();
+        return;
+    }
+    
+    // Start next game with a delay
+    setTimeout(() => {
+        startMinesGame();
+    }, 800);
     
     // Adjust bet amount
-    const currentBet = parseFloat(document.getElementById('mines-bet-amount').value);
     let newBet = currentBet;
     
     if (won && settings.onWin === 'multiply') {
@@ -4060,9 +4138,29 @@ function continueMinesAutobet(won, profit) {
         stopMinesAutobet();
     } else {
         // Start next game after delay
-        setTimeout(() => {
+        setTimeout(async () => {
             if (minesAutobet.isActive) {
-                startMinesGame();
+                await startMinesGame();
+                
+                // If we have a pattern, use it, otherwise use auto reveal count
+                const tilesToReveal = settings.pattern && settings.pattern.length > 0 
+                    ? settings.pattern 
+                    : (() => {
+                        const autoReveal = settings.autoRevealCount;
+                        const availableTiles = Array.from({length: 25}, (_, i) => i);
+                        const tiles = [];
+                        for (let i = 0; i < autoReveal; i++) {
+                            const randomIndex = Math.floor(Math.random() * availableTiles.length);
+                            tiles.push(availableTiles.splice(randomIndex, 1)[0]);
+                        }
+                        return tiles;
+                    })();
+
+                // Reveal all tiles simultaneously
+                if (minesAutobet.isActive) {
+                    await Promise.all(tilesToReveal.map(tileIndex => revealTile(tileIndex)));
+                    await cashOutMines();
+                }
             }
         }, 1000);
     }
