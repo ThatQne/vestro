@@ -4075,7 +4075,6 @@ async function cashOutMines() {
             },
             body: JSON.stringify({
                 gameId: minesState.gameId,
-                revealedTiles: Array.from(minesState.pendingRevealedTiles),
                 gridHash: minesState.gridHash
             })
         });
@@ -4108,16 +4107,14 @@ async function cashOutMines() {
         // Reveal all mines with animation
         minesState.gridState.forEach((isMine, index) => {
             if (isMine) {
-                setTimeout(() => {
-                    const mineTile = minesState.tiles[index];
-                    if (!mineTile.classList.contains('revealed')) {
-                        mineTile.classList.add('revealed', 'mine');
-                        mineTile.innerHTML = '<i data-lucide="bomb"></i>';
-                        lucide.createIcons();
-                    }
-                }, index * 100); // Stagger the reveal animations
+                const mineTile = minesState.tiles[index];
+                if (!mineTile.classList.contains('revealed')) {
+                    mineTile.classList.add('revealed', 'mine');
+                    mineTile.innerHTML = '<i data-lucide="bomb"></i>';
+                }
             }
         });
+        lucide.createIcons();
         
         // Remove active state from all tiles
         minesState.tiles.forEach(tile => {

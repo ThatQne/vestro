@@ -353,14 +353,14 @@ router.post('/play', authenticateToken, async (req, res) => {
             success: true,
             result: {
                 _id: gameHistory._id,
-                gameType,
+            gameType,
                 playerChoice,
-                gameResult,
-                won,
+            gameResult,
+            won,
                 winAmount,
                 balanceBefore: finalBalanceBefore,
                 balanceAfter: finalNewBalance,
-                experienceGained,
+            experienceGained,
                 leveledUp: levelUpResult.leveledUp,
                 levelsGained: levelUpResult.levelsGained,
                 newLevel: user.level,
@@ -628,7 +628,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         
         // Commit transaction
         await session.commitTransaction();
-        
+
         res.json({
             success: true,
             result: {
@@ -641,7 +641,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
                 newLevel: user.level
             }
         });
-        
+
     } catch (error) {
         await session.abortTransaction();
         console.error('Mines cashout error:', error);
@@ -773,7 +773,7 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
                 verified: true
             }
         });
-        
+
     } catch (error) {
         await session.abortTransaction();
         console.error('Mines verify error:', error);
