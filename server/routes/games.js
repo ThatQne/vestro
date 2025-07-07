@@ -33,7 +33,7 @@ function calculateMinesMultiplier(mineCount, revealedTiles) {
 // Play a game
 router.post('/play', authenticateToken, async (req, res) => {
     try {
-        const { gameType, betAmount, playerChoice, targetNumber } = req.body;
+        const { gameType, betAmount, playerChoice } = req.body;
         
         // Validation
         if (!gameType || !betAmount || !playerChoice) {
@@ -76,7 +76,13 @@ router.post('/play', authenticateToken, async (req, res) => {
             });
         }
 
-        // Create game history first to get a valid ObjectId
+        // Deduct bet amount immediately for all games
+        const balanceBefore = userBalance;
+        const newBalance = Math.round((userBalance - betAmountRounded) * 100) / 100;
+        user.balance = newBalance;
+        await user.save();
+
+        // Create game history
         const gameHistory = new GameHistory({
             userId: req.user.userId,
             gameType,
@@ -84,8 +90,8 @@ router.post('/play', authenticateToken, async (req, res) => {
             playerChoice,
             gameResult: '{}',  // Will update after game logic
             won: false,
-            balanceBefore: userBalance,
-            balanceAfter: userBalance
+            balanceBefore: balanceBefore,
+            balanceAfter: newBalance
         });
         
         // Save to get _id
@@ -227,7 +233,10 @@ router.post('/play', authenticateToken, async (req, res) => {
                 mines,
                 mineCount,
                 multiplier: 1,
-                revealedTiles: 0
+                revealedTiles: 0,
+                betAmount: betAmountRounded,
+                active: true, // Track if game is still active
+                cashedOut: false // Track if game has been cashed out
             };
             
             // Update game history with initial game state
@@ -313,14 +322,14 @@ router.post('/play', authenticateToken, async (req, res) => {
         res.json({
             success: true,
             result: {
-                _id: gameHistory._id,  // Send the valid ObjectId
+                _id: gameHistory._id,
                 gameType,
                 playerChoice,
                 gameResult,
                 won,
                 winAmount,
-                balanceBefore: userBalance,
-                balanceAfter: user.balance,
+                balanceBefore,
+                balanceAfter: newBalance,
                 experienceGained,
                 leveledUp: levelUpResult.leveledUp,
                 levelsGained: levelUpResult.levelsGained,
@@ -366,7 +375,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             });
         }
         
-        // Get the most recent mines game for this user
+        // Get the game
         const gameHistory = await GameHistory.findOne({
             userId: req.user.userId,
             gameType: 'mines',
@@ -374,7 +383,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         });
         
         if (!gameHistory) {
-            return res.status(404).json({
+            return res.status(400).json({
                 success: false,
                 message: 'Game not found'
             });
@@ -382,13 +391,26 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         
         // Parse game result
         const gameResult = JSON.parse(gameHistory.gameResult);
-        const { mines, mineCount } = gameResult;
+        const { mines, mineCount, active, cashedOut } = gameResult;
+        
+        // Check if game is still active
+        if (!active || cashedOut) {
+            return res.status(400).json({
+                success: false,
+                message: 'Game is no longer active'
+            });
+        }
         
         // Check if tile is a mine
         const hitMine = mines.includes(tileIndex);
         
         if (hitMine) {
             // Game over - hit a mine
+            gameResult.active = false;
+            gameResult.multiplier = 0;
+            gameHistory.gameResult = JSON.stringify(gameResult);
+            await gameHistory.save();
+            
             res.json({
                 success: true,
                 result: {
@@ -397,7 +419,8 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
                     gameOver: true,
                     mines: mines,
                     multiplier: 0,
-                    winAmount: 0
+                    winAmount: 0,
+                    balanceAfter: gameHistory.balanceAfter // Return the balance after initial bet deduction
                 }
             });
         } else {
@@ -411,6 +434,9 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             gameHistory.gameResult = JSON.stringify(gameResult);
             await gameHistory.save();
             
+            // Calculate potential win amount (don't add to balance yet)
+            const potentialWinAmount = Math.round(gameResult.betAmount * newMultiplier * 100) / 100;
+            
             res.json({
                 success: true,
                 result: {
@@ -419,6 +445,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
                     gameOver: false,
                     multiplier: newMultiplier,
                     revealedTiles: revealedTiles,
+                    potentialWinAmount,
                     canCashOut: true
                 }
             });
@@ -453,7 +480,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         });
         
         if (!gameHistory) {
-            return res.status(404).json({
+            return res.status(400).json({
                 success: false,
                 message: 'Game not found'
             });
@@ -470,20 +497,27 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         
         // Parse game result
         const gameResult = JSON.parse(gameHistory.gameResult);
-        const { multiplier } = gameResult;
-        const betAmount = gameHistory.betAmount;
+        const { multiplier, active, cashedOut, betAmount } = gameResult;
         
-        // Calculate win amount (multiplier already includes the bet amount)
+        // Check if game can be cashed out
+        if (!active || cashedOut) {
+            return res.status(400).json({
+                success: false,
+                message: 'Game cannot be cashed out'
+            });
+        }
+        
+        // Calculate win amount (multiplier includes the bet)
         const winAmount = Math.round(betAmount * multiplier * 100) / 100;
-        const profitAmount = Math.round((winAmount - betAmount) * 100) / 100;
         
-        // Update user balance (only add the profit since bet was already subtracted)
-        user.balance = Math.round((user.balance + winAmount) * 100) / 100;
-        user.balanceHistory.push(user.balance);
+        // Update user balance (add win amount)
+        const newBalance = Math.round((user.balance + winAmount) * 100) / 100;
+        user.balance = newBalance;
+        user.balanceHistory.push(newBalance);
         
         // Update stats
         user.wins += 1;
-        user.totalWon = Math.round((user.totalWon + profitAmount) * 100) / 100;
+        user.totalWon = Math.round((user.totalWon + (winAmount - betAmount)) * 100) / 100;
         user.currentWinStreak += 1;
         user.bestWinStreak = Math.max(user.bestWinStreak, user.currentWinStreak);
         
@@ -498,9 +532,12 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         await user.save();
         
         // Update game history
+        gameResult.active = false;
+        gameResult.cashedOut = true;
+        gameHistory.gameResult = JSON.stringify(gameResult);
         gameHistory.won = true;
         gameHistory.winAmount = winAmount;
-        gameHistory.balanceAfter = user.balance;
+        gameHistory.balanceAfter = newBalance;
         gameHistory.experienceGained = experienceGained;
         gameHistory.leveledUp = levelUpResult.leveledUp;
         await gameHistory.save();
@@ -510,7 +547,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
             result: {
                 winAmount,
                 multiplier,
-                balanceAfter: user.balance,
+                balanceAfter: newBalance,
                 experienceGained,
                 leveledUp: levelUpResult.leveledUp,
                 levelsGained: levelUpResult.levelsGained,
