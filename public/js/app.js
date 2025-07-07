@@ -4070,6 +4070,21 @@ async function verifyGameState(lastRevealedTile, isGameOver = false) {
     } catch (error) {
         console.error('❌ Mines verify error:', error);
         showGameNotification(false, null, error.message || 'Connection error. Please try again.');
+        
+        // Re-enable controls on error
+        minesState.isLoading = false;
+        document.getElementById('mines-start-btn').disabled = false;
+        document.getElementById('mines-bet-amount').disabled = false;
+        document.querySelectorAll('.mines-control-btn').forEach(btn => btn.disabled = false);
+        
+        // Reset game state on error
+        minesState.gameActive = false;
+        minesState.gameId = null;
+        minesState.revealedTiles = 0;
+        minesState.currentMultiplier = 1.0;
+        minesState.currentProfit = 0;
+        minesState.pendingRevealedTiles = new Set();
+        minesState.serverVerified = false;
     }
 }
 

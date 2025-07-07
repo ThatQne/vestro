@@ -366,7 +366,11 @@ router.post('/play', authenticateToken, async (req, res) => {
         });
     } finally {
         if (session) {
-            await session.endSession();
+            try {
+                session.endSession();
+            } catch (endError) {
+                console.error('Error ending session:', endError);
+            }
         }
     }
 });
@@ -447,12 +451,11 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             gameHistory.balanceAfter = user.balance;
             await gameHistory.save({ session });
             
-            // Update user stats - only if not already updated
-            if (user.balanceHistory[user.balanceHistory.length - 1] !== user.balance) {
-                user.losses += 1;
-                user.currentWinStreak = 0;
-                await user.save({ session });
-            }
+            // Update user stats and balance history
+            user.losses += 1;
+            user.currentWinStreak = 0;
+            user.balanceHistory.push(user.balance);
+            await user.save({ session });
             
             // Commit transaction AFTER all updates
             await session.commitTransaction();
@@ -515,7 +518,11 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         });
     } finally {
         if (session) {
-            await session.endSession();
+            try {
+                session.endSession();
+            } catch (endError) {
+                console.error('Error ending session:', endError);
+            }
         }
     }
 });
@@ -577,7 +584,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         // Calculate win amount (multiplier includes the bet)
         const winAmount = Math.round(betAmount * multiplier * 100) / 100;
         
-        // Update user balance (add win amount)
+        // Update user balance (add win amount, bet amount was already deducted at game start)
         const newBalance = Math.round((user.balance + winAmount) * 100) / 100;
         user.balance = newBalance;
         user.balanceHistory.push(newBalance);
@@ -626,30 +633,47 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         });
 
     } catch (error) {
-        await session.abortTransaction();
+        if (session) {
+            try {
+                await session.abortTransaction();
+            } catch (abortError) {
+                console.error('Error aborting transaction:', abortError);
+            }
+        }
         console.error('Mines cashout error:', error);
         res.status(500).json({
             success: false,
             message: 'Server error'
         });
     } finally {
-        session.endSession();
+        if (session) {
+            try {
+                session.endSession();
+            } catch (endError) {
+                console.error('Error ending session:', endError);
+            }
+        }
     }
 });
 
 // Mines verify endpoint
 router.post('/mines/verify', authenticateToken, async (req, res) => {
     let session;
+    let transactionCommitted = false;
+    
     try {
-        session = await mongoose.startSession();
-        session.startTransaction();
-        
         const { gameId, revealedTiles, lastRevealedTile, gridHash, isGameOver } = req.body;
         
         // Validation
         if (!gameId || !revealedTiles || lastRevealedTile === undefined || !gridHash) {
-            throw new Error('Missing required parameters');
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameters'
+            });
         }
+        
+        session = await mongoose.startSession();
+        session.startTransaction();
         
         // Get the game with session
         const gameHistory = await GameHistory.findOne({
@@ -659,110 +683,110 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
         }).session(session);
         
         if (!gameHistory) {
-            throw new Error('Game not found');
+            await session.abortTransaction();
+            transactionCommitted = true;
+            return res.status(404).json({
+                success: false,
+                message: 'Game not found'
+            });
         }
         
-        // Parse game result
-        const gameResult = JSON.parse(gameHistory.gameResult);
-        const { active, cashedOut, gridState: serverGridState, gridHash: serverGridHash } = gameResult;
-        
-        // Check if game is still active
-        if (!active || cashedOut) {
-            throw new Error('Game is no longer active');
+        // Get user with session
+        const user = await User.findById(req.user.userId).session(session);
+        if (!user) {
+            await session.abortTransaction();
+            transactionCommitted = true;
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
         }
         
-        // Verify grid hash matches
-        if (gridHash !== serverGridHash) {
-            throw new Error('Invalid game state');
+        // Verify grid hash
+        if (gridHash !== gameHistory.gridHash) {
+            await session.abortTransaction();
+            transactionCommitted = true;
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid grid hash'
+            });
         }
         
-        // Verify all revealed tiles
-        for (const tileIndex of revealedTiles) {
-            if (tileIndex < 0 || tileIndex > 24) {
-                throw new Error('Invalid tile index');
-            }
-            
-            // Add to revealed tiles map
-            gameResult.revealedTilesMap[tileIndex] = true;
-        }
-        
-        // If game over, update game state and user stats
-        if (isGameOver) {
-            // Get user in the same transaction
-            const user = await User.findById(req.user.userId).session(session);
-            if (!user) {
-                throw new Error('User not found');
-            }
-            
-            // Check if game is already marked as lost (prevent double updates)
-            if (gameHistory.won === false) {
-                // Game is already marked as lost, just return the current state
-                await session.commitTransaction();
-                return res.json({
-                    success: true,
-                    result: {
-                        balanceAfter: user.balance
-                    }
-                });
-            }
-            
-            // Update game state
-            gameResult.active = false;
-            gameResult.multiplier = 0;
-            gameHistory.gameResult = JSON.stringify(gameResult);
-            gameHistory.won = false;
-            gameHistory.winAmount = 0;
-            gameHistory.balanceAfter = user.balance;
-            await gameHistory.save({ session });
-            
-            // Update user stats - only if not already updated
-            if (user.balanceHistory[user.balanceHistory.length - 1] !== user.balance) {
-                user.losses += 1;
-                user.currentWinStreak = 0;
-                await user.save({ session });
-            }
-            
-            // Commit transaction
+        // If game is already marked as lost, just return current state
+        if (gameHistory.won === false) {
             await session.commitTransaction();
-            
-            res.json({
+            transactionCommitted = true;
+            return res.json({
                 success: true,
                 result: {
-                    balanceAfter: user.balance
+                    balanceAfter: user.balance,
+                    winAmount: 0
                 }
             });
         }
         
-        // Save updated game state
-        gameHistory.gameResult = JSON.stringify(gameResult);
-        await gameHistory.save({ session });
+        // If game over, update game state and user stats
+        if (isGameOver) {
+            // Mark game as lost
+            gameHistory.won = false;
+            gameHistory.endTime = new Date();
+            await gameHistory.save({ session });
+            
+            // Update user stats
+            user.losses += 1;
+            user.currentWinStreak = 0;
+            user.balanceHistory.push(user.balance);
+            await user.save({ session });
+            
+            // Commit transaction
+            await session.commitTransaction();
+            transactionCommitted = true;
+            
+            return res.json({
+                success: true,
+                result: {
+                    balanceAfter: user.balance,
+                    winAmount: 0
+                }
+            });
+        }
         
-        // Commit transaction
+        // Game continues - commit transaction
         await session.commitTransaction();
+        transactionCommitted = true;
         
-        res.json({
+        return res.json({
             success: true,
             result: {
-                verified: true
+                balanceAfter: user.balance,
+                winAmount: 0
             }
         });
-
+        
     } catch (error) {
         console.error('Mines verify error:', error);
-        if (session) {
+        
+        // Only abort if transaction was started and not committed
+        if (session && !transactionCommitted) {
             try {
                 await session.abortTransaction();
             } catch (abortError) {
                 console.error('Error aborting transaction:', abortError);
             }
         }
-        return res.status(error.status || 500).json({
+        
+        return res.status(500).json({
             success: false,
             message: error.message || 'Server error'
         });
+        
     } finally {
         if (session) {
-            await session.endSession();
+            try {
+                session.endSession();
+            } catch (endError) {
+                console.error('Error ending session:', endError);
+            }
         }
     }
 });
