@@ -4101,7 +4101,9 @@ async function cashOutMines() {
             },
             body: JSON.stringify({
                 gameId: minesState.gameId,
-                gridHash: minesState.gridHash
+                gridHash: minesState.gridHash,
+                revealedTiles: Array.from(minesState.pendingRevealedTiles),
+                currentMultiplier: minesState.currentMultiplier
             })
         });
         

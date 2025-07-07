@@ -290,26 +290,29 @@ router.post('/play', authenticateToken, async (req, res) => {
         // Update user balance
         user.balance = finalNewBalance;
         
-        // Add experience (5 XP for playing, +5 XP for winning)
-        const experienceGained = won ? 10 : 5;
-        const levelUpResult = user.addExperience(experienceGained);
+        // For mines, don't update stats until game ends
+        if (gameType !== 'mines') {
+            // Add experience (5 XP for playing, +5 XP for winning)
+            const experienceGained = won ? 10 : 5;
+            const levelUpResult = user.addExperience(experienceGained);
 
-        // Update game statistics but don't check badges (they're client-side now)
-        user.gamesPlayed += 1;
-        user.totalWagered = Math.round((user.totalWagered + betAmountRounded) * 100) / 100;
-        
-        if (won) {
-            user.wins += 1;
-            user.totalWon = Math.round((user.totalWon + winAmount) * 100) / 100;
-            user.currentWinStreak += 1;
-            user.bestWinStreak = Math.max(user.bestWinStreak, user.currentWinStreak);
+            // Update game statistics but don't check badges (they're client-side now)
+            user.gamesPlayed += 1;
+            user.totalWagered = Math.round((user.totalWagered + betAmountRounded) * 100) / 100;
             
-            if (winAmount > user.bestWin) {
-                user.bestWin = winAmount;
+            if (won) {
+                user.wins += 1;
+                user.totalWon = Math.round((user.totalWon + winAmount) * 100) / 100;
+                user.currentWinStreak += 1;
+                user.bestWinStreak = Math.max(user.bestWinStreak, user.currentWinStreak);
+                
+                if (winAmount > user.bestWin) {
+                    user.bestWin = winAmount;
+                }
+            } else {
+                user.losses += 1;
+                user.currentWinStreak = 0;
             }
-        } else {
-            user.losses += 1;
-            user.currentWinStreak = 0;
         }
 
         // Save user
@@ -326,13 +329,16 @@ router.post('/play', authenticateToken, async (req, res) => {
             await GameHistory.deleteMany({ _id: { $in: oldGameIds } });
         }
 
-        // Save game history
-        gameHistory.won = won;
-        gameHistory.winAmount = winAmount;
-        gameHistory.balanceAfter = user.balance;
-        gameHistory.experienceGained = experienceGained;
-        gameHistory.leveledUp = levelUpResult.leveledUp;
-        await gameHistory.save({ session });
+        // For mines, don't save final game history until game ends
+        if (gameType !== 'mines') {
+            // Save game history
+            gameHistory.won = won;
+            gameHistory.winAmount = winAmount;
+            gameHistory.balanceAfter = user.balance;
+            gameHistory.experienceGained = experienceGained;
+            gameHistory.leveledUp = levelUpResult.leveledUp;
+            await gameHistory.save({ session });
+        }
 
         // Send response
         res.json({
@@ -455,6 +461,8 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             await gameHistory.save({ session });
             
             // Update user stats and balance history
+            user.gamesPlayed += 1;
+            user.totalWagered = Math.round((user.totalWagered + gameResult.betAmount) * 100) / 100;
             user.losses += 1;
             user.currentWinStreak = 0;
             user.balanceHistory.push(user.balance);
@@ -536,13 +544,13 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
     session.startTransaction();
     
     try {
-        const { gameId } = req.body;
+        const { gameId, revealedTiles, currentMultiplier } = req.body;
         
-        if (!gameId) {
+        if (!gameId || !revealedTiles || !currentMultiplier) {
             await session.abortTransaction();
             return res.status(400).json({
                 success: false,
-                message: 'Game ID is required'
+                message: 'Game ID, revealed tiles, and current multiplier are required'
             });
         }
         
@@ -573,16 +581,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         
         // Parse game result
         const gameResult = JSON.parse(gameHistory.gameResult);
-        const { multiplier, active, cashedOut, betAmount } = gameResult;
-        
-        console.log('💰 Cashout Debug:', {
-            gameId,
-            multiplier,
-            betAmount,
-            active,
-            cashedOut,
-            revealedTiles: gameResult.revealedTiles
-        });
+        const { active, cashedOut, betAmount, mines, mineCount, gridState } = gameResult;
         
         // Check if game can be cashed out
         if (!active || cashedOut) {
@@ -593,6 +592,42 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
             });
         }
         
+        // Validate revealed tiles against mines
+        for (const tileIndex of revealedTiles) {
+            if (mines.includes(tileIndex)) {
+                await session.abortTransaction();
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid game state: revealed tile contains a mine'
+                });
+            }
+        }
+        
+        // Calculate and validate multiplier
+        const expectedMultiplier = calculateMinesMultiplier(mineCount, revealedTiles.length);
+        const multiplierDifference = Math.abs(expectedMultiplier - currentMultiplier);
+        
+        if (multiplierDifference > 0.01) { // Allow small floating point differences
+            await session.abortTransaction();
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid multiplier'
+            });
+        }
+        
+        console.log('💰 Cashout Debug:', {
+            gameId,
+            currentMultiplier,
+            expectedMultiplier,
+            revealedTilesCount: revealedTiles.length,
+            betAmount,
+            active,
+            cashedOut
+        });
+        
+        // Use the validated multiplier
+        const multiplier = expectedMultiplier;
+        
         // Calculate win amount (multiplier includes the bet)
         const winAmount = Math.round(betAmount * multiplier * 100) / 100;
         console.log('💰 Win amount calculation:', { betAmount, multiplier, winAmount });
@@ -602,7 +637,9 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         user.balance = newBalance;
         user.balanceHistory.push(newBalance);
         
-        // Update stats
+        // Update stats - now properly update game stats
+        user.gamesPlayed += 1;
+        user.totalWagered = Math.round((user.totalWagered + betAmount) * 100) / 100;
         user.wins += 1;
         user.totalWon = Math.round((user.totalWon + (winAmount - betAmount)) * 100) / 100;
         user.currentWinStreak += 1;
@@ -618,9 +655,11 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         
         await user.save({ session });
         
-        // Update game history
+        // Update game history - only update when game actually ends
         gameResult.active = false;
         gameResult.cashedOut = true;
+        gameResult.multiplier = multiplier;
+        gameResult.revealedTiles = revealedTiles.length;
         gameHistory.gameResult = JSON.stringify(gameResult);
         gameHistory.won = true;
         gameHistory.winAmount = winAmount;
@@ -746,6 +785,8 @@ router.post('/mines/verify', authenticateToken, async (req, res) => {
             await gameHistory.save({ session });
             
             // Update user stats
+            user.gamesPlayed += 1;
+            user.totalWagered = Math.round((user.totalWagered + gameHistory.betAmount) * 100) / 100;
             user.losses += 1;
             user.currentWinStreak = 0;
             user.balanceHistory.push(user.balance);
