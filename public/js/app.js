@@ -4557,7 +4557,11 @@ async function sendMineHitToServer(tileIndex) {
         
     } catch (error) {
         console.error('❌ Mine hit error:', error);
-        showGameNotification(false, null, error.message || 'Connection error. Please try again.');
+        
+        // Don't show error notification for "Game is no longer active" as it's expected
+        if (!error.message?.includes('Game is no longer active')) {
+            showGameNotification(false, null, error.message || 'Connection error. Please try again.');
+        }
         
         // Re-enable controls on error
         minesState.isLoading = false;

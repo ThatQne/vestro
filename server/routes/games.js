@@ -37,13 +37,21 @@ router.post('/play', authenticateToken, async (req, res) => {
         session = await mongoose.startSession();
         session.startTransaction();
         
-        const { gameType, betAmount, playerChoice } = req.body;
+        const { gameType, betAmount, playerChoice, targetNumber } = req.body;
         
         // Validation
         if (!gameType || !betAmount || !playerChoice) {
             return res.status(400).json({
                 success: false,
                 message: 'Game type, bet amount, and player choice are required'
+            });
+        }
+        
+        // Additional validation for dice game
+        if (gameType === 'dice' && (targetNumber === undefined || targetNumber < 1 || targetNumber > 99)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid target number for dice game'
             });
         }
 
@@ -113,14 +121,15 @@ router.post('/play', authenticateToken, async (req, res) => {
             randomHash = randomResult.hash;
             randomTimestamp = randomResult.timestamp;
             
+            const target = parseFloat(targetNumber);
             if (playerChoice === 'higher') {
-                won = roll > targetNumber;
+                won = roll > target;
                 // Calculate multiplier (99% RTP)
-                multiplier = 0.99 / ((100 - targetNumber) / 100);
+                multiplier = 0.99 / ((100 - target) / 100);
             } else if (playerChoice === 'lower') {
-                won = roll < targetNumber;
+                won = roll < target;
                 // Calculate multiplier (99% RTP)
-                multiplier = 0.99 / (targetNumber / 100);
+                multiplier = 0.99 / (target / 100);
             }
         } else if (gameType === 'plinko') {
             // Plinko game logic - generate outcome server-side
