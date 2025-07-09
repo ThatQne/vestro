@@ -346,6 +346,9 @@ router.post('/play', authenticateToken, async (req, res) => {
             gameHistory.experienceGained = experienceGained;
             gameHistory.leveledUp = levelUpResult.leveledUp;
             await gameHistory.save({ session });
+            
+            // Commit transaction for non-mines games
+            await session.commitTransaction();
         }
 
         // Send response
