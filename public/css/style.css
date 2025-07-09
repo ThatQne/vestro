@@ -3781,17 +3781,213 @@ input, textarea {
 @media (max-width: 768px) {
     .blackjack-game-container {
         border-radius: 12px;
-        padding: 1rem;
+        padding: 0.75rem;
+        margin: 0.5rem;
+        max-width: none;
+        width: calc(100% - 1rem);
     }
     
     .blackjack-game-header {
         padding: 0;
         margin-bottom: 0.75rem;
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .blackjack-game-title {
+        font-size: 1.25rem;
     }
     
     .blackjack-game-stats {
+        flex-direction: row;
+        gap: 1rem;
+        justify-content: center;
+        font-size: 0.8rem;
+    }
+    
+    .blackjack-game-body {
         flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .blackjack-visual {
+        padding: 0.75rem;
+        min-height: 350px;
+    }
+    
+    .card-area {
+        gap: 0.75rem;
+    }
+    
+    .dealer-area, .player-area {
         gap: 0.5rem;
+    }
+    
+    .dealer-label, .player-label {
+        font-size: 1rem;
+    }
+    
+    .dealer-total, .player-total {
+        font-size: 1.1rem;
+        padding: 0.4rem 0.8rem;
+        min-width: 50px;
+    }
+    
+    .game-status {
+        font-size: 1rem;
+        padding: 0.6rem;
+        margin: 0.4rem 0;
+    }
+    
+    .playing-card {
+        width: 60px;
+        height: 90px;
+        font-size: 1rem;
+    }
+    
+    .playing-card .card-value {
+        font-size: 1rem;
+    }
+    
+    .playing-card .card-suit {
+        font-size: 1.1rem;
+        margin-top: 0.2rem;
+    }
+    
+    .blackjack-controls {
+        width: 100%;
+        padding: 1rem;
+        gap: 0.75rem;
+    }
+    
+    .control-group {
+        gap: 0.4rem;
+    }
+    
+    .control-label {
+        font-size: 0.85rem;
+    }
+    
+    .bet-input, .auto-bet-input {
+        padding: 0.8rem;
+        font-size: 1rem;
+        border-radius: 10px;
+    }
+    
+    .bet-buttons {
+        gap: 0.5rem;
+    }
+    
+    .bet-btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+        min-width: 60px;
+    }
+    
+    .roll-btn, .auto-bet-btn {
+        padding: 0.8rem 1.5rem;
+        font-size: 1rem;
+        min-height: 48px;
+        border-radius: 10px;
+    }
+    
+    .action-buttons {
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .action-btn {
+        padding: 0.8rem 1.2rem;
+        font-size: 1rem;
+        min-height: 48px;
+        flex: 1;
+        min-width: 80px;
+    }
+    
+    .hit-btn, .stand-btn, .double-btn {
+        padding: 0.8rem 1.2rem;
+        font-size: 1rem;
+        min-height: 48px;
+    }
+}
+
+@media (max-width: 480px) {
+    .blackjack-game-container {
+        margin: 0.25rem;
+        width: calc(100% - 0.5rem);
+        padding: 0.5rem;
+    }
+    
+    .blackjack-game-header {
+        margin-bottom: 0.5rem;
+    }
+    
+    .blackjack-game-title {
+        font-size: 1.1rem;
+    }
+    
+    .blackjack-game-stats {
+        font-size: 0.75rem;
+        gap: 0.75rem;
+    }
+    
+    .blackjack-visual {
+        min-height: 300px;
+        padding: 0.5rem;
+    }
+    
+    .playing-card {
+        width: 50px;
+        height: 75px;
+        font-size: 0.9rem;
+    }
+    
+    .playing-card .card-value {
+        font-size: 0.9rem;
+    }
+    
+    .playing-card .card-suit {
+        font-size: 1rem;
+    }
+    
+    .dealer-total, .player-total {
+        font-size: 1rem;
+        padding: 0.3rem 0.6rem;
+    }
+    
+    .game-status {
+        font-size: 0.9rem;
+        padding: 0.5rem;
+    }
+    
+    .blackjack-controls {
+        padding: 0.75rem;
+    }
+    
+    .bet-input, .auto-bet-input {
+        padding: 0.7rem;
+        font-size: 0.95rem;
+    }
+    
+    .bet-btn {
+        padding: 0.5rem 0.8rem;
+        font-size: 0.85rem;
+        min-width: 50px;
+    }
+    
+    .roll-btn, .auto-bet-btn {
+        padding: 0.7rem 1.2rem;
+        font-size: 0.95rem;
+        min-height: 44px;
+    }
+    
+    .action-btn {
+        padding: 0.7rem 1rem;
+        font-size: 0.95rem;
+        min-height: 44px;
+        min-width: 70px;
     }
 }
 
