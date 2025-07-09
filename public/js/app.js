@@ -4196,5 +4196,743 @@ async function sendMineHitToServer(tileIndex) {
     }
 }
 
-// Cash out mines game
-// ... existing code ...
+// Blackjack Game Functions
+let blackjackState = {
+    gameActive: false,
+    gameId: null,
+    playerCards: [],
+    dealerCards: [],
+    playerValue: 0,
+    dealerValue: 0,
+    gameStatus: 'waiting',
+    canHit: false,
+    canStand: false,
+    canDouble: false,
+    currentBet: 0
+};
+
+let blackjackAutobet = {
+    isActive: false,
+    settings: {
+        betCount: 10,
+        infiniteBets: false,
+        stopOnWin: null,
+        stopOnLoss: null,
+        strategy: 'basic',
+        onWin: 'reset',
+        onLoss: 'reset',
+        winMultiplier: 2.0,
+        lossMultiplier: 2.0
+    },
+    stats: {
+        totalBets: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalProfit: 0,
+        currentStreak: 0,
+        longestStreak: 0,
+        baseBet: 0
+    }
+};
+
+// Initialize Blackjack game
+function initializeBlackjackGame() {
+    if (typeof showPage === 'undefined') {
+        console.error('showPage function not found');
+        return;
+    }
+    
+    setupBlackjackControls();
+    setupBlackjackAutobet();
+    resetBlackjackGame();
+}
+
+// Setup Blackjack controls
+function setupBlackjackControls() {
+    // Auto bet toggle
+    const autoBetBtn = document.getElementById('blackjack-auto-bet-btn');
+    if (autoBetBtn) {
+        autoBetBtn.addEventListener('click', toggleBlackjackAutoBet);
+    }
+    
+    // Auto bet strategy buttons
+    setupBlackjackAutoBetStrategy('blackjack-on-win', 'win');
+    setupBlackjackAutoBetStrategy('blackjack-on-loss', 'loss');
+    
+    // Auto bet start/stop buttons
+    const startAutoBetBtn = document.getElementById('blackjack-start-auto-bet');
+    const stopAutoBetBtn = document.getElementById('blackjack-stop-auto-bet');
+    
+    if (startAutoBetBtn) {
+        startAutoBetBtn.addEventListener('click', startBlackjackAutobet);
+    }
+    
+    if (stopAutoBetBtn) {
+        stopAutoBetBtn.addEventListener('click', stopBlackjackAutobet);
+    }
+    
+    // Infinite bets toggle
+    const infiniteToggle = document.getElementById('blackjack-infinite-bets-toggle');
+    if (infiniteToggle) {
+        infiniteToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            const isActive = infiniteToggle.classList.contains('active');
+            infiniteToggle.classList.toggle('active', !isActive);
+            
+            const betCountInput = document.getElementById('blackjack-auto-bet-count');
+            if (betCountInput) {
+                betCountInput.disabled = !isActive;
+                if (!isActive) {
+                    betCountInput.placeholder = '∞';
+                    betCountInput.value = '';
+                } else {
+                    betCountInput.placeholder = '10';
+                }
+            }
+            
+            blackjackAutobet.settings.infiniteBets = !isActive;
+        });
+    }
+}
+
+// Setup auto bet strategy buttons
+function setupBlackjackAutoBetStrategy(prefix, type) {
+    const resetBtn = document.getElementById(`${prefix}-reset`);
+    const multiplyBtn = document.getElementById(`${prefix}-multiply`);
+    const stopBtn = document.getElementById(`${prefix}-stop`);
+    const settings = document.getElementById(`${prefix}-settings`);
+    
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            blackjackAutobet.settings[`on${type.charAt(0).toUpperCase() + type.slice(1)}`] = 'reset';
+            resetBtn.classList.add('active');
+            multiplyBtn?.classList.remove('active');
+            stopBtn?.classList.remove('active');
+            settings?.classList.remove('show');
+        });
+    }
+    
+    if (multiplyBtn) {
+        multiplyBtn.addEventListener('click', () => {
+            blackjackAutobet.settings[`on${type.charAt(0).toUpperCase() + type.slice(1)}`] = 'multiply';
+            multiplyBtn.classList.add('active');
+            resetBtn?.classList.remove('active');
+            stopBtn?.classList.remove('active');
+            settings?.classList.add('show');
+        });
+    }
+    
+    if (stopBtn) {
+        stopBtn.addEventListener('click', () => {
+            blackjackAutobet.settings[`on${type.charAt(0).toUpperCase() + type.slice(1)}`] = 'stop';
+            stopBtn.classList.add('active');
+            resetBtn?.classList.remove('active');
+            multiplyBtn?.classList.remove('active');
+            settings?.classList.remove('show');
+        });
+    }
+    
+    // Update multiplier values
+    const multiplierInput = document.getElementById(`${prefix}-multiplier`);
+    if (multiplierInput) {
+        multiplierInput.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value) || 2.0;
+            blackjackAutobet.settings[`${type}Multiplier`] = Math.max(1.1, Math.min(100, value));
+        });
+    }
+}
+
+// Toggle auto bet menu
+function toggleBlackjackAutoBet() {
+    const autoBetSettings = document.getElementById('blackjack-auto-bet-settings');
+    const autoBetBtn = document.getElementById('blackjack-auto-bet-btn');
+    
+    if (autoBetSettings && autoBetBtn) {
+        const isActive = autoBetBtn.classList.contains('active');
+        autoBetBtn.classList.toggle('active', !isActive);
+        autoBetSettings.classList.toggle('show', !isActive);
+    }
+}
+
+// Set bet amount
+function setBlackjackAmount(action) {
+    const betInput = document.getElementById('blackjack-bet-amount');
+    if (!betInput) return;
+    
+    const currentValue = parseFloat(betInput.value) || 0;
+    const balance = currentUser ? currentUser.balance : 0;
+    
+    switch (action) {
+        case 'half':
+            betInput.value = (currentValue / 2).toFixed(2);
+            break;
+        case 'double':
+            betInput.value = Math.min(currentValue * 2, balance).toFixed(2);
+            break;
+        case 'max':
+            betInput.value = balance.toFixed(2);
+            break;
+        case 'clear':
+            betInput.value = '';
+            break;
+    }
+}
+
+// Reset game state
+function resetBlackjackGame() {
+    blackjackState = {
+        gameActive: false,
+        gameId: null,
+        playerCards: [],
+        dealerCards: [],
+        playerValue: 0,
+        dealerValue: 0,
+        gameStatus: 'waiting',
+        canHit: false,
+        canStand: false,
+        canDouble: false,
+        currentBet: 0
+    };
+    
+    updateBlackjackUI();
+}
+
+// Update UI
+function updateBlackjackUI() {
+    // Update card displays
+    updateCardDisplay('player-cards', blackjackState.playerCards);
+    updateCardDisplay('dealer-cards', blackjackState.dealerCards, blackjackState.gameStatus === 'playing');
+    
+    // Update totals
+    const playerTotalEl = document.getElementById('player-total');
+    const dealerTotalEl = document.getElementById('dealer-total');
+    
+    if (playerTotalEl) playerTotalEl.textContent = blackjackState.playerValue;
+    if (dealerTotalEl) dealerTotalEl.textContent = blackjackState.dealerValue;
+    
+    // Update game status
+    const statusElement = document.getElementById('game-status');
+    if (statusElement) {
+        const statusText = getGameStatusText();
+        statusElement.textContent = statusText.text;
+        statusElement.className = 'game-status ' + statusText.class;
+    }
+    
+    // Update stats
+    const dealerCountEl = document.getElementById('dealer-count');
+    const playerCountEl = document.getElementById('player-count');
+    const currentBetEl = document.getElementById('current-bet');
+    
+    if (dealerCountEl) dealerCountEl.textContent = blackjackState.dealerValue;
+    if (playerCountEl) playerCountEl.textContent = blackjackState.playerValue;
+    if (currentBetEl) currentBetEl.textContent = `$${blackjackState.currentBet.toFixed(2)}`;
+    
+    // Update buttons
+    updateBlackjackButtons();
+}
+
+// Update card display
+function updateCardDisplay(containerId, cards, hideDealerHole = false) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    cards.forEach((card, index) => {
+        const cardElement = document.createElement('div');
+        cardElement.className = `playing-card ${card.color}`;
+        
+        // Hide dealer's hole card if game is still playing
+        if (containerId === 'dealer-cards' && index === 1 && hideDealerHole) {
+            cardElement.classList.add('hidden');
+            cardElement.innerHTML = '<div class="card-value">?</div><div class="card-suit">?</div>';
+        } else {
+            cardElement.innerHTML = `
+                <div class="card-value">${card.value}</div>
+                <div class="card-suit">${card.suit}</div>
+            `;
+        }
+        
+        container.appendChild(cardElement);
+    });
+}
+
+// Get game status text
+function getGameStatusText() {
+    switch (blackjackState.gameStatus) {
+        case 'waiting':
+            return { text: 'Place your bet to start', class: '' };
+        case 'playing':
+            return { text: 'Choose your action', class: '' };
+        case 'blackjack':
+            return { text: 'Blackjack! You win!', class: 'win' };
+        case 'dealer_blackjack':
+            return { text: 'Dealer has blackjack', class: 'lose' };
+        case 'bust':
+            return { text: 'Bust! You lose', class: 'lose' };
+        case 'win':
+            return { text: 'You win!', class: 'win' };
+        case 'lose':
+            return { text: 'You lose', class: 'lose' };
+        case 'push':
+            return { text: 'Push - It\'s a tie', class: 'push' };
+        default:
+            return { text: 'Place your bet to start', class: '' };
+    }
+}
+
+// Update buttons
+function updateBlackjackButtons() {
+    const dealBtn = document.getElementById('blackjack-deal-btn');
+    const hitBtn = document.getElementById('blackjack-hit-btn');
+    const standBtn = document.getElementById('blackjack-stand-btn');
+    const doubleBtn = document.getElementById('blackjack-double-btn');
+    
+    if (dealBtn) {
+        dealBtn.style.display = blackjackState.gameActive ? 'none' : 'inline-block';
+        dealBtn.disabled = blackjackAutobet.isActive;
+    }
+    
+    if (hitBtn) {
+        hitBtn.style.display = blackjackState.canHit ? 'inline-block' : 'none';
+        hitBtn.disabled = blackjackAutobet.isActive;
+    }
+    
+    if (standBtn) {
+        standBtn.style.display = blackjackState.canStand ? 'inline-block' : 'none';
+        standBtn.disabled = blackjackAutobet.isActive;
+    }
+    
+    if (doubleBtn) {
+        doubleBtn.style.display = blackjackState.canDouble ? 'inline-block' : 'none';
+        doubleBtn.disabled = blackjackAutobet.isActive;
+    }
+}
+
+// Deal cards
+async function dealBlackjack() {
+    if (blackjackState.gameActive) return;
+    
+    const betAmount = parseFloat(document.getElementById('blackjack-bet-amount').value);
+    if (!betAmount || betAmount <= 0) {
+        showError('Please enter a valid bet amount');
+        return;
+    }
+    
+    if (betAmount > currentUser.balance) {
+        showError('Insufficient balance');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/blackjack/deal`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ betAmount })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const { gameId, gameState, balanceAfter } = data.result;
+            
+            blackjackState.gameActive = true;
+            blackjackState.gameId = gameId;
+            blackjackState.playerCards = gameState.playerCards;
+            blackjackState.dealerCards = gameState.dealerCards;
+            blackjackState.playerValue = gameState.playerValue;
+            blackjackState.dealerValue = gameState.dealerValue;
+            blackjackState.gameStatus = gameState.gameStatus;
+            blackjackState.canHit = gameState.gameStatus === 'playing';
+            blackjackState.canStand = gameState.gameStatus === 'playing';
+            blackjackState.canDouble = gameState.canDouble;
+            blackjackState.currentBet = gameState.betAmount;
+            
+            // Update balance
+            currentUser.balance = balanceAfter;
+            updateUserInterface();
+            
+            // Update UI
+            updateBlackjackUI();
+            
+            // Check for immediate game end
+            if (gameState.gameStatus !== 'playing') {
+                setTimeout(() => {
+                    handleBlackjackGameEnd(gameState.gameStatus, gameState.winAmount);
+                }, 1000);
+            }
+            
+        } else {
+            showError(data.message || 'Failed to deal cards');
+        }
+        
+    } catch (error) {
+        console.error('Deal error:', error);
+        showError('Failed to deal cards');
+    }
+}
+
+// Hit
+async function hitBlackjack() {
+    if (!blackjackState.gameActive || !blackjackState.canHit) return;
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/blackjack/hit`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ gameId: blackjackState.gameId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const { gameState, balanceAfter } = data.result;
+            
+            blackjackState.playerCards = gameState.playerCards;
+            blackjackState.playerValue = gameState.playerValue;
+            blackjackState.gameStatus = gameState.gameStatus;
+            blackjackState.canHit = gameState.gameStatus === 'playing';
+            blackjackState.canStand = gameState.gameStatus === 'playing';
+            blackjackState.canDouble = false; // Can't double after hitting
+            
+            // Update balance
+            currentUser.balance = balanceAfter;
+            updateUserInterface();
+            
+            // Update UI
+            updateBlackjackUI();
+            
+            // Check for bust
+            if (gameState.gameStatus === 'bust') {
+                setTimeout(() => {
+                    handleBlackjackGameEnd('bust', 0);
+                }, 1000);
+            }
+            
+        } else {
+            showError(data.message || 'Failed to hit');
+        }
+        
+    } catch (error) {
+        console.error('Hit error:', error);
+        showError('Failed to hit');
+    }
+}
+
+// Stand
+async function standBlackjack() {
+    if (!blackjackState.gameActive || !blackjackState.canStand) return;
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/blackjack/stand`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ gameId: blackjackState.gameId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const { gameState, balanceAfter } = data.result;
+            
+            blackjackState.dealerCards = gameState.dealerCards;
+            blackjackState.dealerValue = gameState.dealerValue;
+            blackjackState.gameStatus = gameState.gameStatus;
+            blackjackState.canHit = false;
+            blackjackState.canStand = false;
+            blackjackState.canDouble = false;
+            
+            // Update balance
+            currentUser.balance = balanceAfter;
+            updateUserInterface();
+            
+            // Update UI
+            updateBlackjackUI();
+            
+            // Handle game end
+            setTimeout(() => {
+                handleBlackjackGameEnd(gameState.gameStatus, gameState.winAmount);
+            }, 1000);
+            
+        } else {
+            showError(data.message || 'Failed to stand');
+        }
+        
+    } catch (error) {
+        console.error('Stand error:', error);
+        showError('Failed to stand');
+    }
+}
+
+// Double down
+async function doubleBlackjack() {
+    if (!blackjackState.gameActive || !blackjackState.canDouble) return;
+    
+    const additionalBet = blackjackState.currentBet;
+    if (additionalBet > currentUser.balance) {
+        showError('Insufficient balance to double');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/blackjack/double`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ gameId: blackjackState.gameId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const { gameState, balanceAfter } = data.result;
+            
+            blackjackState.playerCards = gameState.playerCards;
+            blackjackState.dealerCards = gameState.dealerCards;
+            blackjackState.playerValue = gameState.playerValue;
+            blackjackState.dealerValue = gameState.dealerValue;
+            blackjackState.gameStatus = gameState.gameStatus;
+            blackjackState.currentBet = gameState.betAmount;
+            blackjackState.canHit = false;
+            blackjackState.canStand = false;
+            blackjackState.canDouble = false;
+            
+            // Update balance
+            currentUser.balance = balanceAfter;
+            updateUserInterface();
+            
+            // Update UI
+            updateBlackjackUI();
+            
+            // Handle game end
+            setTimeout(() => {
+                handleBlackjackGameEnd(gameState.gameStatus, gameState.winAmount);
+            }, 1000);
+            
+        } else {
+            showError(data.message || 'Failed to double');
+        }
+        
+    } catch (error) {
+        console.error('Double error:', error);
+        showError('Failed to double');
+    }
+}
+
+// Handle game end
+function handleBlackjackGameEnd(gameStatus, winAmount) {
+    blackjackState.gameActive = false;
+    blackjackState.canHit = false;
+    blackjackState.canStand = false;
+    blackjackState.canDouble = false;
+    
+    updateBlackjackUI();
+    
+    const won = winAmount > 0;
+    const profit = winAmount - blackjackState.currentBet;
+    
+    // Show notification
+    if (gameStatus === 'blackjack') {
+        showGameNotification(true, winAmount, 'Blackjack! 3:2 payout');
+    } else if (gameStatus === 'push') {
+        showGameNotification(false, winAmount, 'Push - bet returned');
+    } else {
+        showGameNotification(won, winAmount, won ? 'You win!' : 'You lose');
+    }
+    
+    // Update chart
+    updateChart();
+    
+    // Continue autobet if active
+    if (blackjackAutobet.isActive) {
+        setTimeout(() => {
+            continueBlackjackAutobet(won, profit);
+        }, 1500);
+    }
+}
+
+// Setup autobet
+function setupBlackjackAutobet() {
+    // Auto bet settings are already set up in setupBlackjackControls
+}
+
+// Start autobet
+async function startBlackjackAutobet() {
+    if (blackjackAutobet.isActive) return;
+    
+    const betAmount = parseFloat(document.getElementById('blackjack-bet-amount').value);
+    if (!betAmount || betAmount <= 0) {
+        showError('Please enter a valid bet amount');
+        return;
+    }
+    
+    if (betAmount > currentUser.balance) {
+        showError('Insufficient balance');
+        return;
+    }
+    
+    // Get settings
+    const settings = blackjackAutobet.settings;
+    const betCountInput = document.getElementById('blackjack-auto-bet-count');
+    const stopWinInput = document.getElementById('blackjack-auto-stop-win');
+    const stopLossInput = document.getElementById('blackjack-auto-stop-loss');
+    const strategyInput = document.getElementById('blackjack-auto-strategy');
+    
+    if (betCountInput) settings.betCount = parseInt(betCountInput.value) || 10;
+    if (stopWinInput) settings.stopOnWin = parseFloat(stopWinInput.value) || null;
+    if (stopLossInput) settings.stopOnLoss = parseFloat(stopLossInput.value) || null;
+    if (strategyInput) settings.strategy = strategyInput.value || 'basic';
+    
+    // Initialize stats
+    blackjackAutobet.stats = {
+        totalBets: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalProfit: 0,
+        currentStreak: 0,
+        longestStreak: 0,
+        baseBet: betAmount
+    };
+    
+    blackjackAutobet.isActive = true;
+    
+    // Update UI
+    const startBtn = document.getElementById('blackjack-start-auto-bet');
+    const stopBtn = document.getElementById('blackjack-stop-auto-bet');
+    const autoBetBtn = document.getElementById('blackjack-auto-bet-btn');
+    
+    if (startBtn) startBtn.classList.add('hidden');
+    if (stopBtn) stopBtn.classList.remove('hidden');
+    if (autoBetBtn) autoBetBtn.classList.add('active');
+    
+    // Start first game
+    await dealBlackjack();
+}
+
+// Stop autobet
+function stopBlackjackAutobet() {
+    blackjackAutobet.isActive = false;
+    
+    // Update UI
+    const startBtn = document.getElementById('blackjack-start-auto-bet');
+    const stopBtn = document.getElementById('blackjack-stop-auto-bet');
+    const autoBetBtn = document.getElementById('blackjack-auto-bet-btn');
+    
+    if (startBtn) startBtn.classList.remove('hidden');
+    if (stopBtn) stopBtn.classList.add('hidden');
+    if (autoBetBtn) autoBetBtn.classList.remove('active');
+    
+    // Show final stats
+    const { stats } = blackjackAutobet;
+    const winRate = stats.totalBets > 0 ? (stats.totalWins / stats.totalBets * 100).toFixed(1) : '0.0';
+    
+    showGameNotification(stats.totalProfit > 0, stats.totalProfit, 
+        `Autobet completed: ${stats.totalBets} bets, ${winRate}% win rate, ${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)} profit`);
+}
+
+// Continue autobet
+function continueBlackjackAutobet(won, profit) {
+    if (!blackjackAutobet.isActive) return;
+    
+    const { settings, stats } = blackjackAutobet;
+    
+    // Update stats
+    stats.totalBets++;
+    stats.totalProfit += profit;
+    
+    if (won) {
+        stats.totalWins++;
+        stats.currentStreak = stats.currentStreak > 0 ? stats.currentStreak + 1 : 1;
+    } else {
+        stats.totalLosses++;
+        stats.currentStreak = stats.currentStreak < 0 ? stats.currentStreak - 1 : -1;
+    }
+    
+    stats.longestStreak = Math.max(stats.longestStreak, Math.abs(stats.currentStreak));
+    
+    // Check stopping conditions
+    if (shouldStopBlackjackAutobet(won, profit)) {
+        stopBlackjackAutobet();
+        return;
+    }
+    
+    // Adjust bet amount based on win/loss
+    const betInput = document.getElementById('blackjack-bet-amount');
+    if (!betInput) return;
+    
+    const currentBet = parseFloat(betInput.value);
+    let newBet = currentBet;
+    
+    if (won && settings.onWin === 'multiply') {
+        newBet = currentBet * settings.winMultiplier;
+    } else if (won && settings.onWin === 'reset') {
+        newBet = stats.baseBet;
+    }
+    
+    if (!won && settings.onLoss === 'multiply') {
+        newBet = currentBet * settings.lossMultiplier;
+    } else if (!won && settings.onLoss === 'reset') {
+        newBet = stats.baseBet;
+    }
+    
+    // Update bet amount and check if we can afford it
+    newBet = Math.min(newBet, currentUser.balance);
+    betInput.value = newBet.toFixed(2);
+    
+    if (newBet <= 0 || newBet > currentUser.balance) {
+        showGameNotification(false, null, 'Insufficient balance for next bet');
+        stopBlackjackAutobet();
+        return;
+    }
+    
+    // Stop if strategy says to stop
+    if ((!won && settings.onLoss === 'stop') || (won && settings.onWin === 'stop')) {
+        stopBlackjackAutobet();
+        return;
+    }
+    
+    // Start next game after delay
+    setTimeout(async () => {
+        if (!blackjackAutobet.isActive) return;
+        await dealBlackjack();
+    }, 1000);
+}
+
+// Check stopping conditions
+function shouldStopBlackjackAutobet(won, profit) {
+    const { settings, stats } = blackjackAutobet;
+    
+    // Check bet count
+    if (!settings.infiniteBets && stats.totalBets >= settings.betCount) {
+        return true;
+    }
+    
+    // Check profit limits
+    if (settings.stopOnWin && stats.totalProfit >= settings.stopOnWin) {
+        return true;
+    }
+    
+    if (settings.stopOnLoss && stats.totalProfit <= -Math.abs(settings.stopOnLoss)) {
+        return true;
+    }
+    
+    return false;
+}
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('blackjack-game-page')) {
+        initializeBlackjackGame();
+    }
+});

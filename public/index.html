@@ -215,15 +215,15 @@
                     </div>
                 </div>
                 
-                <div class="game-card" onclick="showPage('plinko-game')">
+                <div class="game-card disabled" title="Plinko is temporarily disabled">
                     <div class="game-icon">
                         <i data-lucide="triangle"></i>
                     </div>
                     <div class="game-info">
                         <h3>Plinko</h3>
-                        <p>Drop balls and watch them bounce to victory</p>
+                        <p>Temporarily disabled</p>
                         <div class="game-stats">
-                            <span class="game-payout">Up to 1000x</span>
+                            <span class="game-payout">Under maintenance</span>
                         </div>
                     </div>
                 </div>
@@ -241,13 +241,16 @@
                     </div>
                 </div>
                 
-                <div class="game-card coming-soon">
+                <div class="game-card" onclick="showPage('blackjack-game')">
                     <div class="game-icon">
                         <i data-lucide="spade"></i>
                     </div>
                     <div class="game-info">
                         <h3>Blackjack</h3>
-                        <p>Coming Soon</p>
+                        <p>Beat the dealer to 21</p>
+                        <div class="game-stats">
+                            <span class="game-payout">Up to 3x</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -767,6 +770,144 @@
                     </div>
                     </div>
                 </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blackjack Game Page -->
+        <div id="blackjack-game-page" class="page-content hidden">
+            <div class="game-page-header">
+                <button onclick="showPage('games')" class="back-btn">
+                    <i data-lucide="arrow-left"></i>
+                    <span>Back to Games</span>
+                </button>
+                <h1>Blackjack</h1>
+            </div>
+            
+            <!-- Blackjack Game -->
+            <div class="blackjack-game-container">
+                <div class="blackjack-game-header">
+                    <h3 class="blackjack-game-title"><i data-lucide="spade"></i> Blackjack</h3>
+                    <div class="blackjack-game-stats">
+                        <span>Dealer: <span id="dealer-count" class="formatted-number">0</span></span>
+                        <span>Player: <span id="player-count" class="formatted-number">0</span></span>
+                        <span>Bet: <span id="current-bet" class="formatted-number">$0.00</span></span>
+                    </div>
+                </div>
+                
+                <div class="blackjack-game-body">
+                    <div class="blackjack-visual">
+                        <div class="card-area">
+                            <div class="dealer-area">
+                                <div class="dealer-label">Dealer</div>
+                                <div class="dealer-cards" id="dealer-cards"></div>
+                                <div class="dealer-total" id="dealer-total">0</div>
+                            </div>
+                            
+                            <div class="game-status" id="game-status">Place your bet to start</div>
+                            
+                            <div class="player-area">
+                                <div class="player-label">Player</div>
+                                <div class="player-cards" id="player-cards"></div>
+                                <div class="player-total" id="player-total">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="blackjack-controls">
+                        <div class="control-group">
+                            <label class="control-label">Bet Amount</label>
+                            <input type="number" id="blackjack-bet-amount" class="bet-input" placeholder="0.00" min="0.01" step="0.01">
+                            <div class="bet-buttons">
+                                <button class="bet-btn" onclick="setBlackjackAmount('half')">½</button>
+                                <button class="bet-btn" onclick="setBlackjackAmount('double')">2x</button>
+                                <button class="bet-btn" onclick="setBlackjackAmount('max')">Max</button>
+                                <button class="bet-btn" onclick="setBlackjackAmount('clear')">Clear</button>
+                            </div>
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button class="roll-btn" id="blackjack-deal-btn" onclick="dealBlackjack()">
+                                <span id="blackjack-deal-text">Deal</span>
+                            </button>
+                            <button class="roll-btn secondary" id="blackjack-hit-btn" onclick="hitBlackjack()" style="display: none;">
+                                <span>Hit</span>
+                            </button>
+                            <button class="roll-btn secondary" id="blackjack-stand-btn" onclick="standBlackjack()" style="display: none;">
+                                <span>Stand</span>
+                            </button>
+                            <button class="roll-btn secondary" id="blackjack-double-btn" onclick="doubleBlackjack()" style="display: none;">
+                                <span>Double</span>
+                            </button>
+                            <button class="auto-bet-btn" id="blackjack-auto-bet-btn">Auto</button>
+                        </div>
+                        
+                        <div class="auto-bet-settings" id="blackjack-auto-bet-settings">
+                            <div class="control-group">
+                                <label class="control-label">Auto Bet Settings</label>
+                                <div class="auto-bet-grid">
+                                    <div>
+                                        <label class="control-label">Number of Bets</label>
+                                        <div class="input-with-toggle">
+                                            <input type="number" id="blackjack-auto-bet-count" class="auto-bet-input" placeholder="10" min="1">
+                                            <button id="blackjack-infinite-bets-toggle" class="toggle-btn" title="Run indefinitely">∞</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="control-label">Stop on Win ($)</label>
+                                        <input type="number" id="blackjack-auto-stop-win" class="auto-bet-input" placeholder="100.00" min="0" step="0.01">
+                                    </div>
+                                    <div>
+                                        <label class="control-label">Stop on Loss ($)</label>
+                                        <input type="number" id="blackjack-auto-stop-loss" class="auto-bet-input" placeholder="50.00" min="0" step="0.01">
+                                    </div>
+                                    <div>
+                                        <label class="control-label">Auto Strategy</label>
+                                        <select id="blackjack-auto-strategy" class="auto-bet-input">
+                                            <option value="basic">Basic Strategy</option>
+                                            <option value="conservative">Conservative</option>
+                                            <option value="aggressive">Aggressive</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="control-group">
+                                    <label class="control-label">On Loss</label>
+                                    <div class="bet-strategy-grid">
+                                        <button id="blackjack-on-loss-reset" class="strategy-btn active">Reset</button>
+                                        <button id="blackjack-on-loss-multiply" class="strategy-btn">Multiply</button>
+                                        <button id="blackjack-on-loss-stop" class="strategy-btn">Stop</button>
+                                    </div>
+                                    <div id="blackjack-on-loss-settings" class="strategy-settings">
+                                        <div class="input-with-label">
+                                            <input type="number" id="blackjack-on-loss-multiplier" class="auto-bet-input" placeholder="2.0" min="0.1" step="0.1" value="2.0">
+                                            <span class="input-label">× multiplier</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="control-group">
+                                    <label class="control-label">On Win</label>
+                                    <div class="bet-strategy-grid">
+                                        <button id="blackjack-on-win-reset" class="strategy-btn active">Reset</button>
+                                        <button id="blackjack-on-win-multiply" class="strategy-btn">Multiply</button>
+                                        <button id="blackjack-on-win-stop" class="strategy-btn">Stop</button>
+                                    </div>
+                                    <div id="blackjack-on-win-settings" class="strategy-settings">
+                                        <div class="input-with-label">
+                                            <input type="number" id="blackjack-on-win-multiplier" class="auto-bet-input" placeholder="2.0" min="0.1" step="0.1" value="2.0">
+                                            <span class="input-label">× multiplier</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="auto-bet-actions">
+                                    <button id="blackjack-start-auto-bet" class="start-auto-btn">Start Auto Bet</button>
+                                    <button id="blackjack-stop-auto-bet" class="stop-auto-btn hidden">Stop</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -10,6 +10,7 @@ const { handleCoinflip } = require('../utils/gameHandlers/coinflip');
 const { handleDice } = require('../utils/gameHandlers/dice');
 const { handlePlinko } = require('../utils/gameHandlers/plinko');
 const { handleMines, calculateMinesMultiplier } = require('../utils/gameHandlers/mines');
+const { dealBlackjack, hitBlackjack, standBlackjack, doubleBlackjack } = require('../utils/gameHandlers/blackjack');
 
 // Import utilities
 const {
@@ -431,6 +432,346 @@ router.get('/badges', authenticateToken, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Server error'
+        });
+    }
+});
+
+// Blackjack game routes
+router.post('/blackjack/deal', authenticateToken, async (req, res) => {
+    try {
+        const result = await withTransaction(async (session) => {
+            const { betAmount } = req.body;
+            
+            // Validate bet amount
+            if (!betAmount || betAmount <= 0) {
+                throw new Error('Invalid bet amount');
+            }
+            
+            // Get user with session
+            const user = await User.findById(req.user.userId).session(session);
+            if (!user) {
+                throw new Error('User not found');
+            }
+            
+            // Validate balance
+            const { userBalance, betAmountRounded } = validateUserBalance(user, betAmount);
+            
+            // Deduct bet amount
+            const balanceBefore = userBalance;
+            const balanceAfter = roundToTwoDecimals(userBalance - betAmountRounded);
+            user.balance = balanceAfter;
+            await user.save({ session });
+            
+            // Deal initial cards
+            const gameState = await dealBlackjack(betAmountRounded);
+            
+            // Create game history
+            const gameHistory = new GameHistory({
+                userId: req.user.userId,
+                gameType: 'blackjack',
+                betAmount: betAmountRounded,
+                playerChoice: 'deal',
+                gameResult: JSON.stringify({
+                    ...gameState,
+                    betAmount: betAmountRounded
+                }),
+                won: false,
+                balanceBefore,
+                balanceAfter
+            });
+            
+            // Check for immediate game end (blackjacks)
+            if (gameState.gameStatus !== 'playing') {
+                let finalBalance = balanceAfter;
+                
+                if (gameState.winAmount > 0) {
+                    finalBalance = roundToTwoDecimals(balanceAfter + gameState.winAmount);
+                    user.balance = finalBalance;
+                }
+                
+                // Update user stats
+                const won = gameState.winAmount > 0;
+                updateUserStats(user, won, betAmountRounded, gameState.winAmount);
+                const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
+                
+                // Update balance history
+                user.balanceHistory.push(finalBalance);
+                await user.save({ session });
+                
+                // Update game history
+                gameHistory.won = won;
+                gameHistory.winAmount = gameState.winAmount;
+                gameHistory.balanceAfter = finalBalance;
+                gameHistory.experienceGained = experienceGained;
+                gameHistory.leveledUp = levelUpResult.leveledUp;
+            }
+            
+            await gameHistory.save({ session });
+            
+            return {
+                gameId: gameHistory._id,
+                gameState,
+                balanceAfter: user.balance,
+                experienceGained: gameHistory.experienceGained || 0,
+                levelUpResult: gameHistory.leveledUp ? { leveledUp: true, levelsGained: 1 } : { leveledUp: false, levelsGained: 0 },
+                newLevel: user.level
+            };
+        });
+        
+        res.json({ success: true, result });
+        
+    } catch (error) {
+        console.error('Blackjack deal error:', error);
+        res.status(error.status || 500).json({
+            success: false,
+            message: error.message || 'Server error'
+        });
+    }
+});
+
+router.post('/blackjack/hit', authenticateToken, async (req, res) => {
+    try {
+        const result = await withTransaction(async (session) => {
+            const { gameId } = req.body;
+            
+            if (!gameId) {
+                throw new Error('Game ID is required');
+            }
+            
+            // Get game and user
+            const gameHistory = await GameHistory.findOne({
+                userId: req.user.userId,
+                gameType: 'blackjack',
+                _id: gameId
+            }).session(session);
+            
+            if (!gameHistory) {
+                throw new Error('Game not found');
+            }
+            
+            const user = await User.findById(req.user.userId).session(session);
+            if (!user) {
+                throw new Error('User not found');
+            }
+            
+            // Parse game state
+            const gameState = JSON.parse(gameHistory.gameResult);
+            
+            if (gameState.gameStatus !== 'playing') {
+                throw new Error('Game is not in playing state');
+            }
+            
+            // Hit
+            const newGameState = await hitBlackjack(gameState);
+            
+            // Update game history
+            gameHistory.gameResult = JSON.stringify(newGameState);
+            
+            // Check if game ended (bust)
+            if (newGameState.gameStatus === 'bust') {
+                // Player busted - update stats
+                updateUserStats(user, false, newGameState.betAmount, 0);
+                const { experienceGained, levelUpResult } = addExperienceToUser(user, false);
+                
+                user.balanceHistory.push(user.balance);
+                await user.save({ session });
+                
+                gameHistory.won = false;
+                gameHistory.winAmount = 0;
+                gameHistory.experienceGained = experienceGained;
+                gameHistory.leveledUp = levelUpResult.leveledUp;
+            }
+            
+            await gameHistory.save({ session });
+            
+            return {
+                gameState: newGameState,
+                balanceAfter: user.balance
+            };
+        });
+        
+        res.json({ success: true, result });
+        
+    } catch (error) {
+        console.error('Blackjack hit error:', error);
+        res.status(error.status || 500).json({
+            success: false,
+            message: error.message || 'Server error'
+        });
+    }
+});
+
+router.post('/blackjack/stand', authenticateToken, async (req, res) => {
+    try {
+        const result = await withTransaction(async (session) => {
+            const { gameId } = req.body;
+            
+            if (!gameId) {
+                throw new Error('Game ID is required');
+            }
+            
+            // Get game and user
+            const gameHistory = await GameHistory.findOne({
+                userId: req.user.userId,
+                gameType: 'blackjack',
+                _id: gameId
+            }).session(session);
+            
+            if (!gameHistory) {
+                throw new Error('Game not found');
+            }
+            
+            const user = await User.findById(req.user.userId).session(session);
+            if (!user) {
+                throw new Error('User not found');
+            }
+            
+            // Parse game state
+            const gameState = JSON.parse(gameHistory.gameResult);
+            
+            if (gameState.gameStatus !== 'playing') {
+                throw new Error('Game is not in playing state');
+            }
+            
+            // Stand - dealer plays
+            const newGameState = await standBlackjack(gameState);
+            
+            // Update balance if player won
+            let finalBalance = user.balance;
+            if (newGameState.winAmount > 0) {
+                finalBalance = roundToTwoDecimals(user.balance + newGameState.winAmount);
+                user.balance = finalBalance;
+            }
+            
+            // Update user stats
+            const won = newGameState.winAmount > 0;
+            updateUserStats(user, won, newGameState.betAmount, newGameState.winAmount);
+            const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
+            
+            // Update balance history
+            user.balanceHistory.push(finalBalance);
+            await user.save({ session });
+            
+            // Update game history
+            gameHistory.gameResult = JSON.stringify(newGameState);
+            gameHistory.won = won;
+            gameHistory.winAmount = newGameState.winAmount;
+            gameHistory.balanceAfter = finalBalance;
+            gameHistory.experienceGained = experienceGained;
+            gameHistory.leveledUp = levelUpResult.leveledUp;
+            await gameHistory.save({ session });
+            
+            return {
+                gameState: newGameState,
+                balanceAfter: finalBalance,
+                experienceGained,
+                levelUpResult,
+                newLevel: user.level
+            };
+        });
+        
+        res.json({ success: true, result });
+        
+    } catch (error) {
+        console.error('Blackjack stand error:', error);
+        res.status(error.status || 500).json({
+            success: false,
+            message: error.message || 'Server error'
+        });
+    }
+});
+
+router.post('/blackjack/double', authenticateToken, async (req, res) => {
+    try {
+        const result = await withTransaction(async (session) => {
+            const { gameId } = req.body;
+            
+            if (!gameId) {
+                throw new Error('Game ID is required');
+            }
+            
+            // Get game and user
+            const gameHistory = await GameHistory.findOne({
+                userId: req.user.userId,
+                gameType: 'blackjack',
+                _id: gameId
+            }).session(session);
+            
+            if (!gameHistory) {
+                throw new Error('Game not found');
+            }
+            
+            const user = await User.findById(req.user.userId).session(session);
+            if (!user) {
+                throw new Error('User not found');
+            }
+            
+            // Parse game state
+            const gameState = JSON.parse(gameHistory.gameResult);
+            
+            if (gameState.gameStatus !== 'playing') {
+                throw new Error('Game is not in playing state');
+            }
+            
+            if (!gameState.canDouble) {
+                throw new Error('Cannot double at this time');
+            }
+            
+            // Validate user has enough balance for double
+            const additionalBet = gameState.betAmount;
+            if (user.balance < additionalBet) {
+                throw new Error('Insufficient balance to double');
+            }
+            
+            // Deduct additional bet
+            user.balance = roundToTwoDecimals(user.balance - additionalBet);
+            await user.save({ session });
+            
+            // Double down
+            const newGameState = await doubleBlackjack(gameState);
+            
+            // Update balance if player won
+            let finalBalance = user.balance;
+            if (newGameState.winAmount > 0) {
+                finalBalance = roundToTwoDecimals(user.balance + newGameState.winAmount);
+                user.balance = finalBalance;
+            }
+            
+            // Update user stats
+            const won = newGameState.winAmount > 0;
+            updateUserStats(user, won, newGameState.betAmount, newGameState.winAmount);
+            const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
+            
+            // Update balance history
+            user.balanceHistory.push(finalBalance);
+            await user.save({ session });
+            
+            // Update game history
+            gameHistory.betAmount = newGameState.betAmount; // Update to doubled bet
+            gameHistory.gameResult = JSON.stringify(newGameState);
+            gameHistory.won = won;
+            gameHistory.winAmount = newGameState.winAmount;
+            gameHistory.balanceAfter = finalBalance;
+            gameHistory.experienceGained = experienceGained;
+            gameHistory.leveledUp = levelUpResult.leveledUp;
+            await gameHistory.save({ session });
+            
+            return {
+                gameState: newGameState,
+                balanceAfter: finalBalance,
+                experienceGained,
+                levelUpResult,
+                newLevel: user.level
+            };
+        });
+        
+        res.json({ success: true, result });
+        
+    } catch (error) {
+        console.error('Blackjack double error:', error);
+        res.status(error.status || 500).json({
+            success: false,
+            message: error.message || 'Server error'
         });
     }
 });

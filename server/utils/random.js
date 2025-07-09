@@ -150,9 +150,15 @@ async function getRandomNumbers(count, min, max) {
     }
 }
 
+// Simple random between function for internal use
+function randomBetween(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 module.exports = {
     getRandomNumber,
     flipCoin,
     rollDice,
-    getRandomNumbers
+    getRandomNumbers,
+    randomBetween
 }; 
