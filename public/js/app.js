@@ -20,8 +20,7 @@ let minesPattern = {
 
 
 
-// API Base URL - use Render backend for both dev and prod
-const API_BASE_URL = 'https://vestro-lz81.onrender.com';
+// API_BASE_URL is now defined in constants.js
 
 // Global variables for chart
 let chartOffset = 0;
@@ -57,106 +56,7 @@ let autoBetConfig = {
     }
 };
 
-// Client-side badge definitions
-const CLIENT_BADGES = [
-    {
-        code: 'novice',
-        name: 'Novice Gambler',
-        description: 'Reach level 5',
-        icon: 'star',
-        color: '#10b981',
-        criteria: { type: 'level', value: 5 }
-    },
-    {
-        code: 'intermediate',
-        name: 'Intermediate Gambler',
-        description: 'Reach level 25',
-        icon: 'stars',
-        color: '#3b82f6',
-        criteria: { type: 'level', value: 25 }
-    },
-    {
-        code: 'expert',
-        name: 'Expert Gambler',
-        description: 'Reach level 50',
-        icon: 'award',
-        color: '#8b5cf6',
-        criteria: { type: 'level', value: 50 }
-    },
-    {
-        code: 'master',
-        name: 'Master Gambler',
-        description: 'Reach level 100',
-        icon: 'crown',
-        color: '#f59e0b',
-        criteria: { type: 'level', value: 100 }
-    },
-    {
-        code: 'winner',
-        name: 'Winner',
-        description: 'Win 10 games',
-        icon: 'trophy',
-        color: '#10b981',
-        criteria: { type: 'wins', value: 10 }
-    },
-    {
-        code: 'champion',
-        name: 'Champion',
-        description: 'Win 100 games',
-        icon: 'medal',
-        color: '#3b82f6',
-        criteria: { type: 'wins', value: 100 }
-    },
-    {
-        code: 'legend',
-        name: 'Legend',
-        description: 'Win 1000 games',
-        icon: 'flame',
-        color: '#8b5cf6',
-        criteria: { type: 'wins', value: 1000 }
-    },
-    {
-        code: 'millionaire',
-        name: 'Millionaire',
-        description: 'Reach a balance of $1,000,000',
-        icon: 'diamond',
-        color: '#f59e0b',
-        criteria: { type: 'balance', value: 1000000 }
-    },
-    {
-        code: 'dedicated',
-        name: 'Dedicated Player',
-        description: 'Play 1000 games',
-        icon: 'target',
-        color: '#10b981',
-        criteria: { type: 'games', value: 1000 }
-    },
-    {
-        code: 'highroller',
-        name: 'High Roller',
-        description: 'Place a bet of $10,000 or more',
-        icon: 'trending-up',
-        color: '#3b82f6',
-        criteria: { type: 'bet', value: 10000 }
-    },
-    {
-        code: 'streak_master',
-        name: 'Streak Master',
-        description: 'Win 5 games in a row',
-        icon: 'zap',
-        color: '#8b5cf6',
-        criteria: { type: 'winstreak', value: 5 }
-    },
-    {
-        code: 'meme_lord',
-        name: 'Meme Lord',
-        description: 'Place a bet of exactly $69,420',
-        icon: 'sparkles',
-        color: '#f59e0b',
-        secret: true,
-        criteria: { type: 'specific', value: 69420 }
-    }
-];
+// CLIENT_BADGES is now defined in constants.js
 
 // Add global debounce timer for username checks
 let checkUserDebounce = null;
@@ -1140,46 +1040,7 @@ function initializeMobileMenu() {
     }
 }
 
-// Number formatting and animation functions
-function formatNumber(num) {
-    return new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(num);
-}
-
-function animateNumber(element, newValue, duration = 600, prefix = '') {
-    if (!element) return;
-    
-    const oldValue = parseFloat(element.textContent.replace(/[,$]/g, '')) || 0;
-    const difference = newValue - oldValue;
-    const startTime = performance.now();
-    
-    function updateNumber(currentTime) {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        
-        // Easing function
-        const easeOut = 1 - Math.pow(1 - progress, 3);
-        const currentValue = oldValue + (difference * easeOut);
-        
-        element.textContent = prefix + formatNumber(currentValue);
-        
-        // Add flip animation to individual digits
-        if (Math.random() < 0.3) {
-            element.classList.add('number-flip-digit');
-            setTimeout(() => element.classList.remove('number-flip-digit'), 300);
-        }
-        
-        if (progress < 1) {
-            requestAnimationFrame(updateNumber);
-        } else {
-            element.textContent = prefix + formatNumber(newValue);
-        }
-    }
-    
-    requestAnimationFrame(updateNumber);
-}
+// formatNumber and animateNumber are now defined in utils.js
 
 // Global variables for dice game
 let isRolling = false;
@@ -1870,249 +1731,7 @@ function continueAutoBet(wasWin, profit) {
     }, 1000);
 }
 
-// Notification System
-class NotificationManager {
-    constructor() {
-        this.container = document.getElementById('notification-container');
-        this.notifications = [];
-        this.maxNotifications = 3;
-    }
-
-    show(options) {
-        const {
-            type = 'info',
-            title,
-            message,
-            amount = null,
-            duration = 5000,
-            persistent = false,
-            customColor = null
-        } = options;
-
-        // Create notification element
-        const notification = document.createElement('div');
-        notification.className = `notification ${type}`;
-        
-        // Apply custom color if provided
-        if (customColor) {
-            notification.style.setProperty('--notification-color', customColor);
-            notification.style.borderColor = customColor;
-        }
-        
-        // Create notification content
-        const header = document.createElement('div');
-        header.className = 'notification-header';
-        
-        const titleElement = document.createElement('div');
-        titleElement.className = 'notification-title';
-        
-        const icon = document.createElement('div');
-        icon.className = 'notification-icon';
-        icon.textContent = this.getIcon(type);
-        
-        // Apply custom color to icon if provided
-        if (customColor) {
-            icon.style.color = customColor;
-        }
-        
-        const titleText = document.createElement('span');
-        titleText.textContent = title;
-        
-        titleElement.appendChild(icon);
-        titleElement.appendChild(titleText);
-        header.appendChild(titleElement);
-        notification.appendChild(header);
-        
-        if (message) {
-            const messageElement = document.createElement('div');
-            messageElement.className = 'notification-message';
-            messageElement.textContent = message;
-            notification.appendChild(messageElement);
-        }
-        
-        if (amount !== null) {
-            const amountElement = document.createElement('div');
-            amountElement.className = 'notification-amount';
-            const sign = amount >= 0 ? '+' : '';
-            amountElement.textContent = `${sign}$${formatNumber(Math.abs(amount))}`;
-            
-            // Apply custom color to amount if provided
-            if (customColor) {
-                amountElement.style.color = customColor;
-                amountElement.style.fontWeight = 'bold';
-            }
-            
-            notification.appendChild(amountElement);
-        }
-        
-        // Add progress bar for auto-dismiss
-        if (!persistent && duration > 0) {
-            const progressBar = document.createElement('div');
-            progressBar.className = 'notification-progress';
-            progressBar.style.width = '100%';
-            
-            // Apply custom color to progress bar if provided
-            if (customColor) {
-                progressBar.style.backgroundColor = customColor;
-            }
-            
-            notification.appendChild(progressBar);
-            
-            // Animate progress bar
-            requestAnimationFrame(() => {
-                progressBar.style.transition = `width ${duration}ms linear`;
-                progressBar.style.width = '0%';
-            });
-        }
-        
-        // Add click to dismiss
-        notification.onclick = () => this.dismiss(notification);
-        
-        // Add to container
-        this.container.appendChild(notification);
-        this.notifications.push(notification);
-        
-        // Remove excess notifications
-        while (this.notifications.length > this.maxNotifications) {
-            const oldest = this.notifications.shift();
-            this.dismiss(oldest);
-        }
-        
-        // Animate in
-        requestAnimationFrame(() => {
-            notification.classList.add('show');
-        });
-        
-        // Auto dismiss
-        if (!persistent && duration > 0) {
-            setTimeout(() => {
-                this.dismiss(notification);
-            }, duration);
-        }
-        
-        return notification;
-    }
-
-    dismiss(notification) {
-        if (!notification || !notification.parentNode) return;
-        
-        notification.classList.add('hide');
-        
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-            const index = this.notifications.indexOf(notification);
-            if (index > -1) {
-                this.notifications.splice(index, 1);
-            }
-        }, 300);
-    }
-
-    getIcon(type) {
-        const icons = {
-            success: '✓',
-            error: '!',
-            warning: '!',
-            info: 'i',
-            'level-up': '↑',
-            'badge': '★'
-        };
-        return icons[type] || 'i';
-    }
-
-    // Convenience methods
-    success(title, message, amount = null) {
-        return this.show({ type: 'success', title, message, amount });
-    }
-
-    error(title, message) {
-        return this.show({ type: 'error', title, message, duration: 7000 });
-    }
-
-    warning(title, message) {
-        return this.show({ type: 'warning', title, message });
-    }
-
-    info(title, message) {
-        return this.show({ type: 'info', title, message });
-    }
-
-    levelUp(title, message, amount = null) {
-        return this.show({ type: 'level-up', title, message, amount, duration: 8000 });
-    }
-}
-
-// Initialize notification manager
-const notifications = new NotificationManager();
-
-// Replace old notification functions
-function showError(message) {
-    notifications.error('Error', message);
-}
-
-function showBadgeNotification(badge) {
-    const notification = notifications.show({
-        type: 'badge',
-        title: 'Badge Earned!',
-        message: badge.name,
-        duration: 8000
-    });
-    
-    // Customize notification with badge color and icon
-    if (notification) {
-        notification.style.setProperty('--notification-color', badge.color);
-        const iconElement = notification.querySelector('.notification-icon');
-        if (iconElement) {
-            iconElement.innerHTML = `<i data-lucide="${badge.icon}"></i>`;
-            iconElement.style.background = badge.color;
-        }
-        
-        // Re-initialize lucide icons for the notification
-        lucide.createIcons();
-    }
-}
-
-function showGameNotification(isWin, amount, customMessage = null, colorObj = null, multiplier = null) {
-    if (customMessage) {
-        if (customMessage.includes('Level Up')) {
-            notifications.levelUp('Level Up!', customMessage);
-        } else if (customMessage.includes('completed')) {
-            notifications.info('Auto Bet', customMessage);
-        } else if (customMessage.includes('reached')) {
-            notifications.warning('Auto Bet', customMessage);
-        } else {
-            notifications.info('Game', customMessage);
-        }
-    } else {
-        const optsColor = colorObj ? colorObj.text : undefined;
-        if (multiplier !== null && multiplier < 1) {
-            notifications.show({
-                type: 'info',
-                title: 'Partial Return',
-                message: `You got back $${amount.toFixed(2)}`,
-                amount,
-                customColor: optsColor
-            });
-        } else if (isWin) {
-            notifications.show({
-                type: 'success',
-                title: 'You Won!',
-                message: `Won $${amount.toFixed(2)}!`,
-                amount,
-                customColor: optsColor
-            });
-        } else {
-            notifications.show({
-                type: 'error',
-                title: 'You Lost',
-                message: 'Better luck next time!',
-                amount,
-                customColor: optsColor
-            });
-        }
-    }
-}
+// NotificationManager, showError, showBadgeNotification, and showGameNotification are now defined in notifications.js
 
 function logout() {
     localStorage.removeItem('token');
@@ -2187,8 +1806,7 @@ let plinkoAutobet = {
     }
 };
 
-// Helper function from example to get a random integer
-const randomBetween = (min, max) => Math.floor(Math.random() * (max - min)) + min;
+// randomBetween is now defined in utils.js
 
 // Plinko Multiplier Tables (similar to Stake)
 const plinkoMultipliers = {
@@ -3535,11 +3153,9 @@ function handlePlinkoMouseLeave() {
     }
 }
 
-// Constants
+// Constants - most are now defined in constants.js
 const MINES_REQUEST_DEBOUNCE_MS = 500;
-const MINES_REVEAL_DELAY_MS = 300;  // Delay between revealing tiles
 const MINES_RETRY_DELAY_MS = 1000;  // Delay before retrying on rate limit
-const MINES_MAX_RETRIES = 3;       // Maximum number of retries for rate limited requests
 
 // Helper for handling rate limits
 async function handleRateLimit(operation, maxRetries = MINES_MAX_RETRIES) {

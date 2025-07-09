@@ -44,11 +44,11 @@ router.post('/play', authenticateToken, async (req, res) => {
             // Validate game type
             if (!GAME_HANDLERS[gameType]) {
                 throw new Error('Invalid game type');
-            }
-            
-            // Get user with session
-            const user = await User.findById(req.user.userId).session(session);
-            if (!user) {
+        }
+
+        // Get user with session
+        const user = await User.findById(req.user.userId).session(session);
+        if (!user) {
                 throw new Error('User not found');
             }
             
@@ -59,20 +59,20 @@ router.post('/play', authenticateToken, async (req, res) => {
             const balanceBefore = userBalance;
             const balanceAfter = roundToTwoDecimals(userBalance - betAmountRounded);
             user.balance = balanceAfter;
-            await user.save({ session });
-            
+        await user.save({ session });
+
             // Create initial game history
-            const gameHistory = new GameHistory({
-                userId: req.user.userId,
-                gameType,
-                betAmount: betAmountRounded,
-                playerChoice,
+        const gameHistory = new GameHistory({
+            userId: req.user.userId,
+            gameType,
+            betAmount: betAmountRounded,
+            playerChoice,
                 gameResult: '{}',
-                won: false,
+            won: false,
                 balanceBefore,
                 balanceAfter
-            });
-            await gameHistory.save({ session });
+        });
+        await gameHistory.save({ session });
             
             // Handle game logic based on type
             let gameResult, won, multiplier, randomHash, randomTimestamp;
@@ -135,21 +135,21 @@ router.post('/play', authenticateToken, async (req, res) => {
             
             // Update and save game history
             gameHistory.gameResult = JSON.stringify(gameResult);
-            gameHistory.won = won;
-            gameHistory.winAmount = winAmount;
+        gameHistory.won = won;
+        gameHistory.winAmount = winAmount;
             gameHistory.balanceAfter = finalBalance;
-            gameHistory.experienceGained = experienceGained;
-            gameHistory.leveledUp = levelUpResult.leveledUp;
-            await gameHistory.save({ session });
-            
+        gameHistory.experienceGained = experienceGained;
+        gameHistory.leveledUp = levelUpResult.leveledUp;
+        await gameHistory.save({ session });
+
             return {
                 gameHistory,
-                gameResult,
-                won,
+            gameResult,
+            won,
                 winAmount,
                 balanceBefore,
                 balanceAfter: finalBalance,
-                experienceGained,
+            experienceGained,
                 levelUpResult,
                 newLevel: user.level,
                 randomHash,
@@ -191,29 +191,29 @@ router.post('/play', authenticateToken, async (req, res) => {
 router.post('/mines/reveal', authenticateToken, async (req, res) => {
     try {
         const result = await withTransaction(async (session) => {
-            const { gameId, tileIndex } = req.body;
-            
-            // Validation
-            if (!gameId || tileIndex === undefined) {
+        const { gameId, tileIndex } = req.body;
+        
+        // Validation
+        if (!gameId || tileIndex === undefined) {
                 throw new Error('Game ID and tile index are required');
-            }
-            
-            if (tileIndex < 0 || tileIndex > 24) {
+        }
+        
+        if (tileIndex < 0 || tileIndex > 24) {
                 throw new Error('Invalid tile index (0-24)');
-            }
-            
-            if (!mongoose.Types.ObjectId.isValid(gameId)) {
+        }
+        
+        if (!mongoose.Types.ObjectId.isValid(gameId)) {
                 throw new Error('Invalid game ID format');
-            }
-            
+        }
+        
             // Get game and user
-            const gameHistory = await GameHistory.findOne({
-                userId: req.user.userId,
-                gameType: 'mines',
-                _id: gameId
-            }).session(session);
-            
-            if (!gameHistory) {
+        const gameHistory = await GameHistory.findOne({
+            userId: req.user.userId,
+            gameType: 'mines',
+            _id: gameId
+        }).session(session);
+        
+        if (!gameHistory) {
                 throw new Error('Game not found');
             }
             
@@ -223,31 +223,31 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             }
             
             // Parse and validate game state
-            const gameResult = JSON.parse(gameHistory.gameResult);
-            const { mines, mineCount, active, cashedOut } = gameResult;
-            
-            if (!active || cashedOut) {
+        const gameResult = JSON.parse(gameHistory.gameResult);
+        const { mines, mineCount, active, cashedOut } = gameResult;
+        
+        if (!active || cashedOut) {
                 throw new Error('Game is no longer active');
-            }
-            
-            // Check if tile is a mine
-            const hitMine = mines.includes(tileIndex);
-            
-            if (hitMine) {
+        }
+        
+        // Check if tile is a mine
+        const hitMine = mines.includes(tileIndex);
+        
+        if (hitMine) {
                 // Game over - update everything
-                gameResult.active = false;
-                gameResult.multiplier = 0;
-                gameHistory.gameResult = JSON.stringify(gameResult);
-                gameHistory.won = false;
-                gameHistory.winAmount = 0;
-                gameHistory.balanceAfter = user.balance;
-                await gameHistory.save({ session });
-                
-                // Update user stats
+            gameResult.active = false;
+            gameResult.multiplier = 0;
+            gameHistory.gameResult = JSON.stringify(gameResult);
+            gameHistory.won = false;
+            gameHistory.winAmount = 0;
+            gameHistory.balanceAfter = user.balance;
+            await gameHistory.save({ session });
+            
+            // Update user stats
                 updateUserStats(user, false, gameResult.betAmount, 0);
-                user.balanceHistory.push(user.balance);
-                await user.save({ session });
-                
+            user.balanceHistory.push(user.balance);
+            await user.save({ session });
+            
                 return {
                     tileIndex,
                     hitMine: true,
@@ -257,16 +257,16 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
                     winAmount: 0,
                     balanceAfter: user.balance
                 };
-            } else {
+        } else {
                 // Safe tile - update multiplier
-                const revealedTiles = (gameResult.revealedTiles || 0) + 1;
-                const newMultiplier = calculateMinesMultiplier(mineCount, revealedTiles);
-                
-                gameResult.revealedTiles = revealedTiles;
-                gameResult.multiplier = newMultiplier;
-                gameHistory.gameResult = JSON.stringify(gameResult);
-                await gameHistory.save({ session });
-                
+            const revealedTiles = (gameResult.revealedTiles || 0) + 1;
+            const newMultiplier = calculateMinesMultiplier(mineCount, revealedTiles);
+            
+            gameResult.revealedTiles = revealedTiles;
+            gameResult.multiplier = newMultiplier;
+            gameHistory.gameResult = JSON.stringify(gameResult);
+            await gameHistory.save({ session });
+            
                 const potentialWinAmount = roundToTwoDecimals(gameResult.betAmount * newMultiplier);
                 
                 return {
@@ -278,8 +278,8 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
                     potentialWinAmount,
                     canCashOut: true
                 };
-            }
-        });
+                }
+            });
         
         res.json({ success: true, result });
         
@@ -303,26 +303,26 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
             }
             
             // Get game and user
-            const gameHistory = await GameHistory.findOne({
-                userId: req.user.userId,
-                gameType: 'mines',
-                _id: gameId
-            }).session(session);
-            
-            if (!gameHistory) {
+        const gameHistory = await GameHistory.findOne({
+            userId: req.user.userId,
+            gameType: 'mines',
+            _id: gameId
+        }).session(session);
+        
+        if (!gameHistory) {
                 throw new Error('Game not found');
             }
             
-            const user = await User.findById(req.user.userId).session(session);
-            if (!user) {
+        const user = await User.findById(req.user.userId).session(session);
+        if (!user) {
                 throw new Error('User not found');
             }
             
             // Parse and validate game state
-            const gameResult = JSON.parse(gameHistory.gameResult);
+        const gameResult = JSON.parse(gameHistory.gameResult);
             const { active, cashedOut, betAmount, mines, mineCount } = gameResult;
-            
-            if (!active || cashedOut) {
+        
+        if (!active || cashedOut) {
                 throw new Error('Game cannot be cashed out');
             }
             
@@ -342,27 +342,27 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
             // Calculate win amount and update balance
             const winAmount = roundToTwoDecimals(betAmount * expectedMultiplier);
             const newBalance = roundToTwoDecimals(user.balance + winAmount);
-            user.balance = newBalance;
-            user.balanceHistory.push(newBalance);
-            
+        user.balance = newBalance;
+        user.balanceHistory.push(newBalance);
+        
             // Update user stats
             updateUserStats(user, true, betAmount, winAmount);
             const { experienceGained, levelUpResult } = addExperienceToUser(user, true);
-            await user.save({ session });
-            
-            // Update game history
-            gameResult.active = false;
-            gameResult.cashedOut = true;
+        await user.save({ session });
+        
+        // Update game history
+        gameResult.active = false;
+        gameResult.cashedOut = true;
             gameResult.multiplier = expectedMultiplier;
             gameResult.revealedTiles = revealedTiles.length;
-            gameHistory.gameResult = JSON.stringify(gameResult);
-            gameHistory.won = true;
-            gameHistory.winAmount = winAmount;
-            gameHistory.balanceAfter = newBalance;
-            gameHistory.experienceGained = experienceGained;
-            gameHistory.leveledUp = levelUpResult.leveledUp;
-            await gameHistory.save({ session });
-            
+        gameHistory.gameResult = JSON.stringify(gameResult);
+        gameHistory.won = true;
+        gameHistory.winAmount = winAmount;
+        gameHistory.balanceAfter = newBalance;
+        gameHistory.experienceGained = experienceGained;
+        gameHistory.leveledUp = levelUpResult.leveledUp;
+        await gameHistory.save({ session });
+        
             return {
                 winAmount,
                 multiplier: expectedMultiplier,
@@ -372,9 +372,9 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
                 newLevel: user.level
             };
         });
-        
+
         res.json({ success: true, result });
-        
+
     } catch (error) {
         console.error('Mines cashout error:', error);
         res.status(500).json({

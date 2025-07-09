@@ -1,78 +1,110 @@
-// Notification Manager
+// Notification System
 class NotificationManager {
     constructor() {
-        this.notifications = [];
-        this.container = null;
-        this.init();
-    }
-    
-    init() {
-        // Create notification container if it doesn't exist
         this.container = document.getElementById('notification-container');
-        if (!this.container) {
-            this.container = createElement('div', ['notification-container'], {
-                id: 'notification-container'
-            });
-            document.body.appendChild(this.container);
-        }
+        this.notifications = [];
+        this.maxNotifications = 3;
     }
-    
+
     show(options) {
         const {
             type = 'info',
-            title = '',
-            message = '',
+            title,
+            message,
             amount = null,
-            duration = NOTIFICATION_DURATION,
-            colorObj = null
+            duration = 5000,
+            persistent = false,
+            customColor = null
         } = options;
+
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
         
-        const notification = createElement('div', ['notification', `notification-${type}`]);
-        
-        // Apply custom colors if provided
-        if (colorObj) {
-            notification.style.backgroundColor = colorObj.bg;
-            notification.style.borderColor = colorObj.border;
-            notification.style.color = colorObj.text;
+        // Apply custom color if provided
+        if (customColor) {
+            notification.style.setProperty('--notification-color', customColor);
+            //notification.style.borderColor = customColor;
         }
         
-        const icon = this.getIcon(type);
-        const content = createElement('div', ['notification-content']);
+        // Create notification content
+        const header = document.createElement('div');
+        header.className = 'notification-header';
         
-        let titleElement = '';
-        if (title) {
-            titleElement = `<div class="notification-title">${title}</div>`;
+        const titleElement = document.createElement('div');
+        titleElement.className = 'notification-title';
+        
+        const icon = document.createElement('div');
+        icon.className = 'notification-icon';
+        icon.textContent = this.getIcon(type);
+        
+        // Apply custom color to icon if provided
+        if (customColor) {
+            icon.style.color = customColor;
         }
         
-        let amountElement = '';
+        const titleText = document.createElement('span');
+        titleText.textContent = title;
+        
+        titleElement.appendChild(icon);
+        titleElement.appendChild(titleText);
+        header.appendChild(titleElement);
+        notification.appendChild(header);
+        
+        if (message) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'notification-message';
+            messageElement.textContent = message;
+            notification.appendChild(messageElement);
+        }
+        
         if (amount !== null) {
-            const amountClass = amount >= 0 ? 'positive' : 'negative';
-            const amountPrefix = amount >= 0 ? '+' : '';
-            amountElement = `<div class="notification-amount ${amountClass}">${amountPrefix}$${formatNumber(Math.abs(amount))}</div>`;
+            const amountElement = document.createElement('div');
+            amountElement.className = 'notification-amount';
+            const sign = amount >= 0 ? '+' : '';
+            amountElement.textContent = `${sign}$${formatNumber(Math.abs(amount))}`;
+            
+            // Apply custom color to amount if provided
+            if (customColor) {
+                amountElement.style.color = customColor;
+                amountElement.style.fontWeight = 'bold';
+            }
+            
+            notification.appendChild(amountElement);
         }
         
-        content.innerHTML = `
-            <div class="notification-header">
-                ${icon}
-                ${titleElement}
-            </div>
-            <div class="notification-message">${message}</div>
-            ${amountElement}
-        `;
+        // Add progress bar for auto-dismiss
+        if (!persistent && duration > 0) {
+            const progressBar = document.createElement('div');
+            progressBar.className = 'notification-progress';
+            progressBar.style.width = '100%';
+            
+            // Apply custom color to progress bar if provided
+            if (customColor) {
+                progressBar.style.backgroundColor = customColor;
+            }
+            
+            notification.appendChild(progressBar);
+            
+            // Animate progress bar
+            requestAnimationFrame(() => {
+                progressBar.style.transition = `width ${duration}ms linear`;
+                progressBar.style.width = '0%';
+            });
+        }
         
-        const closeButton = createElement('button', ['notification-close'], {
-            type: 'button',
-            'aria-label': 'Close notification'
-        });
-        closeButton.innerHTML = '×';
-        closeButton.addEventListener('click', () => this.dismiss(notification));
-        
-        notification.appendChild(content);
-        notification.appendChild(closeButton);
+        // Add click to dismiss
+        notification.onclick = () => this.dismiss(notification);
         
         // Add to container
         this.container.appendChild(notification);
         this.notifications.push(notification);
+        
+        // Remove excess notifications
+        while (this.notifications.length > this.maxNotifications) {
+            const oldest = this.notifications.shift();
+            this.dismiss(oldest);
+        }
         
         // Animate in
         requestAnimationFrame(() => {
@@ -80,7 +112,7 @@ class NotificationManager {
         });
         
         // Auto dismiss
-        if (duration > 0) {
+        if (!persistent && duration > 0) {
             setTimeout(() => {
                 this.dismiss(notification);
             }, duration);
@@ -88,116 +120,139 @@ class NotificationManager {
         
         return notification;
     }
-    
+
     dismiss(notification) {
         if (!notification || !notification.parentNode) return;
         
-        notification.classList.remove('show');
         notification.classList.add('hide');
         
         setTimeout(() => {
             if (notification.parentNode) {
                 notification.parentNode.removeChild(notification);
             }
-            
             const index = this.notifications.indexOf(notification);
             if (index > -1) {
                 this.notifications.splice(index, 1);
             }
         }, 300);
     }
-    
+
     getIcon(type) {
         const icons = {
-            success: '<i data-lucide="check-circle"></i>',
-            error: '<i data-lucide="x-circle"></i>',
-            warning: '<i data-lucide="alert-triangle"></i>',
-            info: '<i data-lucide="info"></i>',
-            levelUp: '<i data-lucide="star"></i>'
+            success: '✓',
+            error: '!',
+            warning: '!',
+            info: 'i',
+            'level-up': '↑',
+            'badge': '★'
         };
-        
-        return icons[type] || icons.info;
+        return icons[type] || 'i';
     }
-    
+
     // Convenience methods
     success(title, message, amount = null) {
         return this.show({ type: 'success', title, message, amount });
     }
-    
+
     error(title, message) {
-        return this.show({ type: 'error', title, message });
+        return this.show({ type: 'error', title, message, duration: 7000 });
     }
-    
+
     warning(title, message) {
         return this.show({ type: 'warning', title, message });
     }
-    
+
     info(title, message) {
         return this.show({ type: 'info', title, message });
     }
-    
+
     levelUp(title, message, amount = null) {
-        return this.show({ type: 'levelUp', title, message, amount });
-    }
-    
-    // Clear all notifications
-    clearAll() {
-        this.notifications.forEach(notification => {
-            this.dismiss(notification);
-        });
+        return this.show({ type: 'level-up', title, message, amount, duration: 8000 });
     }
 }
 
-// Create global instance
-const notificationManager = new NotificationManager();
+// Initialize notification manager
+const notifications = new NotificationManager();
 
-// Game-specific notification functions
-function showGameNotification(isWin, amount, customMessage = null, colorObj = null, multiplier = null) {
-    let title, message;
-    
-    if (customMessage) {
-        title = customMessage;
-        message = '';
-    } else if (isWin) {
-        title = 'You Won!';
-        message = multiplier ? `${multiplier}x multiplier` : '';
-    } else {
-        title = 'You Lost';
-        message = 'Better luck next time!';
-    }
-    
-    const type = isWin ? 'success' : 'error';
-    notificationManager.show({
-        type,
-        title,
-        message,
-        amount,
-        colorObj
-    });
-}
-
+// Replace old notification functions
 function showError(message) {
-    notificationManager.error('Error', message);
+    notifications.error('Error', message);
 }
 
 function showBadgeNotification(badge) {
-    notificationManager.show({
-        type: 'success',
-        title: 'New Badge Earned!',
+    const notification = notifications.show({
+        type: 'badge',
+        title: 'Badge Earned!',
         message: badge.name,
-        duration: 7000
+        duration: 8000
     });
+    
+    // Customize notification with badge color and icon
+    if (notification) {
+        notification.style.setProperty('--notification-color', badge.color);
+        const iconElement = notification.querySelector('.notification-icon');
+        if (iconElement) {
+            iconElement.innerHTML = `<i data-lucide="${badge.icon}"></i>`;
+            iconElement.style.background = badge.color;
+        }
+        
+        // Re-initialize lucide icons for the notification
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }
+}
+
+function showGameNotification(isWin, amount, customMessage = null, colorObj = null, multiplier = null) {
+    if (customMessage) {
+        if (customMessage.includes('Level Up')) {
+            notifications.levelUp('Level Up!', customMessage);
+        } else if (customMessage.includes('completed')) {
+            notifications.info('Auto Bet', customMessage);
+        } else if (customMessage.includes('reached')) {
+            notifications.warning('Auto Bet', customMessage);
+        } else {
+            notifications.info('Game', customMessage);
+        }
+    } else {
+        const optsColor = colorObj ? colorObj.text : undefined;
+        if (multiplier !== null && multiplier < 1) {
+            notifications.show({
+                type: 'info',
+                title: 'Partial Return',
+                message: `You got back $${amount.toFixed(2)}`,
+                amount,
+                customColor: optsColor
+            });
+        } else if (isWin) {
+            notifications.show({
+                type: 'success',
+                title: 'You Won!',
+                message: `Won $${amount.toFixed(2)}!`,
+                amount,
+                customColor: optsColor
+            });
+        } else {
+            notifications.show({
+                type: 'error',
+                title: 'You Lost',
+                message: 'Better luck next time!',
+                amount,
+                customColor: optsColor
+            });
+        }
+    }
 }
 
 function showCopyFeedback() {
-    notificationManager.success('Copied!', 'Hash copied to clipboard');
+    notifications.success('Copied!', 'Hash copied to clipboard');
 }
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         NotificationManager,
-        notificationManager,
+        notifications,
         showGameNotification,
         showError,
         showBadgeNotification,
