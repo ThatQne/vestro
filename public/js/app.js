@@ -4550,8 +4550,7 @@ function updateBlackjackButtons() {
     const doubleBtn = document.getElementById('blackjack-double-btn');
     
     if (dealBtn) {
-        dealBtn.style.display = blackjackState.gameActive ? 'none' : 'inline-block';
-        dealBtn.disabled = blackjackAutobet.isActive;
+        dealBtn.disabled = blackjackState.gameActive || blackjackAutobet.isActive;
     }
     
     // Show/hide action buttons container

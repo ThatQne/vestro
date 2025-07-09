@@ -3738,7 +3738,8 @@ input, textarea {
 .blackjack-game-body {
     display: flex;
     gap: 1rem;
-    align-items: flex-start;
+    align-items: stretch;
+    min-height: calc(100vh - 250px);
 }
 
 .blackjack-visual {
@@ -3746,7 +3747,36 @@ input, textarea {
     background: rgba(10, 10, 10, 0.5);
     border-radius: 16px;
     padding: 1rem;
-    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+}
+
+.card-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    flex: 1;
+    justify-content: space-between;
+    padding: 1rem 0;
+}
+
+.dealer-area, .player-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: center;
+    min-height: 160px;
+}
+
+.game-status {
+    text-align: center;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #f1f1f1;
+    padding: 0.75rem;
+    background: rgba(55, 65, 81, 0.4);
+    border-radius: 12px;
+    margin: 0;
 }
 
 .blackjack-controls {
@@ -3771,6 +3801,7 @@ input, textarea {
 @media (max-width: 1024px) {
     .blackjack-game-body {
         flex-direction: column;
+        min-height: auto;
     }
     
     .blackjack-controls {
@@ -3813,15 +3844,17 @@ input, textarea {
     }
     
     .blackjack-visual {
+        min-height: 450px;
         padding: 0.75rem;
-        min-height: 350px;
     }
     
     .card-area {
+        padding: 0.5rem 0;
         gap: 0.75rem;
     }
     
     .dealer-area, .player-area {
+        min-height: 140px;
         gap: 0.5rem;
     }
     
@@ -3934,7 +3967,7 @@ input, textarea {
     }
     
     .blackjack-visual {
-        min-height: 300px;
+        min-height: 400px;
         padding: 0.5rem;
     }
     
@@ -4153,6 +4186,29 @@ input, textarea {
     .playing-card .card-suit {
         font-size: 1.1rem;
     }
+}
+
+.primary-buttons {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+
+.primary-buttons .roll-btn {
+    flex: 2;
+    min-width: 120px;
+}
+
+.primary-buttons .auto-bet-btn {
+    flex: 1;
+    min-width: 80px;
+}
+
+.roll-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+    border: 1px solid rgba(75, 85, 99, 0.5);
 }
 
 
