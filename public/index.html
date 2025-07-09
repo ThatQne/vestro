@@ -827,20 +827,23 @@
                             </div>
                         </div>
                         
-                        <div class="action-buttons">
+                        <div class="primary-buttons">
                             <button class="roll-btn" id="blackjack-deal-btn" onclick="dealBlackjack()">
                                 <span id="blackjack-deal-text">Deal</span>
                             </button>
-                            <button class="roll-btn secondary" id="blackjack-hit-btn" onclick="hitBlackjack()" style="display: none;">
+                            <button class="auto-bet-btn" id="blackjack-auto-bet-btn">Auto</button>
+                        </div>
+                        
+                        <div class="action-buttons" id="blackjack-action-buttons" style="display: none;">
+                            <button class="action-btn hit-btn" id="blackjack-hit-btn" onclick="hitBlackjack()">
                                 <span>Hit</span>
                             </button>
-                            <button class="roll-btn secondary" id="blackjack-stand-btn" onclick="standBlackjack()" style="display: none;">
+                            <button class="action-btn stand-btn" id="blackjack-stand-btn" onclick="standBlackjack()">
                                 <span>Stand</span>
                             </button>
-                            <button class="roll-btn secondary" id="blackjack-double-btn" onclick="doubleBlackjack()" style="display: none;">
+                            <button class="action-btn double-btn" id="blackjack-double-btn" onclick="doubleBlackjack()">
                                 <span>Double</span>
                             </button>
-                            <button class="auto-bet-btn" id="blackjack-auto-bet-btn">Auto</button>
                         </div>
                         
                         <div class="auto-bet-settings" id="blackjack-auto-bet-settings">

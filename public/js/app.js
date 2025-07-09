@@ -3449,8 +3449,8 @@ async function startMinesGame() {
     document.getElementById('mines-bet-amount').disabled = true;
     document.querySelectorAll('.mines-control-btn').forEach(btn => btn.disabled = true);
     
-    // Store original balance for potential rollback
-    const originalBalance = currentUser.balance;
+        // Store original balance for potential rollback
+        const originalBalance = currentUser.balance;
     
     try {
         
@@ -3752,11 +3752,11 @@ async function cashOutMines() {
         // Reveal all mines with animation
         minesState.gridState.forEach((isMine, index) => {
             if (isMine) {
-                const mineTile = minesState.tiles[index];
-                if (!mineTile.classList.contains('revealed')) {
-                    mineTile.classList.add('revealed', 'mine');
-                    mineTile.innerHTML = '<i data-lucide="bomb"></i>';
-                }
+                    const mineTile = minesState.tiles[index];
+                    if (!mineTile.classList.contains('revealed')) {
+                        mineTile.classList.add('revealed', 'mine');
+                        mineTile.innerHTML = '<i data-lucide="bomb"></i>';
+                    }
             }
         });
         lucide.createIcons();
@@ -4408,7 +4408,23 @@ function updateBlackjackUI() {
     const dealerTotalEl = document.getElementById('dealer-total');
     
     if (playerTotalEl) playerTotalEl.textContent = blackjackState.playerValue;
-    if (dealerTotalEl) dealerTotalEl.textContent = blackjackState.dealerValue;
+    if (dealerTotalEl) {
+        // Only show dealer's visible card value during play
+        if (blackjackState.gameStatus === 'playing' && blackjackState.dealerCards.length > 0) {
+            const visibleCard = blackjackState.dealerCards[0];
+            let visibleValue = 0;
+            if (visibleCard.value === 'A') {
+                visibleValue = 11;
+            } else if (['J', 'Q', 'K'].includes(visibleCard.value)) {
+                visibleValue = 10;
+            } else {
+                visibleValue = parseInt(visibleCard.value);
+            }
+            dealerTotalEl.textContent = visibleValue;
+        } else {
+            dealerTotalEl.textContent = blackjackState.dealerValue;
+        }
+    }
     
     // Update game status
     const statusElement = document.getElementById('game-status');
@@ -4423,37 +4439,81 @@ function updateBlackjackUI() {
     const playerCountEl = document.getElementById('player-count');
     const currentBetEl = document.getElementById('current-bet');
     
-    if (dealerCountEl) dealerCountEl.textContent = blackjackState.dealerValue;
+    if (dealerCountEl) {
+        // Only show dealer's visible card value during play
+        if (blackjackState.gameStatus === 'playing' && blackjackState.dealerCards.length > 0) {
+            const visibleCard = blackjackState.dealerCards[0];
+            let visibleValue = 0;
+            if (visibleCard.value === 'A') {
+                visibleValue = 11;
+            } else if (['J', 'Q', 'K'].includes(visibleCard.value)) {
+                visibleValue = 10;
+            } else {
+                visibleValue = parseInt(visibleCard.value);
+            }
+            dealerCountEl.textContent = visibleValue;
+        } else {
+            dealerCountEl.textContent = blackjackState.dealerValue;
+        }
+    }
     if (playerCountEl) playerCountEl.textContent = blackjackState.playerValue;
-    if (currentBetEl) currentBetEl.textContent = `$${blackjackState.currentBet.toFixed(2)}`;
+    if (currentBetEl) {
+        const betAmount = blackjackState.currentBet || 0;
+        currentBetEl.textContent = `$${betAmount.toFixed(2)}`;
+    }
     
     // Update buttons
     updateBlackjackButtons();
 }
 
-// Update card display
+// Update card display smoothly
 function updateCardDisplay(containerId, cards, hideDealerHole = false) {
     const container = document.getElementById(containerId);
     if (!container) return;
     
-    container.innerHTML = '';
+    const existingCards = container.querySelectorAll('.playing-card');
     
+    // Only clear container when starting a new game (cards.length === 0)
+    if (cards.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    // Add or update cards
     cards.forEach((card, index) => {
-        const cardElement = document.createElement('div');
-        cardElement.className = `playing-card ${card.color}`;
+        let cardElement;
         
-        // Hide dealer's hole card if game is still playing
-        if (containerId === 'dealer-cards' && index === 1 && hideDealerHole) {
-            cardElement.classList.add('hidden');
-            cardElement.innerHTML = '<div class="card-value">?</div><div class="card-suit">?</div>';
+        if (index < existingCards.length) {
+            // Update existing card
+            cardElement = existingCards[index];
+            
+            // Update dealer's hole card if it's being revealed
+            if (containerId === 'dealer-cards' && index === 1 && cardElement.classList.contains('hidden') && !hideDealerHole) {
+                cardElement.classList.remove('hidden');
+                cardElement.innerHTML = `
+                    <div class="card-value">${card.value}</div>
+                    <div class="card-suit">${card.suit}</div>
+                `;
+                cardElement.className = `playing-card ${card.color}`;
+            }
         } else {
-            cardElement.innerHTML = `
-                <div class="card-value">${card.value}</div>
-                <div class="card-suit">${card.suit}</div>
-            `;
+            // Create new card
+            cardElement = document.createElement('div');
+            cardElement.className = `playing-card ${card.color}`;
+            
+            // Hide dealer's hole card if game is still playing
+            if (containerId === 'dealer-cards' && index === 1 && hideDealerHole) {
+                cardElement.classList.add('hidden');
+                cardElement.innerHTML = '<div class="card-value">?</div><div class="card-suit">?</div>';
+            } else {
+                cardElement.innerHTML = `
+                    <div class="card-value">${card.value}</div>
+                    <div class="card-suit">${card.suit}</div>
+                `;
+            }
+            
+            container.appendChild(cardElement);
         }
-        
-        container.appendChild(cardElement);
     });
 }
 
@@ -4484,6 +4544,7 @@ function getGameStatusText() {
 // Update buttons
 function updateBlackjackButtons() {
     const dealBtn = document.getElementById('blackjack-deal-btn');
+    const actionButtons = document.getElementById('blackjack-action-buttons');
     const hitBtn = document.getElementById('blackjack-hit-btn');
     const standBtn = document.getElementById('blackjack-stand-btn');
     const doubleBtn = document.getElementById('blackjack-double-btn');
@@ -4493,19 +4554,21 @@ function updateBlackjackButtons() {
         dealBtn.disabled = blackjackAutobet.isActive;
     }
     
+    // Show/hide action buttons container
+    if (actionButtons) {
+        actionButtons.style.display = blackjackState.gameActive ? 'flex' : 'none';
+    }
+    
     if (hitBtn) {
-        hitBtn.style.display = blackjackState.canHit ? 'inline-block' : 'none';
-        hitBtn.disabled = blackjackAutobet.isActive;
+        hitBtn.disabled = !blackjackState.canHit || blackjackAutobet.isActive;
     }
     
     if (standBtn) {
-        standBtn.style.display = blackjackState.canStand ? 'inline-block' : 'none';
-        standBtn.disabled = blackjackAutobet.isActive;
+        standBtn.disabled = !blackjackState.canStand || blackjackAutobet.isActive;
     }
     
     if (doubleBtn) {
-        doubleBtn.style.display = blackjackState.canDouble ? 'inline-block' : 'none';
-        doubleBtn.disabled = blackjackAutobet.isActive;
+        doubleBtn.disabled = !blackjackState.canDouble || blackjackAutobet.isActive;
     }
 }
 
@@ -4677,7 +4740,15 @@ async function standBlackjack() {
 async function doubleBlackjack() {
     if (!blackjackState.gameActive || !blackjackState.canDouble) return;
     
-    const additionalBet = blackjackState.currentBet;
+    // Get the current bet amount from the input or state
+    const betInput = document.getElementById('blackjack-bet-amount');
+    const additionalBet = blackjackState.currentBet || (betInput ? parseFloat(betInput.value) : 0);
+    
+    if (!additionalBet || additionalBet <= 0) {
+        showError('Invalid bet amount');
+        return;
+    }
+    
     if (additionalBet > currentUser.balance) {
         showError('Insufficient balance to double');
         return;
@@ -4721,12 +4792,12 @@ async function doubleBlackjack() {
             }, 1000);
             
         } else {
-            showError(data.message || 'Failed to double');
+            showError(data.message || 'Failed to double down');
         }
         
     } catch (error) {
-        console.error('Double error:', error);
-        showError('Failed to double');
+        console.error('Double down error:', error);
+        showError('Failed to double down');
     }
 }
 
@@ -4739,20 +4810,22 @@ function handleBlackjackGameEnd(gameStatus, winAmount) {
     
     updateBlackjackUI();
     
-    const won = winAmount > 0;
-    const profit = winAmount - blackjackState.currentBet;
+    const currentBet = blackjackState.currentBet || 0;
+    const profit = (winAmount || 0) - currentBet;
+    const won = (winAmount || 0) > 0;
     
     // Show notification
     if (gameStatus === 'blackjack') {
-        showGameNotification(true, winAmount, 'Blackjack! 3:2 payout');
+        showGameNotification(true, winAmount, `Blackjack! 3:2 payout - Won $${winAmount ? winAmount.toFixed(2) : '0.00'}`);
     } else if (gameStatus === 'push') {
-        showGameNotification(false, winAmount, 'Push - bet returned');
+        showGameNotification(false, winAmount, `Push - bet returned $${winAmount ? winAmount.toFixed(2) : '0.00'}`);
     } else {
-        showGameNotification(won, winAmount, won ? 'You win!' : 'You lose');
+        const message = won ? `You win $${winAmount ? winAmount.toFixed(2) : '0.00'}!` : 'You lose';
+        showGameNotification(won, winAmount, message);
     }
     
-    // Update chart
-    updateChart();
+    // Update chart (commented out to prevent visual refresh)
+    // updateChart();
     
     // Continue autobet if active
     if (blackjackAutobet.isActive) {
