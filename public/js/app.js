@@ -4394,6 +4394,12 @@ function resetBlackjackGame() {
         currentBet: 0
     };
     
+    // Clear card displays explicitly
+    const playerCardsContainer = document.getElementById('player-cards');
+    const dealerCardsContainer = document.getElementById('dealer-cards');
+    if (playerCardsContainer) playerCardsContainer.innerHTML = '';
+    if (dealerCardsContainer) dealerCardsContainer.innerHTML = '';
+    
     updateBlackjackUI();
 }
 
@@ -4473,23 +4479,36 @@ function updateCardDisplay(containerId, cards, hideDealerHole = false) {
     
     const existingCards = container.querySelectorAll('.playing-card');
     
-    // Only clear container when starting a new game (cards.length === 0)
+    // Clear container when starting a new game (cards.length === 0) or when we have fewer cards than before
     if (cards.length === 0) {
         container.innerHTML = '';
         return;
     }
     
+    // If we have fewer cards than existing DOM elements, clear and rebuild
+    if (cards.length < existingCards.length) {
+        container.innerHTML = '';
+    }
+    
     // Add or update cards
     cards.forEach((card, index) => {
         let cardElement;
+        const currentExistingCards = container.querySelectorAll('.playing-card');
         
-        if (index < existingCards.length) {
-            // Update existing card
-            cardElement = existingCards[index];
+        if (index < currentExistingCards.length) {
+            // Update existing card with new values
+            cardElement = currentExistingCards[index];
             
-            // Update dealer's hole card if it's being revealed
-            if (containerId === 'dealer-cards' && index === 1 && cardElement.classList.contains('hidden') && !hideDealerHole) {
-                cardElement.classList.remove('hidden');
+            // Always update the card content to match the new card values
+            if (containerId === 'dealer-cards' && index === 1 && hideDealerHole) {
+                cardElement.classList.add('hidden');
+                cardElement.innerHTML = '<div class="card-value">?</div><div class="card-suit">?</div>';
+                cardElement.className = `playing-card hidden`;
+            } else {
+                // Update dealer's hole card if it's being revealed
+                if (containerId === 'dealer-cards' && index === 1 && cardElement.classList.contains('hidden') && !hideDealerHole) {
+                    cardElement.classList.remove('hidden');
+                }
                 cardElement.innerHTML = `
                     <div class="card-value">${card.value}</div>
                     <div class="card-suit">${card.suit}</div>
@@ -4831,6 +4850,11 @@ function handleBlackjackGameEnd(gameStatus, winAmount) {
         setTimeout(() => {
             continueBlackjackAutobet(won, profit);
         }, 1500);
+    } else {
+        // Reset game state after delay to allow players to see final cards
+        setTimeout(() => {
+            resetBlackjackGame();
+        }, 2000);
     }
 }
 
@@ -4977,6 +5001,8 @@ function continueBlackjackAutobet(won, profit) {
     // Start next game after delay
     setTimeout(async () => {
         if (!blackjackAutobet.isActive) return;
+        // Reset game state before dealing new cards
+        resetBlackjackGame();
         await dealBlackjack();
     }, 1000);
 }
