@@ -4875,9 +4875,13 @@ input, textarea {
 .player-detail-content {
     max-width: 800px;
     width: 100%;
+    max-height: 90vh;
     background: rgba(15, 15, 15, 0.95);
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .modal-header {
@@ -4915,6 +4919,26 @@ input, textarea {
 
 .player-detail-body {
     padding: 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.player-detail-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.player-detail-body::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.player-detail-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.player-detail-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
 }
 
 .player-detail-main {
@@ -4995,6 +5019,10 @@ input, textarea {
     color: #f1f1f1;
 }
 
+.player-detail-badges {
+    margin-bottom: 1rem;
+}
+
 .player-detail-badges h4 {
     margin-bottom: 1.5rem;
     color: #f1f1f1;
@@ -5011,19 +5039,33 @@ input, textarea {
 /* Badge Styles */
 .badges-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    width: 100%;
+}
+
+/* Badge Styles in Player Detail Modal */
+.player-detail-badges .badges-grid {
+    max-height: none;
+    overflow: visible;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    max-width: 100%;
 }
 
 .badge-item {
     background: rgba(255, 255, 255, 0.02);
     border-radius: 12px;
-    padding: 1rem;
+    padding: 0.75rem;
     text-align: center;
     border: 1px solid rgba(255, 255, 255, 0.1);
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
 }
 
 .badge-item:hover {
@@ -5066,12 +5108,22 @@ input, textarea {
     color: #f1f1f1;
     margin-bottom: 0.5rem;
     font-size: 0.95rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .badge-description {
     font-size: 0.85rem;
     color: #9ca3af;
     line-height: 1.4;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 .badge-earned {
@@ -5158,6 +5210,11 @@ input, textarea {
 
 /* Responsive Styles */
 @media (max-width: 768px) {
+    .player-detail-content {
+        max-height: 95vh;
+        margin: 1rem;
+    }
+
     .player-detail-main {
         grid-template-columns: 1fr;
         text-align: center;
@@ -5178,19 +5235,27 @@ input, textarea {
 
     .badges-grid {
         grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
     }
 }
 
 @media (max-width: 480px) {
+    .player-detail-content {
+        max-height: 98vh;
+        margin: 0.5rem;
+    }
+
+    .player-detail-body {
+        padding: 1rem;
+    }
+
     .stat-grid {
         grid-template-columns: 1fr;
+        gap: 1rem;
     }
 
     .badges-grid {
         grid-template-columns: 1fr;
-    }
-
-    .player-detail-content {
-        margin: 1rem;
+        gap: 1rem;
     }
 }
