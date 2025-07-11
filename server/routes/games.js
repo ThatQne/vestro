@@ -388,7 +388,8 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
                 balanceAfter: newBalance,
                 experienceGained,
                 levelUpResult,
-                newLevel: user.level
+                newLevel: user.level,
+                earnedBadges
             };
         });
 
@@ -547,7 +548,8 @@ router.post('/blackjack/deal', authenticateToken, async (req, res) => {
                 balanceAfter: user.balance,
                 experienceGained: gameHistory.experienceGained || 0,
                 levelUpResult: gameHistory.leveledUp ? { leveledUp: true, levelsGained: 1 } : { leveledUp: false, levelsGained: 0 },
-                newLevel: user.level
+                newLevel: user.level,
+                earnedBadges: earnedBadges || []
             };
         });
         
@@ -619,7 +621,8 @@ router.post('/blackjack/hit', authenticateToken, async (req, res) => {
             
             return {
                 gameState: newGameState,
-                balanceAfter: user.balance
+                balanceAfter: user.balance,
+                earnedBadges: earnedBadges || []
             };
         });
         
@@ -699,7 +702,8 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
                 balanceAfter: finalBalance,
                 experienceGained,
                 levelUpResult,
-                newLevel: user.level
+                newLevel: user.level,
+                earnedBadges
             };
         });
         
@@ -809,7 +813,8 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
                 balanceAfter: finalBalance,
                 experienceGained,
                 levelUpResult,
-                newLevel: user.level
+                newLevel: user.level,
+                earnedBadges
             };
         });
         

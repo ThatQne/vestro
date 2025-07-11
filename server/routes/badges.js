@@ -42,6 +42,37 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 });
 
+// Test badge checking endpoint
+router.post('/test', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Simulate badge checking
+        const earnedBadges = await user.updateGameStats(true, 10, 20); // Won game, bet $10, won $20
+        await user.save();
+
+        res.json({ 
+            success: true, 
+            message: 'Badge check completed',
+            userStats: {
+                level: user.level,
+                wins: user.wins,
+                balance: user.balance,
+                gamesPlayed: user.gamesPlayed,
+                currentWinStreak: user.currentWinStreak
+            },
+            earnedBadges: earnedBadges,
+            totalBadges: user.badges.length
+        });
+    } catch (error) {
+        console.error('Error testing badges:', error);
+        res.status(500).json({ success: false, message: 'Error testing badges' });
+    }
+});
+
 // Sync client-side badges to server (for migration)
 router.post('/sync', authenticateToken, async (req, res) => {
     try {

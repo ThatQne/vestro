@@ -209,7 +209,6 @@ userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
             earnedBadges.push(badge);
         }
     }
-
     return earnedBadges;
 };
 
