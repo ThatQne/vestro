@@ -601,6 +601,13 @@ function showPage(pageId) {
         }, 100);
     }
     
+    // Initialize Leaderboard when showing the leaderboard page
+    if (pageId === 'leaderboard') {
+        setTimeout(() => {
+            initializeLeaderboard();
+        }, 100);
+    }
+    
     // Reinitialize icons after page change
     if (typeof lucide !== 'undefined') {
         setTimeout(() => lucide.createIcons(), 50);
@@ -5031,3 +5038,379 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeBlackjackGame();
     }
 });
+
+// Leaderboard System
+let leaderboardState = {
+    players: [],
+    updateTimer: null,
+    updateInterval: 30000, // 30 seconds
+    liveGames: [],
+    searchResults: null
+};
+
+// Initialize Leaderboard
+function initializeLeaderboard() {
+    setupLeaderboardControls();
+    loadLeaderboard();
+    startLeaderboardTimer();
+    setupLiveGamesFeed();
+}
+
+// Setup leaderboard controls
+function setupLeaderboardControls() {
+    const searchInput = document.getElementById('player-search');
+    const searchBtn = document.getElementById('search-btn');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', debounce(handlePlayerSearch, 300));
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handlePlayerSearch();
+            }
+        });
+    }
+    
+    if (searchBtn) {
+        searchBtn.addEventListener('click', handlePlayerSearch);
+    }
+}
+
+// Load leaderboard data
+async function loadLeaderboard() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/leaderboard`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            leaderboardState.players = data.players;
+            updateLeaderboardDisplay();
+            updatePodium();
+        } else {
+            console.error('Failed to load leaderboard:', data.message);
+        }
+    } catch (error) {
+        console.error('Error loading leaderboard:', error);
+    }
+}
+
+// Update leaderboard display
+function updateLeaderboardDisplay() {
+    const tableBody = document.getElementById('leaderboard-table-body');
+    if (!tableBody) return;
+    
+    tableBody.innerHTML = '';
+    
+    leaderboardState.players.forEach((player, index) => {
+        const row = document.createElement('div');
+        row.className = 'table-row';
+        row.onclick = () => showPlayerDetails(player);
+        
+        const rank = index + 1;
+        const rankClass = rank <= 3 ? `rank-${rank}` : '';
+        
+        row.innerHTML = `
+            <div class="table-cell rank">
+                <span class="rank-number ${rankClass}">#${rank}</span>
+            </div>
+            <div class="table-cell player">
+                <div class="player-info">
+                    <div class="player-avatar">
+                        <span>${player.username.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div class="player-name">${player.username}</div>
+                </div>
+            </div>
+            <div class="table-cell balance">
+                <span class="balance-amount">$${player.balance.toFixed(2)}</span>
+            </div>
+            <div class="table-cell level">
+                <span class="level-badge">Level ${player.level}</span>
+            </div>
+            <div class="table-cell games">
+                <span>${player.gamesPlayed || 0}</span>
+            </div>
+            <div class="table-cell winrate">
+                <span class="winrate-badge ${getWinRateClass(player.winRate || 0)}">${(player.winRate || 0).toFixed(1)}%</span>
+            </div>
+        `;
+        
+        tableBody.appendChild(row);
+    });
+}
+
+// Update podium (top 3)
+function updatePodium() {
+    const top3 = leaderboardState.players.slice(0, 3);
+    
+    top3.forEach((player, index) => {
+        const podiumPlace = document.getElementById(`podium-${index + 1}`);
+        if (podiumPlace) {
+            const nameEl = podiumPlace.querySelector('.podium-name');
+            const balanceEl = podiumPlace.querySelector('.podium-balance');
+            const avatarEl = podiumPlace.querySelector('.podium-avatar-text');
+            
+            if (nameEl) nameEl.textContent = player.username;
+            if (balanceEl) balanceEl.textContent = `$${player.balance.toFixed(2)}`;
+            if (avatarEl) avatarEl.textContent = player.username.charAt(0).toUpperCase();
+            
+            // Add click handler
+            podiumPlace.onclick = () => showPlayerDetails(player);
+        }
+    });
+}
+
+// Handle player search
+async function handlePlayerSearch() {
+    const searchInput = document.getElementById('player-search');
+    const query = searchInput.value.trim();
+    
+    if (!query) {
+        leaderboardState.searchResults = null;
+        updateLeaderboardDisplay();
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/leaderboard/search?username=${encodeURIComponent(query)}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            leaderboardState.searchResults = data.players;
+            updateSearchResults();
+        } else {
+            console.error('Search failed:', data.message);
+        }
+    } catch (error) {
+        console.error('Error searching players:', error);
+    }
+}
+
+// Update search results
+function updateSearchResults() {
+    const tableBody = document.getElementById('leaderboard-table-body');
+    if (!tableBody) return;
+    
+    tableBody.innerHTML = '';
+    
+    if (!leaderboardState.searchResults || leaderboardState.searchResults.length === 0) {
+        tableBody.innerHTML = '<div class="no-results">No players found</div>';
+        return;
+    }
+    
+    leaderboardState.searchResults.forEach((player) => {
+        const row = document.createElement('div');
+        row.className = 'table-row search-result';
+        row.onclick = () => showPlayerDetails(player);
+        
+        const rankClass = player.rank <= 3 ? `rank-${player.rank}` : '';
+        
+        row.innerHTML = `
+            <div class="table-cell rank">
+                <span class="rank-number ${rankClass}">#${player.rank}</span>
+            </div>
+            <div class="table-cell player">
+                <div class="player-info">
+                    <div class="player-avatar">
+                        <span>${player.username.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div class="player-name">${player.username}</div>
+                </div>
+            </div>
+            <div class="table-cell balance">
+                <span class="balance-amount">$${player.balance.toFixed(2)}</span>
+            </div>
+            <div class="table-cell level">
+                <span class="level-badge">Level ${player.level}</span>
+            </div>
+            <div class="table-cell games">
+                <span>${player.gamesPlayed || 0}</span>
+            </div>
+            <div class="table-cell winrate">
+                <span class="winrate-badge ${getWinRateClass(player.winRate || 0)}">${(player.winRate || 0).toFixed(1)}%</span>
+            </div>
+        `;
+        
+        tableBody.appendChild(row);
+    });
+}
+
+// Show player details modal
+async function showPlayerDetails(player) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/user/profile/${player.username}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const playerData = data.user;
+            populatePlayerDetailModal(playerData);
+            document.getElementById('player-detail-modal').classList.remove('hidden');
+        } else {
+            showError('Failed to load player details');
+        }
+    } catch (error) {
+        console.error('Error loading player details:', error);
+        showError('Failed to load player details');
+    }
+}
+
+// Populate player detail modal
+function populatePlayerDetailModal(player) {
+    document.getElementById('player-detail-name').textContent = player.username;
+    document.getElementById('player-detail-avatar-text').textContent = player.username.charAt(0).toUpperCase();
+    document.getElementById('player-detail-rank').textContent = `#${player.rank || 'N/A'}`;
+    document.getElementById('player-detail-level').textContent = player.level || 1;
+    document.getElementById('player-detail-balance').textContent = `$${player.balance.toFixed(2)}`;
+    document.getElementById('player-detail-games').textContent = player.gamesPlayed || 0;
+    document.getElementById('player-detail-won').textContent = `$${(player.totalWon || 0).toFixed(2)}`;
+    document.getElementById('player-detail-winrate').textContent = `${(player.winRate || 0).toFixed(1)}%`;
+    document.getElementById('player-detail-best-win').textContent = `$${(player.bestWin || 0).toFixed(2)}`;
+    document.getElementById('player-detail-best-streak').textContent = player.bestStreak || 0;
+    
+    // Update badges
+    const badgesContainer = document.getElementById('player-detail-badges');
+    badgesContainer.innerHTML = '';
+    
+    if (player.badges && player.badges.length > 0) {
+        player.badges.forEach(badge => {
+            const badgeEl = document.createElement('div');
+            badgeEl.className = `badge ${badge.type}`;
+            badgeEl.innerHTML = `
+                <div class="badge-icon">${badge.icon}</div>
+                <div class="badge-info">
+                    <div class="badge-name">${badge.name}</div>
+                    <div class="badge-description">${badge.description}</div>
+                </div>
+            `;
+            badgesContainer.appendChild(badgeEl);
+        });
+    } else {
+        badgesContainer.innerHTML = '<div class="no-badges">No badges earned yet</div>';
+    }
+}
+
+// Close player detail modal
+function closePlayerDetailModal() {
+    document.getElementById('player-detail-modal').classList.add('hidden');
+}
+
+// Setup live games feed
+function setupLiveGamesFeed() {
+    if (socket) {
+        socket.on('live-game', (gameData) => {
+            addLiveGameToFeed(gameData);
+        });
+    }
+}
+
+// Add live game to feed
+function addLiveGameToFeed(gameData) {
+    const feed = document.getElementById('live-games-feed');
+    if (!feed) return;
+    
+    const gameEl = document.createElement('div');
+    gameEl.className = `live-game-item ${gameData.won ? 'win' : 'loss'}`;
+    
+    const gameIcon = getGameIcon(gameData.game);
+    const amount = Math.abs(gameData.amount);
+    
+    gameEl.innerHTML = `
+        <div class="live-game-icon">${gameIcon}</div>
+        <div class="live-game-info">
+            <div class="live-game-player">${gameData.username}</div>
+            <div class="live-game-details">
+                <span class="live-game-game">${gameData.game}</span>
+                <span class="live-game-amount ${gameData.won ? 'win' : 'loss'}">
+                    ${gameData.won ? '+' : '-'}$${amount.toFixed(2)}
+                </span>
+            </div>
+        </div>
+        <div class="live-game-time">${formatTimeAgo(gameData.timestamp)}</div>
+    `;
+    
+    // Add to top of feed
+    feed.insertBefore(gameEl, feed.firstChild);
+    
+    // Limit to 50 items
+    while (feed.children.length > 50) {
+        feed.removeChild(feed.lastChild);
+    }
+    
+    // Add animation
+    setTimeout(() => {
+        gameEl.classList.add('animate-in');
+    }, 10);
+}
+
+// Start leaderboard timer
+function startLeaderboardTimer() {
+    let timeLeft = 30;
+    const timerEl = document.getElementById('leaderboard-timer');
+    
+    leaderboardState.updateTimer = setInterval(() => {
+        timeLeft--;
+        if (timerEl) {
+            timerEl.textContent = `${timeLeft}s`;
+        }
+        
+        if (timeLeft <= 0) {
+            loadLeaderboard();
+            timeLeft = 30;
+        }
+    }, 1000);
+}
+
+// Utility functions
+function getWinRateClass(winRate) {
+    if (winRate >= 70) return 'excellent';
+    if (winRate >= 50) return 'good';
+    if (winRate >= 30) return 'average';
+    return 'poor';
+}
+
+function getGameIcon(game) {
+    const icons = {
+        'dice': '🎲',
+        'blackjack': '🃏',
+        'mines': '💣',
+        'plinko': '🎯',
+        'coinflip': '🪙'
+    };
+    return icons[game] || '🎮';
+}
+
+function formatTimeAgo(timestamp) {
+    const now = Date.now();
+    const diff = now - timestamp;
+    
+    if (diff < 60000) return 'now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
+    return `${Math.floor(diff / 86400000)}d`;
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}

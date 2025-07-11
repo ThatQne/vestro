@@ -51,6 +51,10 @@
                 <i data-lucide="shopping-cart"></i>
                 <span>Marketplace</span>
             </a>
+            <a href="#" onclick="showPage('leaderboard')" class="nav-item" data-page="leaderboard">
+                <i data-lucide="trophy"></i>
+                <span>Leaderboard</span>
+            </a>
         </div>
         
         <div class="sidebar-footer">
@@ -909,6 +913,177 @@
                                     <button id="blackjack-start-auto-bet" class="start-auto-btn">Start Auto Bet</button>
                                     <button id="blackjack-stop-auto-bet" class="stop-auto-btn hidden">Stop</button>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Leaderboard Page -->
+        <div id="leaderboard-page" class="page-content hidden">
+            <div class="page-header">
+                <h1>Leaderboard</h1>
+                <p>Top players and live game activity</p>
+            </div>
+            
+            <div class="leaderboard-container">
+                <div class="leaderboard-main">
+                    <!-- Search Section -->
+                    <div class="search-section">
+                        <div class="search-box">
+                            <input type="text" id="player-search" placeholder="Search player by username..." class="search-input">
+                            <button id="search-btn" class="search-btn">
+                                <i data-lucide="search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Top 3 Podium -->
+                    <div class="podium-section">
+                        <div class="podium-container">
+                            <div class="podium-place second" id="podium-2">
+                                <div class="podium-rank">2</div>
+                                <div class="podium-avatar">
+                                    <span class="podium-avatar-text">2</span>
+                                </div>
+                                <div class="podium-info">
+                                    <div class="podium-name">Loading...</div>
+                                    <div class="podium-balance">$0.00</div>
+                                </div>
+                                <div class="podium-base silver"></div>
+                            </div>
+                            
+                            <div class="podium-place first" id="podium-1">
+                                <div class="podium-crown">👑</div>
+                                <div class="podium-rank">1</div>
+                                <div class="podium-avatar">
+                                    <span class="podium-avatar-text">1</span>
+                                </div>
+                                <div class="podium-info">
+                                    <div class="podium-name">Loading...</div>
+                                    <div class="podium-balance">$0.00</div>
+                                </div>
+                                <div class="podium-base gold"></div>
+                            </div>
+                            
+                            <div class="podium-place third" id="podium-3">
+                                <div class="podium-rank">3</div>
+                                <div class="podium-avatar">
+                                    <span class="podium-avatar-text">3</span>
+                                </div>
+                                <div class="podium-info">
+                                    <div class="podium-name">Loading...</div>
+                                    <div class="podium-balance">$0.00</div>
+                                </div>
+                                <div class="podium-base bronze"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Leaderboard Table -->
+                    <div class="leaderboard-table-section">
+                        <div class="table-header">
+                            <h3>Top 50 Players</h3>
+                            <div class="update-timer">
+                                <span>Updates in: <span id="leaderboard-timer">30s</span></span>
+                            </div>
+                        </div>
+                        
+                        <div class="leaderboard-table">
+                            <div class="table-header-row">
+                                <div class="table-cell rank">Rank</div>
+                                <div class="table-cell player">Player</div>
+                                <div class="table-cell balance">Balance</div>
+                                <div class="table-cell level">Level</div>
+                                <div class="table-cell games">Games</div>
+                                <div class="table-cell winrate">Win Rate</div>
+                            </div>
+                            
+                            <div class="table-body" id="leaderboard-table-body">
+                                <!-- Leaderboard entries will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Live Games Feed -->
+                <div class="live-games-section">
+                    <div class="live-games-header">
+                        <h3>Live Games</h3>
+                        <div class="live-indicator">
+                            <div class="live-dot"></div>
+                            <span>Live</span>
+                        </div>
+                    </div>
+                    
+                    <div class="live-games-feed" id="live-games-feed">
+                        <!-- Live games will be populated here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Player Detail Modal -->
+            <div id="player-detail-modal" class="modal-overlay hidden">
+                <div class="modal-content player-detail-content">
+                    <div class="modal-header">
+                        <h2 id="player-detail-name">Player Stats</h2>
+                        <button class="modal-close" onclick="closePlayerDetailModal()">
+                            <i data-lucide="x"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="player-detail-body">
+                        <div class="player-detail-main">
+                            <div class="player-detail-avatar">
+                                <span id="player-detail-avatar-text">P</span>
+                            </div>
+                            
+                            <div class="player-detail-info">
+                                <div class="player-detail-rank">
+                                    <span class="rank-label">Rank</span>
+                                    <span class="rank-value" id="player-detail-rank">#1</span>
+                                </div>
+                                <div class="player-detail-level">
+                                    <span class="level-label">Level</span>
+                                    <span class="level-value" id="player-detail-level">1</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="player-detail-stats">
+                            <div class="stat-grid">
+                                <div class="stat-item">
+                                    <div class="stat-label">Balance</div>
+                                    <div class="stat-value" id="player-detail-balance">$0.00</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Games Played</div>
+                                    <div class="stat-value" id="player-detail-games">0</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Total Won</div>
+                                    <div class="stat-value" id="player-detail-won">$0.00</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Win Rate</div>
+                                    <div class="stat-value" id="player-detail-winrate">0%</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Best Win</div>
+                                    <div class="stat-value" id="player-detail-best-win">$0.00</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">Best Streak</div>
+                                    <div class="stat-value" id="player-detail-best-streak">0</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="player-detail-badges">
+                            <h4>Badges & Achievements</h4>
+                            <div class="badges-grid" id="player-detail-badges">
+                                <!-- Badges will be populated here -->
                             </div>
                         </div>
                     </div>
