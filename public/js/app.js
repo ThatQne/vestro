@@ -5247,7 +5247,7 @@ function updateSearchResults() {
 // Show player details modal
 async function showPlayerDetails(player) {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/user/profile/${player.username}`, {
+        const response = await fetch(`${API_BASE_URL}/api/leaderboard/profile/${player.username}`, {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
             }

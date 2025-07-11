@@ -15,6 +15,7 @@ const authRoutes = require('./routes/auth');
 const gameRoutes = require('./routes/games');
 const randomRoutes = require('./routes/random');
 const badgeRoutes = require('./routes/badges');
+const leaderboardRoutes = require('./routes/leaderboard');
 
 const app = express();
 const server = http.createServer(app);
@@ -85,11 +86,15 @@ if (process.env.NODE_ENV === 'development') {
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
+    // Make io available to routes
+    app.set('io', io);
+    
     // Routes
     app.use('/api/auth', authRoutes);
     app.use('/api/games', gameRoutes);
     app.use('/api/random', randomRoutes);
     app.use('/api/badges', badgeRoutes);
+    app.use('/api/leaderboard', leaderboardRoutes);
 
     // Socket.IO connection handling
     io.on('connection', (socket) => {

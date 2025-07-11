@@ -158,6 +158,22 @@ router.post('/play', authenticateToken, async (req, res) => {
             };
         });
         
+        // Emit live game event to all connected clients
+        const io = req.app.get('io');
+        if (io) {
+            // Get user for username
+            const user = await User.findById(req.user.userId, { username: 1 });
+            if (user) {
+                io.emit('live-game', {
+                    username: user.username,
+                    game: req.body.gameType,
+                    amount: result.won ? result.winAmount : req.body.betAmount,
+                    won: result.won,
+                    timestamp: Date.now()
+                });
+            }
+        }
+        
         // Send response
         res.json({
             success: true,
@@ -373,6 +389,21 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
                 newLevel: user.level
             };
         });
+
+        // Emit live game event for mines cashout
+        const io = req.app.get('io');
+        if (io) {
+            const user = await User.findById(req.user.userId, { username: 1 });
+            if (user) {
+                io.emit('live-game', {
+                    username: user.username,
+                    game: 'mines',
+                    amount: result.winAmount,
+                    won: true,
+                    timestamp: Date.now()
+                });
+            }
+        }
 
         res.json({ success: true, result });
 
@@ -670,6 +701,21 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
             };
         });
         
+        // Emit live game event for blackjack stand
+        const io = req.app.get('io');
+        if (io) {
+            const user = await User.findById(req.user.userId, { username: 1 });
+            if (user) {
+                io.emit('live-game', {
+                    username: user.username,
+                    game: 'blackjack',
+                    amount: result.gameState.won ? result.gameState.winAmount : result.gameState.betAmount,
+                    won: result.gameState.winAmount > 0,
+                    timestamp: Date.now()
+                });
+            }
+        }
+        
         res.json({ success: true, result });
         
     } catch (error) {
@@ -764,6 +810,21 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
                 newLevel: user.level
             };
         });
+        
+        // Emit live game event for blackjack double
+        const io = req.app.get('io');
+        if (io) {
+            const user = await User.findById(req.user.userId, { username: 1 });
+            if (user) {
+                io.emit('live-game', {
+                    username: user.username,
+                    game: 'blackjack',
+                    amount: result.gameState.winAmount > 0 ? result.gameState.winAmount : result.gameState.betAmount,
+                    won: result.gameState.winAmount > 0,
+                    timestamp: Date.now()
+                });
+            }
+        }
         
         res.json({ success: true, result });
         
