@@ -131,9 +131,6 @@ router.get('/profile/:username', authenticateToken, async (req, res) => {
             .populate('badges.badgeId')
             .lean();
 
-        console.log('Found player:', username);
-        console.log('Player badges raw:', player?.badges);
-
         if (!player) {
             return res.status(404).json({
                 success: false,
@@ -153,28 +150,15 @@ router.get('/profile/:username', authenticateToken, async (req, res) => {
         const winRate = player.gamesPlayed > 0 ? (player.wins / player.gamesPlayed) * 100 : 0;
 
         // Format badges
-        const badges = player.badges.map(badge => {
-            console.log('Processing badge:', badge);
-            console.log('Badge ID:', badge.badgeId);
-            
-            // Handle case where populate might not work
-            if (!badge.badgeId || typeof badge.badgeId !== 'object') {
-                console.log('Badge not properly populated:', badge);
-                return null;
-            }
-            
-            return {
-                id: badge.badgeId._id,
-                name: badge.badgeId.name,
-                description: badge.badgeId.description,
-                icon: badge.badgeId.icon,
-                color: badge.badgeId.color,
-                type: badge.badgeId.type,
-                earnedAt: badge.earnedAt
-            };
-        }).filter(badge => badge !== null); // Remove null badges
-        
-        console.log('Formatted badges:', badges);
+        const badges = player.badges.map(badge => ({
+            id: badge.badgeId._id,
+            name: badge.badgeId.name,
+            description: badge.badgeId.description,
+            icon: badge.badgeId.icon,
+            color: badge.badgeId.color,
+            type: badge.badgeId.type,
+            earnedAt: badge.earnedAt
+        }));
 
         const playerProfile = {
             username: player.username,

@@ -149,7 +149,7 @@ userSchema.methods.addExperience = function(amount) {
 };
 
 // Update game statistics and check for badges
-userSchema.methods.updateGameStats = async function(betAmount, winAmount) {
+userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
     const Badge = mongoose.model('Badge');
     const earnedBadges = [];
     
@@ -157,7 +157,7 @@ userSchema.methods.updateGameStats = async function(betAmount, winAmount) {
     this.gamesPlayed += 1;
     this.totalWagered += betAmount;
     
-    if (winAmount > 0) {
+    if (won) {
         this.wins += 1;
         this.totalWon += winAmount;
         this.currentWinStreak += 1;

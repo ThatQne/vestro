@@ -292,8 +292,8 @@ async function handleLogin(e) {
             currentUser = data.user;
             hideLoginPage();
             updateUserInterface();
-            // Check for any badges that should be awarded on login
-            checkBadges();
+            // Sync any localStorage badges to server and update display
+            syncLocalStorageBadges();
             updateBadges();
         } else {
             showError(data.message || 'Login failed');
@@ -439,112 +439,87 @@ function updateProfileXPBar() {
     }
 }
 
-// Client-side badge checking
-function checkBadges(betAmount = 0) {
-    if (!currentUser) return [];
+// Sync localStorage badges to server (for migration)
+async function syncLocalStorageBadges() {
+    if (!currentUser) return;
     
-    const earnedBadges = JSON.parse(localStorage.getItem(`badges_${currentUser.username}`) || '[]');
-    const newBadges = [];
-    
-    for (const badge of CLIENT_BADGES) {
-        // Skip if already earned
-        if (earnedBadges.some(b => b.code === badge.code)) continue;
+    try {
+        const localBadges = JSON.parse(localStorage.getItem(`badges_${currentUser.username}`) || '[]');
         
-        let earned = false;
-        switch (badge.criteria.type) {
-            case 'level':
-                earned = currentUser.level >= badge.criteria.value;
-                break;
-            case 'wins':
-                earned = currentUser.wins >= badge.criteria.value;
-                break;
-            case 'balance':
-                earned = currentUser.balance >= badge.criteria.value;
-                break;
-            case 'games':
-                earned = currentUser.gamesPlayed >= badge.criteria.value;
-                break;
-            case 'bet':
-                earned = betAmount >= badge.criteria.value;
-                break;
-            case 'winstreak':
-                earned = currentUser.currentWinStreak >= badge.criteria.value;
-                break;
-            case 'specific':
-                earned = betAmount === badge.criteria.value;
-                break;
+        if (localBadges.length > 0) {
+            const response = await fetch(`${API_BASE_URL}/api/badges/sync`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ clientBadges: localBadges })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success && data.syncedCount > 0) {
+                console.log(`Synced ${data.syncedCount} badges to server`);
+                // Clear localStorage badges after successful sync
+                localStorage.removeItem(`badges_${currentUser.username}`);
+            }
         }
-        
-        if (earned) {
-            const earnedBadge = {
-                ...badge,
-                earnedAt: new Date().toISOString()
-            };
-            earnedBadges.push(earnedBadge);
-            newBadges.push(earnedBadge);
-        }
+    } catch (error) {
+        console.error('Error syncing badges:', error);
     }
-    
-    // Save updated badges to localStorage
-    localStorage.setItem(`badges_${currentUser.username}`, JSON.stringify(earnedBadges));
-    
-    return newBadges;
 }
 
-function updateBadges() {
+async function updateBadges() {
     const badgesGrid = document.getElementById('badges-grid');
     if (!badgesGrid || !currentUser) return;
 
-    badgesGrid.innerHTML = '';
-    
-    const earnedBadges = JSON.parse(localStorage.getItem(`badges_${currentUser.username}`) || '[]');
-    const earnedCodes = new Set(earnedBadges.map(b => b.code));
-    
-    // Sort badges: earned first, then non-secret locked, then secret
-    const sortedBadges = CLIENT_BADGES.sort((a, b) => {
-        const aEarned = earnedCodes.has(a.code);
-        const bEarned = earnedCodes.has(b.code);
+    try {
+        // Fetch badges from server
+        const response = await fetch(`${API_BASE_URL}/api/badges`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
         
-        if (aEarned && !bEarned) return -1;
-        if (!aEarned && bEarned) return 1;
+        const data = await response.json();
         
-        if (a.secret && !b.secret) return 1;
-        if (!a.secret && b.secret) return -1;
-        
-        return a.name.localeCompare(b.name);
-    });
+        if (data.success) {
+            badgesGrid.innerHTML = '';
+            
+            // Sort badges: earned first, then by name
+            const sortedBadges = data.badges.sort((a, b) => {
+                if (a.earned && !b.earned) return -1;
+                if (!a.earned && b.earned) return 1;
+                return a.name.localeCompare(b.name);
+            });
 
-    sortedBadges.forEach(badge => {
-        const isEarned = earnedCodes.has(badge.code);
-        const earnedBadgeData = earnedBadges.find(b => b.code === badge.code);
-        
-        // Show all badges including hidden ones
-        const badgeElement = document.createElement('div');
-        badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${isEarned ? ' earned' : ' locked'}`;
-        
-        let earnedText = isEarned 
-            ? `Earned ${new Date(earnedBadgeData.earnedAt).toLocaleDateString()}`
-            : 'Not earned yet';
-        
-        // For hidden badges that are not earned, show as "???"
-        const displayName = badge.secret && !isEarned ? '???' : badge.name;
-        const displayDescription = badge.secret && !isEarned ? 'Hidden badge' : badge.description;
-        
-        badgeElement.innerHTML = `
-            <div class="badge-icon" style="background: ${badge.color}${isEarned ? '20' : '10'};">
-                <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
-            </div>
-            <div class="badge-name">${displayName}</div>
-            <div class="badge-description">${displayDescription}</div>
-            <div class="badge-earned">${earnedText}</div>
-        `;
-        
-        badgesGrid.appendChild(badgeElement);
-    });
+            sortedBadges.forEach(badge => {
+                const badgeElement = document.createElement('div');
+                badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${badge.earned ? ' earned' : ' locked'}`;
+                
+                let earnedText = badge.earned 
+                    ? `Earned ${new Date(badge.earnedAt).toLocaleDateString()}`
+                    : 'Not earned yet';
+                
+                badgeElement.innerHTML = `
+                    <div class="badge-icon" style="background: ${badge.color}${badge.earned ? '20' : '10'};">
+                        <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
+                    </div>
+                    <div class="badge-name">${badge.name}</div>
+                    <div class="badge-description">${badge.description}</div>
+                    <div class="badge-earned">${earnedText}</div>
+                `;
+                
+                badgesGrid.appendChild(badgeElement);
+            });
 
-    // Initialize Lucide icons for the new badge elements
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
+            // Initialize Lucide icons for the new badge elements
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching badges:', error);
     }
 }
 
@@ -1280,16 +1255,14 @@ async function playCoinFlip(choice) {
                 // Display hash/seed at bottom of page
                 displayRandomHash(data.result.randomHash, data.result.randomTimestamp);
                 
-                // Check for new badges
-                const newBadges = checkBadges(betAmount);
-                if (newBadges.length > 0) {
-                    newBadges.forEach(badge => {
-                        setTimeout(() => {
-                            showBadgeNotification(badge);
-                        }, 1000);
-                    });
-                    updateBadges(); // Update badge display
-                }
+                            // Check for new badges from server
+            if (data.result.earnedBadges && data.result.earnedBadges.length > 0) {
+                data.result.earnedBadges.forEach(badge => {
+                    setTimeout(() => {
+                        showBadgeNotification(badge);
+                    }, 1000);
+                });
+            }
                 
                 // Calculate profit (win amount minus bet amount)
                 const profit = data.result.won ? data.result.winAmount - betAmount : 0;
@@ -1425,15 +1398,13 @@ async function rollDice() {
             // Display hash/seed at bottom of page
             displayRandomHash(data.result.randomHash, data.result.randomTimestamp);
             
-            // Check for new badges
-            const newBadges = checkBadges(betAmount);
-            if (newBadges.length > 0) {
-                newBadges.forEach(badge => {
+            // Check for new badges from server
+            if (data.result.earnedBadges && data.result.earnedBadges.length > 0) {
+                data.result.earnedBadges.forEach(badge => {
                     setTimeout(() => {
                         showBadgeNotification(badge);
                     }, 1000);
                 });
-                updateBadges(); // Update badge display
             }
             
             // Calculate profit (win amount minus bet amount)
@@ -2816,15 +2787,13 @@ async function dropBall() {
             displayRandomHash(data.result.randomHash, data.result.randomTimestamp);
         }
         
-        // Check for badges
-        const newBadges = checkBadges(betAmount);
-        if (newBadges.length > 0) {
-            newBadges.forEach(badge => {
+        // Check for badges from server
+        if (data.result.earnedBadges && data.result.earnedBadges.length > 0) {
+            data.result.earnedBadges.forEach(badge => {
                 setTimeout(() => {
                     showBadgeNotification(badge);
                 }, 1000);
             });
-            updateBadges();
         }
         
         // Level up notification
@@ -3778,10 +3747,9 @@ async function cashOutMines() {
             { bg: 'rgba(34, 197, 94, 0.3)', border: 'rgba(34, 197, 94, 0.8)', text: '#22c55e' }, 
             minesState.currentMultiplier);
         
-        // Check for badges
-        const newBadges = checkBadges(minesState.betAmount);
-        if (newBadges.length > 0) {
-            newBadges.forEach(badge => {
+        // Check for badges from server
+        if (result.earnedBadges && result.earnedBadges.length > 0) {
+            result.earnedBadges.forEach(badge => {
                 showBadgeNotification(badge);
             });
         }
@@ -5247,24 +5215,19 @@ function updateSearchResults() {
 // Show player details modal
 async function showPlayerDetails(player) {
     try {
-        console.log('Fetching player details for:', player.username);
         const response = await fetch(`${API_BASE_URL}/api/leaderboard/profile/${player.username}`, {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
             }
         });
         
-        console.log('API Response status:', response.status);
         const data = await response.json();
-        console.log('API Response data:', data);
         
         if (data.success) {
             const playerData = data.user;
-            console.log('Player data received:', playerData);
             populatePlayerDetailModal(playerData);
             document.getElementById('player-detail-modal').classList.remove('hidden');
         } else {
-            console.error('API returned error:', data.message);
             showError('Failed to load player details');
         }
     } catch (error) {
@@ -5275,10 +5238,6 @@ async function showPlayerDetails(player) {
 
 // Populate player detail modal
 function populatePlayerDetailModal(player) {
-    console.log('Populating player detail modal for:', player.username);
-    console.log('Player data:', player);
-    console.log('Player badges:', player.badges);
-    
     document.getElementById('player-detail-name').textContent = player.username;
     document.getElementById('player-detail-avatar-text').textContent = player.username.charAt(0).toUpperCase();
     document.getElementById('player-detail-rank').textContent = `#${player.rank || 'N/A'}`;
@@ -5288,29 +5247,21 @@ function populatePlayerDetailModal(player) {
     document.getElementById('player-detail-won').textContent = `$${(player.totalWon || 0).toFixed(2)}`;
     document.getElementById('player-detail-winrate').textContent = `${(player.winRate || 0).toFixed(1)}%`;
     document.getElementById('player-detail-best-win').textContent = `$${(player.bestWin || 0).toFixed(2)}`;
-    document.getElementById('player-detail-best-streak').textContent = player.bestWinStreak || 0;
+    document.getElementById('player-detail-best-streak').textContent = player.bestStreak || 0;
     
     // Update badges
     const badgesContainer = document.getElementById('player-detail-badges');
-    console.log('Badges container found:', badgesContainer);
-    
-    if (!badgesContainer) {
-        console.error('Badge container not found!');
-        return;
-    }
-    
     badgesContainer.innerHTML = '';
     
     if (player.badges && player.badges.length > 0) {
-        console.log('Rendering', player.badges.length, 'badges');
+        // Create badges grid
+        const badgesGrid = document.createElement('div');
+        badgesGrid.className = 'badges-grid';
         
         player.badges.forEach(badge => {
-            console.log('Rendering badge:', badge);
             const badgeEl = document.createElement('div');
             badgeEl.className = `badge-item earned ${badge.type || ''}`;
-            
-            // Create badge HTML with proper styling
-            const badgeHTML = `
+            badgeEl.innerHTML = `
                 <div class="badge-icon" style="background: ${badge.color}20; border-color: ${badge.color}30;">
                     <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
                 </div>
@@ -5318,18 +5269,16 @@ function populatePlayerDetailModal(player) {
                 <div class="badge-description">${badge.description}</div>
                 <div class="badge-earned">Earned ${new Date(badge.earnedAt).toLocaleDateString()}</div>
             `;
-            
-            badgeEl.innerHTML = badgeHTML;
-            badgesContainer.appendChild(badgeEl);
-            console.log('Badge element added to container');
+            badgesGrid.appendChild(badgeEl);
         });
+        
+        badgesContainer.appendChild(badgesGrid);
         
         // Initialize Lucide icons
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
         }
     } else {
-        console.log('No badges found, showing no badges message');
         badgesContainer.innerHTML = '<div class="no-badges">No badges earned yet</div>';
     }
 }

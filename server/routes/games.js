@@ -123,8 +123,8 @@ router.post('/play', authenticateToken, async (req, res) => {
                 user.balance = finalBalance;
             }
             
-            // Update user stats and experience
-            updateUserStats(user, won, betAmountRounded, winAmount);
+            // Update user stats and check for badges
+            const earnedBadges = await user.updateGameStats(won, betAmountRounded, winAmount);
             const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
             
             // Update balance history
@@ -154,7 +154,8 @@ router.post('/play', authenticateToken, async (req, res) => {
                 levelUpResult,
                 newLevel: user.level,
                 randomHash,
-                randomTimestamp
+                randomTimestamp,
+                earnedBadges
             };
         });
         
@@ -191,7 +192,8 @@ router.post('/play', authenticateToken, async (req, res) => {
                 levelsGained: result.levelUpResult.levelsGained,
                 newLevel: result.newLevel,
                 randomHash: result.randomHash,
-                randomTimestamp: result.randomTimestamp
+                randomTimestamp: result.randomTimestamp,
+                earnedBadges: result.earnedBadges
             }
         });
         
@@ -260,8 +262,8 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
             gameHistory.balanceAfter = user.balance;
             await gameHistory.save({ session });
             
-            // Update user stats
-                updateUserStats(user, false, gameResult.betAmount, 0);
+            // Update user stats and check for badges
+                const earnedBadges = await user.updateGameStats(false, gameResult.betAmount, 0);
             user.balanceHistory.push(user.balance);
             await user.save({ session });
             
@@ -362,8 +364,8 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         user.balance = newBalance;
         user.balanceHistory.push(newBalance);
         
-            // Update user stats
-            updateUserStats(user, true, betAmount, winAmount);
+            // Update user stats and check for badges
+            const earnedBadges = await user.updateGameStats(true, betAmount, winAmount);
             const { experienceGained, levelUpResult } = addExperienceToUser(user, true);
         await user.save({ session });
         
@@ -520,9 +522,9 @@ router.post('/blackjack/deal', authenticateToken, async (req, res) => {
                     user.balance = finalBalance;
                 }
                 
-                // Update user stats
+                // Update user stats and check for badges
                 const won = gameState.winAmount > 0;
-                updateUserStats(user, won, betAmountRounded, gameState.winAmount);
+                const earnedBadges = await user.updateGameStats(won, betAmountRounded, gameState.winAmount);
                 const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
                 
                 // Update balance history
@@ -600,8 +602,8 @@ router.post('/blackjack/hit', authenticateToken, async (req, res) => {
             
             // Check if game ended (bust)
             if (newGameState.gameStatus === 'bust') {
-                // Player busted - update stats
-                updateUserStats(user, false, newGameState.betAmount, 0);
+                // Player busted - update stats and check for badges
+                const earnedBadges = await user.updateGameStats(false, newGameState.betAmount, 0);
                 const { experienceGained, levelUpResult } = addExperienceToUser(user, false);
                 
                 user.balanceHistory.push(user.balance);
@@ -674,9 +676,9 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
                 user.balance = finalBalance;
             }
             
-            // Update user stats
+            // Update user stats and check for badges
             const won = newGameState.winAmount > 0;
-            updateUserStats(user, won, newGameState.betAmount, newGameState.winAmount);
+            const earnedBadges = await user.updateGameStats(won, newGameState.betAmount, newGameState.winAmount);
             const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
             
             // Update balance history
@@ -783,9 +785,9 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
                 user.balance = finalBalance;
             }
             
-            // Update user stats
+            // Update user stats and check for badges
             const won = newGameState.winAmount > 0;
-            updateUserStats(user, won, newGameState.betAmount, newGameState.winAmount);
+            const earnedBadges = await user.updateGameStats(won, newGameState.betAmount, newGameState.winAmount);
             const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
             
             // Update balance history
