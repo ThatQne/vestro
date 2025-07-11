@@ -5247,19 +5247,24 @@ function updateSearchResults() {
 // Show player details modal
 async function showPlayerDetails(player) {
     try {
+        console.log('Fetching player details for:', player.username);
         const response = await fetch(`${API_BASE_URL}/api/leaderboard/profile/${player.username}`, {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
             }
         });
         
+        console.log('API Response status:', response.status);
         const data = await response.json();
+        console.log('API Response data:', data);
         
         if (data.success) {
             const playerData = data.user;
+            console.log('Player data received:', playerData);
             populatePlayerDetailModal(playerData);
             document.getElementById('player-detail-modal').classList.remove('hidden');
         } else {
+            console.error('API returned error:', data.message);
             showError('Failed to load player details');
         }
     } catch (error) {
@@ -5270,6 +5275,10 @@ async function showPlayerDetails(player) {
 
 // Populate player detail modal
 function populatePlayerDetailModal(player) {
+    console.log('Populating player detail modal for:', player.username);
+    console.log('Player data:', player);
+    console.log('Player badges:', player.badges);
+    
     document.getElementById('player-detail-name').textContent = player.username;
     document.getElementById('player-detail-avatar-text').textContent = player.username.charAt(0).toUpperCase();
     document.getElementById('player-detail-rank').textContent = `#${player.rank || 'N/A'}`;
@@ -5279,21 +5288,29 @@ function populatePlayerDetailModal(player) {
     document.getElementById('player-detail-won').textContent = `$${(player.totalWon || 0).toFixed(2)}`;
     document.getElementById('player-detail-winrate').textContent = `${(player.winRate || 0).toFixed(1)}%`;
     document.getElementById('player-detail-best-win').textContent = `$${(player.bestWin || 0).toFixed(2)}`;
-    document.getElementById('player-detail-best-streak').textContent = player.bestStreak || 0;
+    document.getElementById('player-detail-best-streak').textContent = player.bestWinStreak || 0;
     
     // Update badges
     const badgesContainer = document.getElementById('player-detail-badges');
+    console.log('Badges container found:', badgesContainer);
+    
+    if (!badgesContainer) {
+        console.error('Badge container not found!');
+        return;
+    }
+    
     badgesContainer.innerHTML = '';
     
     if (player.badges && player.badges.length > 0) {
-        // Create badges grid
-        const badgesGrid = document.createElement('div');
-        badgesGrid.className = 'badges-grid';
+        console.log('Rendering', player.badges.length, 'badges');
         
         player.badges.forEach(badge => {
+            console.log('Rendering badge:', badge);
             const badgeEl = document.createElement('div');
             badgeEl.className = `badge-item earned ${badge.type || ''}`;
-            badgeEl.innerHTML = `
+            
+            // Create badge HTML with proper styling
+            const badgeHTML = `
                 <div class="badge-icon" style="background: ${badge.color}20; border-color: ${badge.color}30;">
                     <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
                 </div>
@@ -5301,16 +5318,18 @@ function populatePlayerDetailModal(player) {
                 <div class="badge-description">${badge.description}</div>
                 <div class="badge-earned">Earned ${new Date(badge.earnedAt).toLocaleDateString()}</div>
             `;
-            badgesGrid.appendChild(badgeEl);
+            
+            badgeEl.innerHTML = badgeHTML;
+            badgesContainer.appendChild(badgeEl);
+            console.log('Badge element added to container');
         });
-        
-        badgesContainer.appendChild(badgesGrid);
         
         // Initialize Lucide icons
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
         }
     } else {
+        console.log('No badges found, showing no badges message');
         badgesContainer.innerHTML = '<div class="no-badges">No badges earned yet</div>';
     }
 }
