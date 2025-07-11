@@ -155,6 +155,7 @@ router.get('/profile/:username', authenticateToken, async (req, res) => {
             name: badge.badgeId.name,
             description: badge.badgeId.description,
             icon: badge.badgeId.icon,
+            color: badge.badgeId.color,
             type: badge.badgeId.type,
             earnedAt: badge.earnedAt
         }));

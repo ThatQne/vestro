@@ -5286,18 +5286,30 @@ function populatePlayerDetailModal(player) {
     badgesContainer.innerHTML = '';
     
     if (player.badges && player.badges.length > 0) {
+        // Create badges grid
+        const badgesGrid = document.createElement('div');
+        badgesGrid.className = 'badges-grid';
+        
         player.badges.forEach(badge => {
             const badgeEl = document.createElement('div');
-            badgeEl.className = `badge ${badge.type}`;
+            badgeEl.className = `badge-item earned ${badge.type || ''}`;
             badgeEl.innerHTML = `
-                <div class="badge-icon">${badge.icon}</div>
-                <div class="badge-info">
-                    <div class="badge-name">${badge.name}</div>
-                    <div class="badge-description">${badge.description}</div>
+                <div class="badge-icon" style="background: ${badge.color}20; border-color: ${badge.color}30;">
+                    <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
                 </div>
+                <div class="badge-name">${badge.name}</div>
+                <div class="badge-description">${badge.description}</div>
+                <div class="badge-earned">Earned ${new Date(badge.earnedAt).toLocaleDateString()}</div>
             `;
-            badgesContainer.appendChild(badgeEl);
+            badgesGrid.appendChild(badgeEl);
         });
+        
+        badgesContainer.appendChild(badgesGrid);
+        
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     } else {
         badgesContainer.innerHTML = '<div class="no-badges">No badges earned yet</div>';
     }
