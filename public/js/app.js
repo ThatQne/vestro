@@ -484,58 +484,58 @@ async function updateBadges() {
         const data = await response.json();
         
         if (data.success) {
-            badgesGrid.innerHTML = '';
-            
+    badgesGrid.innerHTML = '';
+    
             // Create a map of earned badges by code
             const earnedBadgeMap = new Map();
             data.badges.forEach(badge => {
                 earnedBadgeMap.set(badge.code, badge);
             });
-            
-            // Sort badges: earned first, then non-secret locked, then secret
-            const sortedBadges = CLIENT_BADGES.sort((a, b) => {
+    
+    // Sort badges: earned first, then non-secret locked, then secret
+    const sortedBadges = CLIENT_BADGES.sort((a, b) => {
                 const aEarned = earnedBadgeMap.has(a.code);
                 const bEarned = earnedBadgeMap.has(b.code);
-                
-                if (aEarned && !bEarned) return -1;
-                if (!aEarned && bEarned) return 1;
-                
-                if (a.secret && !b.secret) return 1;
-                if (!a.secret && b.secret) return -1;
-                
-                return a.name.localeCompare(b.name);
-            });
+        
+        if (aEarned && !bEarned) return -1;
+        if (!aEarned && bEarned) return 1;
+        
+        if (a.secret && !b.secret) return 1;
+        if (!a.secret && b.secret) return -1;
+        
+        return a.name.localeCompare(b.name);
+    });
 
-            sortedBadges.forEach(badge => {
+    sortedBadges.forEach(badge => {
                 const earnedBadge = earnedBadgeMap.get(badge.code);
                 const isEarned = !!earnedBadge;
-                
-                const badgeElement = document.createElement('div');
-                badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${isEarned ? ' earned' : ' locked'}`;
-                
-                let earnedText = isEarned 
+        
+        const badgeElement = document.createElement('div');
+        badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${isEarned ? ' earned' : ' locked'}`;
+        
+        let earnedText = isEarned 
                     ? `Earned ${new Date(earnedBadge.earnedAt).toLocaleDateString()}`
-                    : 'Not earned yet';
-                
+            : 'Not earned yet';
+        
                 // For secret badges that are not earned, show as "???"
-                const displayName = badge.secret && !isEarned ? '???' : badge.name;
-                const displayDescription = badge.secret && !isEarned ? 'Hidden badge' : badge.description;
-                
-                badgeElement.innerHTML = `
-                    <div class="badge-icon" style="background: ${badge.color}${isEarned ? '20' : '10'};">
-                        <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
-                    </div>
-                    <div class="badge-name">${displayName}</div>
-                    <div class="badge-description">${displayDescription}</div>
-                    <div class="badge-earned">${earnedText}</div>
-                `;
-                
-                badgesGrid.appendChild(badgeElement);
-            });
+        const displayName = badge.secret && !isEarned ? '???' : badge.name;
+        const displayDescription = badge.secret && !isEarned ? 'Hidden badge' : badge.description;
+        
+        badgeElement.innerHTML = `
+            <div class="badge-icon" style="background: ${badge.color}${isEarned ? '20' : '10'};">
+                <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
+            </div>
+            <div class="badge-name">${displayName}</div>
+            <div class="badge-description">${displayDescription}</div>
+            <div class="badge-earned">${earnedText}</div>
+        `;
+        
+        badgesGrid.appendChild(badgeElement);
+    });
 
-            // Initialize Lucide icons for the new badge elements
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
+    // Initialize Lucide icons for the new badge elements
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
             }
         }
     } catch (error) {
@@ -1278,11 +1278,11 @@ async function playCoinFlip(choice) {
                             // Check for new badges from server
             if (data.result.earnedBadges && data.result.earnedBadges.length > 0) {
                 data.result.earnedBadges.forEach(badge => {
-                    setTimeout(() => {
-                        showBadgeNotification(badge);
-                    }, 1000);
-                });
-            }
+                        setTimeout(() => {
+                            showBadgeNotification(badge);
+                        }, 1000);
+                    });
+                }
                 
                 // Calculate profit (win amount minus bet amount)
                 const profit = data.result.won ? data.result.winAmount - betAmount : 0;
@@ -5413,4 +5413,4 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
-}
+} 

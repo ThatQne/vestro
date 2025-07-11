@@ -1,6 +1,5 @@
 const express = require('express');
 const User = require('../models/User');
-const Badge = require('../models/Badge');
 const GameHistory = require('../models/GameHistory');
 const { authenticateToken } = require('../middleware/auth');
 const mongoose = require('mongoose');
@@ -388,8 +387,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
                 balanceAfter: newBalance,
                 experienceGained,
                 levelUpResult,
-                newLevel: user.level,
-                earnedBadges
+                newLevel: user.level
             };
         });
 
@@ -548,8 +546,7 @@ router.post('/blackjack/deal', authenticateToken, async (req, res) => {
                 balanceAfter: user.balance,
                 experienceGained: gameHistory.experienceGained || 0,
                 levelUpResult: gameHistory.leveledUp ? { leveledUp: true, levelsGained: 1 } : { leveledUp: false, levelsGained: 0 },
-                newLevel: user.level,
-                earnedBadges: earnedBadges || []
+                newLevel: user.level
             };
         });
         
@@ -621,8 +618,7 @@ router.post('/blackjack/hit', authenticateToken, async (req, res) => {
             
             return {
                 gameState: newGameState,
-                balanceAfter: user.balance,
-                earnedBadges: earnedBadges || []
+                balanceAfter: user.balance
             };
         });
         
@@ -702,8 +698,7 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
                 balanceAfter: finalBalance,
                 experienceGained,
                 levelUpResult,
-                newLevel: user.level,
-                earnedBadges
+                newLevel: user.level
             };
         });
         
@@ -813,8 +808,7 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
                 balanceAfter: finalBalance,
                 experienceGained,
                 levelUpResult,
-                newLevel: user.level,
-                earnedBadges
+                newLevel: user.level
             };
         });
         
