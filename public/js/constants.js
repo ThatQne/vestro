@@ -33,6 +33,14 @@ const COLORS = {
 // Client-side badge definitions
 const CLIENT_BADGES = [
     {
+        code: 'first_win',
+        name: 'First Win',
+        description: 'Win your first game',
+        icon: 'target',
+        color: '#10b981',
+        criteria: { type: 'wins', value: 1 }
+    },
+    {
         code: 'novice',
         name: 'Novice Gambler',
         description: 'Reach level 5',

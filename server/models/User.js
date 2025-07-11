@@ -150,8 +150,8 @@ userSchema.methods.addExperience = function(amount) {
 
 // Update game statistics and check for badges
 userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
-    // Import CLIENT_BADGES from constants
-    const CLIENT_BADGES = require('../constants/badges');
+    // Import CLIENT_BADGES from client-side constants
+    const { CLIENT_BADGES } = require('../public/js/constants');
     const earnedBadges = [];
     
     // Update basic stats
@@ -208,6 +208,49 @@ userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
             this.badges.push({ code: badge.code });
             earnedBadges.push(badge);
         }
+    }
+
+    return earnedBadges;
+};
+
+// Check all badges (useful for level badges and when user logs in)
+userSchema.methods.checkAllBadges = async function() {
+    const { CLIENT_BADGES } = require('../public/js/constants');
+    const earnedBadges = [];
+    
+    // Check for badges using client-side definitions
+    for (const badge of CLIENT_BADGES) {
+        // Skip if user already has this badge
+        if (this.badges.some(b => b.code === badge.code)) continue;
+
+        let earned = false;
+        switch (badge.criteria.type) {
+            case 'level':
+                earned = this.level >= badge.criteria.value;
+                break;
+            case 'wins':
+                earned = this.wins >= badge.criteria.value;
+                break;
+            case 'balance':
+                earned = this.balance >= badge.criteria.value;
+                break;
+            case 'games':
+                earned = this.gamesPlayed >= badge.criteria.value;
+                break;
+            case 'winstreak':
+                earned = this.currentWinStreak >= badge.criteria.value;
+                break;
+            // Note: bet and specific badges are only checked during games
+        }
+
+        if (earned) {
+            this.badges.push({ code: badge.code });
+            earnedBadges.push(badge);
+        }
+    }
+
+    if (earnedBadges.length > 0) {
+        await this.save();
     }
 
     return earnedBadges;

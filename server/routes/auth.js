@@ -75,6 +75,9 @@ router.post('/login', async (req, res) => {
             // Update last login
             user.lastLogin = new Date();
             await user.save();
+            
+            // Check for any badges that should have been earned (especially level badges)
+            await user.checkAllBadges();
         } else {
             // User doesn't exist - create new account
             user = new User({
@@ -129,9 +132,13 @@ router.get('/profile', authenticateToken, async (req, res) => {
             });
         }
 
+        // Check for any badges that should have been earned (especially level badges)
+        const earnedBadges = await user.checkAllBadges();
+
         res.json({
             success: true,
-            user: user.toJSON()
+            user: user.toJSON(),
+            earnedBadges: earnedBadges // Include any newly earned badges
         });
 
     } catch (error) {
