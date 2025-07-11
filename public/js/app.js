@@ -4594,6 +4594,9 @@ function updateBlackjackButtons() {
 async function dealBlackjack() {
     if (blackjackState.gameActive) return;
     
+    // Reset game state before dealing new cards (clears previous game)
+    resetBlackjackGame();
+    
     const betAmount = parseFloat(document.getElementById('blackjack-bet-amount').value);
     if (!betAmount || betAmount <= 0) {
         showError('Please enter a valid bet amount');
@@ -4850,12 +4853,8 @@ function handleBlackjackGameEnd(gameStatus, winAmount) {
         setTimeout(() => {
             continueBlackjackAutobet(won, profit);
         }, 1500);
-    } else {
-        // Reset game state after delay to allow players to see final cards
-        setTimeout(() => {
-            resetBlackjackGame();
-        }, 2000);
     }
+    // For manual play, keep the final game state visible until next deal
 }
 
 // Setup autobet
@@ -5001,8 +5000,6 @@ function continueBlackjackAutobet(won, profit) {
     // Start next game after delay
     setTimeout(async () => {
         if (!blackjackAutobet.isActive) return;
-        // Reset game state before dealing new cards
-        resetBlackjackGame();
         await dealBlackjack();
     }, 1000);
 }
