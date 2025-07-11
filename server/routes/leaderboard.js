@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const Badge = require('../models/Badge');
-const authenticateToken = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 // Get top 50 players for leaderboard
 router.get('/', authenticateToken, async (req, res) => {
