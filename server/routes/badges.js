@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
-const { CLIENT_BADGES } = require('../public/js/constants');
+const CLIENT_BADGES = require('../constants/badges');
 
 // Get user's earned badges only
 router.get('/', authenticateToken, async (req, res) => {

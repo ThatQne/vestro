@@ -150,8 +150,8 @@ userSchema.methods.addExperience = function(amount) {
 
 // Update game statistics and check for badges
 userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
-    // Import CLIENT_BADGES from client-side constants
-    const { CLIENT_BADGES } = require('../public/js/constants');
+    // Import CLIENT_BADGES from server constants
+    const CLIENT_BADGES = require('../constants/badges');
     const earnedBadges = [];
     
     // Update basic stats
@@ -215,7 +215,7 @@ userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
 
 // Check all badges (useful for level badges and when user logs in)
 userSchema.methods.checkAllBadges = async function() {
-    const { CLIENT_BADGES } = require('../public/js/constants');
+    const CLIENT_BADGES = require('../constants/badges');
     const earnedBadges = [];
     
     // Check for badges using client-side definitions
