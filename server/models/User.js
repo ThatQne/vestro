@@ -35,9 +35,9 @@ const userSchema = new mongoose.Schema({
         min: 0
     },
     badges: [{
-        badgeId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Badge'
+        code: {
+            type: String,
+            required: true
         },
         earnedAt: {
             type: Date,
@@ -150,7 +150,8 @@ userSchema.methods.addExperience = function(amount) {
 
 // Update game statistics and check for badges
 userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
-    const Badge = mongoose.model('Badge');
+    // Import CLIENT_BADGES from constants
+    const CLIENT_BADGES = require('../constants/badges');
     const earnedBadges = [];
     
     // Update basic stats
@@ -173,11 +174,10 @@ userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
 
     // Balance history is now added in the game route after all calculations
 
-    // Check for badges
-    const badges = await Badge.find();
-    for (const badge of badges) {
+    // Check for badges using client-side definitions
+    for (const badge of CLIENT_BADGES) {
         // Skip if user already has this badge
-        if (this.badges.some(b => b.badgeId.equals(badge._id))) continue;
+        if (this.badges.some(b => b.code === badge.code)) continue;
 
         let earned = false;
         switch (badge.criteria.type) {
@@ -205,7 +205,7 @@ userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
         }
 
         if (earned) {
-            this.badges.push({ badgeId: badge._id });
+            this.badges.push({ code: badge.code });
             earnedBadges.push(badge);
         }
     }

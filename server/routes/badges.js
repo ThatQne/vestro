@@ -1,44 +1,39 @@
 const express = require('express');
 const router = express.Router();
-const Badge = require('../models/Badge');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
+const CLIENT_BADGES = require('../constants/badges');
 
-// Get all badges
+// Get user's earned badges only
 router.get('/', authenticateToken, async (req, res) => {
     try {
-        // Get all badges
-        const badges = await Badge.find({});
-        
         // Get user's earned badges
-        const user = await User.findById(req.user.userId).populate('badges.badgeId');
+        const user = await User.findById(req.user.userId);
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
         
         const earnedBadges = user.badges || [];
 
-        // Process badges to hide secret ones unless earned
-        const processedBadges = badges.map(badge => {
-            const earned = earnedBadges.find(eb => eb.badgeId && eb.badgeId._id.toString() === badge._id.toString());
-            
-            // If badge is secret and not earned, skip it entirely
-            if (badge.secret && !earned) {
-                return null;
-            }
+        // Create a map of badge definitions by code
+        const badgeMap = new Map();
+        CLIENT_BADGES.forEach(badge => {
+            badgeMap.set(badge.code, badge);
+        });
 
-            // Return full badge info with earned status
+        // Return only earned badges with their full data from client definitions
+        const processedBadges = earnedBadges.map(earned => {
+            const badgeDefinition = badgeMap.get(earned.code);
             return {
-                _id: badge._id,
-                name: badge.name,
-                description: badge.description,
-                icon: badge.icon,
-                color: badge.color,
-                secret: badge.secret,
-                earned: !!earned,
-                earnedAt: earned ? earned.earnedAt : null
+                code: earned.code,
+                name: badgeDefinition.name,
+                description: badgeDefinition.description,
+                icon: badgeDefinition.icon,
+                color: badgeDefinition.color,
+                secret: badgeDefinition.secret,
+                earnedAt: earned.earnedAt
             };
-        }).filter(badge => badge !== null); // Remove null entries
+        }).filter(badge => badge.name); // Filter out any badges that don't have definitions
 
         res.json({ success: true, badges: processedBadges });
     } catch (error) {
@@ -61,27 +56,25 @@ router.post('/sync', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // Get all badges from database
-        const badges = await Badge.find({});
-        const badgeMap = new Map();
-        badges.forEach(badge => {
-            badgeMap.set(badge.code, badge);
+        // Create a map of valid badge codes
+        const validBadgeCodes = new Set();
+        CLIENT_BADGES.forEach(badge => {
+            validBadgeCodes.add(badge.code);
         });
 
         let syncedCount = 0;
         
         // Process each client badge
         for (const clientBadge of clientBadges) {
-            const serverBadge = badgeMap.get(clientBadge.code);
-            
-            if (serverBadge) {
+            // Check if badge code is valid
+            if (validBadgeCodes.has(clientBadge.code)) {
                 // Check if user already has this badge
-                const hasBadge = user.badges.some(b => b.badgeId.equals(serverBadge._id));
+                const hasBadge = user.badges.some(b => b.code === clientBadge.code);
                 
                 if (!hasBadge) {
                     // Add badge to user
                     user.badges.push({
-                        badgeId: serverBadge._id,
+                        code: clientBadge.code,
                         earnedAt: new Date(clientBadge.earnedAt)
                     });
                     syncedCount++;

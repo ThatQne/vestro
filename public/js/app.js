@@ -474,7 +474,7 @@ async function updateBadges() {
     if (!badgesGrid || !currentUser) return;
 
     try {
-        // Fetch badges from server
+        // Fetch earned badges from server
         const response = await fetch(`${API_BASE_URL}/api/badges`, {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -486,27 +486,47 @@ async function updateBadges() {
         if (data.success) {
             badgesGrid.innerHTML = '';
             
-            // Sort badges: earned first, then by name
-            const sortedBadges = data.badges.sort((a, b) => {
-                if (a.earned && !b.earned) return -1;
-                if (!a.earned && b.earned) return 1;
+            // Create a map of earned badges by code
+            const earnedBadgeMap = new Map();
+            data.badges.forEach(badge => {
+                earnedBadgeMap.set(badge.code, badge);
+            });
+            
+            // Sort badges: earned first, then non-secret locked, then secret
+            const sortedBadges = CLIENT_BADGES.sort((a, b) => {
+                const aEarned = earnedBadgeMap.has(a.code);
+                const bEarned = earnedBadgeMap.has(b.code);
+                
+                if (aEarned && !bEarned) return -1;
+                if (!aEarned && bEarned) return 1;
+                
+                if (a.secret && !b.secret) return 1;
+                if (!a.secret && b.secret) return -1;
+                
                 return a.name.localeCompare(b.name);
             });
 
             sortedBadges.forEach(badge => {
-                const badgeElement = document.createElement('div');
-                badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${badge.earned ? ' earned' : ' locked'}`;
+                const earnedBadge = earnedBadgeMap.get(badge.code);
+                const isEarned = !!earnedBadge;
                 
-                let earnedText = badge.earned 
-                    ? `Earned ${new Date(badge.earnedAt).toLocaleDateString()}`
+                const badgeElement = document.createElement('div');
+                badgeElement.className = `badge-item${badge.secret ? ' secret' : ''}${isEarned ? ' earned' : ' locked'}`;
+                
+                let earnedText = isEarned 
+                    ? `Earned ${new Date(earnedBadge.earnedAt).toLocaleDateString()}`
                     : 'Not earned yet';
                 
+                // For secret badges that are not earned, show as "???"
+                const displayName = badge.secret && !isEarned ? '???' : badge.name;
+                const displayDescription = badge.secret && !isEarned ? 'Hidden badge' : badge.description;
+                
                 badgeElement.innerHTML = `
-                    <div class="badge-icon" style="background: ${badge.color}${badge.earned ? '20' : '10'};">
+                    <div class="badge-icon" style="background: ${badge.color}${isEarned ? '20' : '10'};">
                         <i data-lucide="${badge.icon}" style="color: ${badge.color};"></i>
                     </div>
-                    <div class="badge-name">${badge.name}</div>
-                    <div class="badge-description">${badge.description}</div>
+                    <div class="badge-name">${displayName}</div>
+                    <div class="badge-description">${displayDescription}</div>
                     <div class="badge-earned">${earnedText}</div>
                 `;
                 

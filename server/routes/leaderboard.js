@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const Badge = require('../models/Badge');
 const { authenticateToken } = require('../middleware/auth');
+const CLIENT_BADGES = require('../constants/badges');
 
 // Get top 50 players for leaderboard
 router.get('/', authenticateToken, async (req, res) => {
@@ -128,7 +128,6 @@ router.get('/profile/:username', authenticateToken, async (req, res) => {
         
         // Find the player
         const player = await User.findOne({ username: username })
-            .populate('badges.badgeId')
             .lean();
 
         if (!player) {
@@ -149,16 +148,25 @@ router.get('/profile/:username', authenticateToken, async (req, res) => {
         // Calculate win rate
         const winRate = player.gamesPlayed > 0 ? (player.wins / player.gamesPlayed) * 100 : 0;
 
-        // Format badges
-        const badges = player.badges.map(badge => ({
-            id: badge.badgeId._id,
-            name: badge.badgeId.name,
-            description: badge.badgeId.description,
-            icon: badge.badgeId.icon,
-            color: badge.badgeId.color,
-            type: badge.badgeId.type,
-            earnedAt: badge.earnedAt
-        }));
+        // Create a map of badge definitions by code
+        const badgeMap = new Map();
+        CLIENT_BADGES.forEach(badge => {
+            badgeMap.set(badge.code, badge);
+        });
+
+        // Format badges using client definitions
+        const badges = player.badges.map(badge => {
+            const badgeDefinition = badgeMap.get(badge.code);
+            return {
+                code: badge.code,
+                name: badgeDefinition.name,
+                description: badgeDefinition.description,
+                icon: badgeDefinition.icon,
+                color: badgeDefinition.color,
+                secret: badgeDefinition.secret,
+                earnedAt: badge.earnedAt
+            };
+        }).filter(badge => badge.name); // Filter out any badges that don't have definitions
 
         const playerProfile = {
             username: player.username,
