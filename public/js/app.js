@@ -594,30 +594,10 @@ function showPage(pageId) {
         }, 100);
     }
     
-    // Initialize Cases when showing the cases page
-    if (pageId === 'cases') {
+    // Initialize Case System when showing cases or inventory pages
+    if (pageId === 'cases' || pageId === 'inventory') {
         setTimeout(() => {
-            if (typeof loadCases === 'function') {
-                loadCases();
-            }
-        }, 100);
-    }
-    
-    // Initialize Case Battles when showing the case battles page
-    if (pageId === 'case-battles') {
-        setTimeout(() => {
-            if (typeof loadCaseBattles === 'function') {
-                loadCaseBattles();
-            }
-        }, 100);
-    }
-    
-    // Initialize Inventory when showing the inventory page
-    if (pageId === 'inventory') {
-        setTimeout(() => {
-            if (typeof loadInventory === 'function') {
-                loadInventory();
-            }
+            initializeCaseSystem();
         }, 100);
     }
     
@@ -5893,6 +5873,725 @@ function initializePlayerChart() {
 // Close player detail modal
 function closePlayerDetailModal() {
     document.getElementById('player-detail-modal').classList.add('hidden');
+}
+
+// ... existing code ...
+
+// Case System Functions
+let currentCaseTab = 'cases';
+let selectedCasesForBattle = [];
+
+// Initialize case system when page loads
+function initializeCaseSystem() {
+    loadCases();
+    loadBattles();
+    loadInventory();
+    setupCaseEventListeners();
+    
+    // Setup socket listeners for real-time updates
+    if (socket) {
+        socket.on('case-opened', handleCaseOpened);
+        socket.on('battle-created', handleBattleCreated);
+        socket.on('battle-completed', handleBattleCompleted);
+        socket.on('battle-result', handleBattleResult);
+        socket.on('item-sold', handleItemSold);
+        socket.on('marketplace-purchase', handleMarketplacePurchase);
+        socket.on('marketplace-sale', handleMarketplaceSale);
+        socket.on('marketplace-transaction', handleMarketplaceTransaction);
+    }
+}
+
+function setupCaseEventListeners() {
+    // Case tab switching
+    const casesTabs = document.querySelectorAll('.tab-btn');
+    casesTabs.forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const tabType = e.target.textContent.toLowerCase().trim();
+            showCaseTab(tabType);
+        });
+    });
+
+    // Battle mode filter
+    const battleModeFilter = document.getElementById('battle-mode-filter');
+    if (battleModeFilter) {
+        battleModeFilter.addEventListener('change', loadBattles);
+    }
+
+    // Inventory filters
+    const rarityFilter = document.getElementById('rarity-filter');
+    const limitedFilter = document.getElementById('limited-filter');
+    if (rarityFilter) {
+        rarityFilter.addEventListener('change', loadInventory);
+    }
+    if (limitedFilter) {
+        limitedFilter.addEventListener('change', loadInventory);
+    }
+}
+
+function showCaseTab(tabType) {
+    currentCaseTab = tabType;
+    
+    // Update tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Find and activate the correct tab
+    const activeTab = Array.from(document.querySelectorAll('.tab-btn'))
+        .find(btn => btn.textContent.toLowerCase().trim() === tabType);
+    if (activeTab) {
+        activeTab.classList.add('active');
+    }
+    
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.add('hidden');
+        content.classList.remove('active');
+    });
+    
+    const tabContent = document.getElementById(tabType === 'cases' ? 'cases-tab' : 'battles-tab');
+    if (tabContent) {
+        tabContent.classList.remove('hidden');
+        tabContent.classList.add('active');
+    }
+    
+    // Load appropriate content
+    if (tabType === 'cases') {
+        loadCases();
+    } else if (tabType === 'case battles') {
+        loadBattles();
+    }
+}
+
+async function loadCases() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to load cases');
+        }
+        
+        const data = await response.json();
+        displayCases(data.cases);
+    } catch (error) {
+        console.error('Error loading cases:', error);
+        showNotification('Error loading cases', 'error');
+    }
+}
+
+function displayCases(cases) {
+    const casesGrid = document.getElementById('cases-grid');
+    if (!casesGrid) return;
+    
+    casesGrid.innerHTML = '';
+    
+    cases.forEach(caseItem => {
+        const caseCard = document.createElement('div');
+        caseCard.className = 'case-card';
+        caseCard.innerHTML = `
+            <div class="case-image">
+                <img src="${caseItem.image}" alt="${caseItem.name}" onerror="this.style.display='none'">
+            </div>
+            <div class="case-info">
+                <div class="case-name">${caseItem.name}</div>
+                <div class="case-description">${caseItem.description}</div>
+                <div class="case-price">$${caseItem.price.toFixed(2)}</div>
+                <div class="case-stats">
+                    <div class="case-stat">
+                        <div class="case-stat-label">Items</div>
+                        <div class="case-stat-value">${caseItem.items.length}</div>
+                    </div>
+                    <div class="case-stat">
+                        <div class="case-stat-label">Opened</div>
+                        <div class="case-stat-value">${caseItem.totalOpenings}</div>
+                    </div>
+                </div>
+                <div class="case-items-preview">
+                    ${caseItem.items.slice(0, 5).map(item => 
+                        `<div class="case-item-preview ${item.rarity}"></div>`
+                    ).join('')}
+                </div>
+                <div class="case-actions">
+                    <button class="case-action-btn primary" onclick="openCase('${caseItem._id}')">
+                        Open $${caseItem.price.toFixed(2)}
+                    </button>
+                    <button class="case-action-btn secondary" onclick="viewCaseDetails('${caseItem._id}')">
+                        Details
+                    </button>
+                </div>
+            </div>
+        `;
+        casesGrid.appendChild(caseCard);
+    });
+}
+
+async function openCase(caseId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/open/${caseId}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to open case');
+        }
+        
+        const data = await response.json();
+        showCaseOpeningModal(data.caseName, data.item);
+        
+        // Update balance
+        updateBalanceDisplay(data.newBalance);
+        
+        // Refresh inventory
+        loadInventory();
+        
+        showNotification(`Won ${data.item.name}!`, 'success');
+    } catch (error) {
+        console.error('Error opening case:', error);
+        showNotification(error.message || 'Error opening case', 'error');
+    }
+}
+
+function showCaseOpeningModal(caseName, wonItem) {
+    const modal = document.getElementById('case-opening-modal');
+    const title = document.getElementById('case-opening-title');
+    const reel = document.getElementById('case-opening-reel');
+    const result = document.getElementById('case-opening-result');
+    
+    if (!modal) return;
+    
+    title.textContent = `Opening ${caseName}`;
+    modal.classList.remove('hidden');
+    
+    // Hide result initially
+    result.classList.add('hidden');
+    
+    // Create animation items
+    const items = [];
+    for (let i = 0; i < 20; i++) {
+        const item = document.createElement('div');
+        item.className = 'case-opening-item';
+        item.innerHTML = `
+            <div class="item-name">${i === 10 ? wonItem.name : 'Random Item'}</div>
+            <div class="item-rarity ${i === 10 ? wonItem.rarity : 'common'}">${i === 10 ? wonItem.rarity : 'common'}</div>
+        `;
+        if (i === 10) {
+            item.classList.add('won');
+        }
+        items.push(item);
+        reel.appendChild(item);
+    }
+    
+    // Start animation
+    setTimeout(() => {
+        reel.style.transform = 'translateX(-50%)';
+        
+        // Show result after animation
+        setTimeout(() => {
+            result.classList.remove('hidden');
+            
+            // Update result display
+            document.getElementById('won-item-name').textContent = wonItem.name;
+            document.getElementById('won-item-value').textContent = `$${wonItem.value.toFixed(2)}`;
+            document.getElementById('won-item-rarity').textContent = wonItem.rarity;
+            document.getElementById('won-item-rarity').className = `item-rarity ${wonItem.rarity}`;
+            
+            const wonItemImage = document.getElementById('won-item-image');
+            wonItemImage.src = wonItem.image;
+            wonItemImage.onerror = () => wonItemImage.style.display = 'none';
+        }, 3000);
+    }, 500);
+}
+
+function closeCaseOpeningModal() {
+    const modal = document.getElementById('case-opening-modal');
+    const reel = document.getElementById('case-opening-reel');
+    
+    if (modal) {
+        modal.classList.add('hidden');
+        
+        // Reset animation
+        reel.style.transform = 'translateX(0)';
+        reel.innerHTML = '';
+    }
+}
+
+async function loadBattles() {
+    try {
+        const modeFilter = document.getElementById('battle-mode-filter')?.value || '';
+        const response = await fetch(`${API_BASE_URL}/api/cases/battles/active?mode=${modeFilter}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to load battles');
+        }
+        
+        const data = await response.json();
+        displayBattles(data.battles);
+    } catch (error) {
+        console.error('Error loading battles:', error);
+        showNotification('Error loading battles', 'error');
+    }
+}
+
+function displayBattles(battles) {
+    const battlesGrid = document.getElementById('battles-grid');
+    if (!battlesGrid) return;
+    
+    battlesGrid.innerHTML = '';
+    
+    if (battles.length === 0) {
+        battlesGrid.innerHTML = '<div class="no-battles">No active battles found</div>';
+        return;
+    }
+    
+    battles.forEach(battle => {
+        const battleCard = document.createElement('div');
+        battleCard.className = 'battle-card';
+        battleCard.innerHTML = `
+            <div class="battle-header">
+                <div class="battle-mode">${battle.mode}</div>
+                <div class="battle-cost">$${battle.totalCost.toFixed(2)}</div>
+            </div>
+            <div class="battle-players">
+                ${Array.from({length: battle.maxPlayers}, (_, i) => {
+                    const player = battle.players && battle.players[i];
+                    return `<div class="battle-player ${!player ? 'empty' : ''}">
+                        ${player ? player.username.charAt(0).toUpperCase() : '?'}
+                    </div>`;
+                }).join('')}
+            </div>
+            <div class="battle-cases">
+                ${battle.cases ? battle.cases.map(caseItem => 
+                    `<div class="battle-case">${caseItem.caseName} x${caseItem.quantity}</div>`
+                ).join('') : ''}
+            </div>
+            <button class="battle-join-btn" onclick="joinBattle('${battle.battleId}')" 
+                    ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
+                ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
+            </button>
+        `;
+        battlesGrid.appendChild(battleCard);
+    });
+}
+
+async function joinBattle(battleId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/join/${battleId}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to join battle');
+        }
+        
+        const data = await response.json();
+        
+        // Update balance
+        updateBalanceDisplay(data.newBalance);
+        
+        // Refresh battles
+        loadBattles();
+        
+        showNotification('Joined battle successfully!', 'success');
+    } catch (error) {
+        console.error('Error joining battle:', error);
+        showNotification(error.message || 'Error joining battle', 'error');
+    }
+}
+
+function showCreateBattleModal() {
+    const modal = document.getElementById('create-battle-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        loadBattleCases();
+    }
+}
+
+function closeCreateBattleModal() {
+    const modal = document.getElementById('create-battle-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        selectedCasesForBattle = [];
+        updateSelectedCasesDisplay();
+    }
+}
+
+async function loadBattleCases() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to load cases');
+        }
+        
+        const data = await response.json();
+        displayBattleCases(data.cases);
+    } catch (error) {
+        console.error('Error loading battle cases:', error);
+        showNotification('Error loading cases', 'error');
+    }
+}
+
+function displayBattleCases(cases) {
+    const grid = document.getElementById('battle-cases-grid');
+    if (!grid) return;
+    
+    grid.innerHTML = '';
+    
+    cases.forEach(caseItem => {
+        const caseOption = document.createElement('div');
+        caseOption.className = 'battle-case-option';
+        caseOption.innerHTML = `
+            <div class="case-name">${caseItem.name}</div>
+            <div class="case-price">$${caseItem.price.toFixed(2)}</div>
+        `;
+        caseOption.onclick = () => toggleCaseSelection(caseItem);
+        grid.appendChild(caseOption);
+    });
+}
+
+function toggleCaseSelection(caseItem) {
+    const existingIndex = selectedCasesForBattle.findIndex(c => c._id === caseItem._id);
+    
+    if (existingIndex > -1) {
+        selectedCasesForBattle.splice(existingIndex, 1);
+    } else {
+        selectedCasesForBattle.push(caseItem);
+    }
+    
+    updateSelectedCasesDisplay();
+    updateBattleCost();
+}
+
+function updateSelectedCasesDisplay() {
+    const container = document.getElementById('selected-cases');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    selectedCasesForBattle.forEach(caseItem => {
+        const selectedCase = document.createElement('div');
+        selectedCase.className = 'selected-case';
+        selectedCase.innerHTML = `
+            ${caseItem.name}
+            <button class="remove-btn" onclick="removeCaseFromSelection('${caseItem._id}')">×</button>
+        `;
+        container.appendChild(selectedCase);
+    });
+    
+    // Update case selection visual state
+    document.querySelectorAll('.battle-case-option').forEach(option => {
+        const caseName = option.querySelector('.case-name').textContent;
+        const isSelected = selectedCasesForBattle.some(c => c.name === caseName);
+        option.classList.toggle('selected', isSelected);
+    });
+}
+
+function removeCaseFromSelection(caseId) {
+    selectedCasesForBattle = selectedCasesForBattle.filter(c => c._id !== caseId);
+    updateSelectedCasesDisplay();
+    updateBattleCost();
+}
+
+function updateBattleCost() {
+    const totalCost = selectedCasesForBattle.reduce((sum, c) => sum + c.price, 0);
+    const costDisplay = document.getElementById('battle-total-cost');
+    if (costDisplay) {
+        costDisplay.textContent = totalCost.toFixed(2);
+    }
+}
+
+async function createBattle() {
+    if (selectedCasesForBattle.length === 0) {
+        showNotification('Please select at least one case', 'error');
+        return;
+    }
+    
+    const mode = document.getElementById('battle-mode-select').value;
+    const isPrivate = document.getElementById('battle-private-checkbox').checked;
+    
+    const battleData = {
+        cases: selectedCasesForBattle.map(c => ({
+            caseId: c._id,
+            quantity: 1
+        })),
+        mode: mode,
+        isPrivate: isPrivate
+    };
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/create`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(battleData)
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to create battle');
+        }
+        
+        const data = await response.json();
+        
+        // Update balance
+        updateBalanceDisplay(data.newBalance);
+        
+        // Close modal and refresh battles
+        closeCreateBattleModal();
+        loadBattles();
+        
+        showNotification('Battle created successfully!', 'success');
+    } catch (error) {
+        console.error('Error creating battle:', error);
+        showNotification(error.message || 'Error creating battle', 'error');
+    }
+}
+
+async function loadInventory() {
+    try {
+        const rarityFilter = document.getElementById('rarity-filter')?.value || '';
+        const limitedFilter = document.getElementById('limited-filter')?.value || '';
+        
+        let url = `${API_BASE_URL}/api/inventory`;
+        const params = new URLSearchParams();
+        
+        if (rarityFilter) params.append('rarity', rarityFilter);
+        if (limitedFilter) params.append('limited', limitedFilter);
+        
+        if (params.toString()) {
+            url += `?${params.toString()}`;
+        }
+        
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to load inventory');
+        }
+        
+        const data = await response.json();
+        displayInventory(data.inventory);
+        updateInventoryStats(data.inventory);
+    } catch (error) {
+        console.error('Error loading inventory:', error);
+        showNotification('Error loading inventory', 'error');
+    }
+}
+
+function displayInventory(inventory) {
+    const grid = document.getElementById('inventory-grid');
+    if (!grid) return;
+    
+    grid.innerHTML = '';
+    
+    if (!inventory || !inventory.items || inventory.items.length === 0) {
+        grid.innerHTML = '<div class="no-items">No items in inventory</div>';
+        return;
+    }
+    
+    inventory.items.forEach(item => {
+        const itemCard = document.createElement('div');
+        itemCard.className = `inventory-item ${item.isLimited ? 'limited' : ''}`;
+        itemCard.innerHTML = `
+            <div class="item-image">
+                <img src="${item.image}" alt="${item.itemName}" onerror="this.style.display='none'">
+            </div>
+            <div class="item-details">
+                <div class="item-name">${item.itemName}</div>
+                <div class="item-value">$${item.value.toFixed(2)}</div>
+                <div class="item-rarity ${item.rarity}">${item.rarity}</div>
+                <div class="item-source">From ${item.caseSource}</div>
+                <div class="item-actions">
+                    <button class="item-action-btn sell" onclick="sellItem('${item._id}')">
+                        Sell ${item.isLimited ? '$' + item.value.toFixed(2) : '70%'}
+                    </button>
+                    ${item.isLimited ? `
+                        <button class="item-action-btn list" onclick="listItem('${item._id}')">
+                            List
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        itemCard.onclick = () => showItemDetails(item);
+        grid.appendChild(itemCard);
+    });
+}
+
+function updateInventoryStats(inventory) {
+    if (!inventory) return;
+    
+    const totalItems = document.getElementById('inventory-total-items');
+    const totalValue = document.getElementById('inventory-total-value');
+    const limitedItems = document.getElementById('inventory-limited-items');
+    
+    if (totalItems) totalItems.textContent = inventory.totalItems || 0;
+    if (totalValue) totalValue.textContent = `$${(inventory.totalValue || 0).toFixed(2)}`;
+    if (limitedItems) limitedItems.textContent = inventory.limitedItems || 0;
+}
+
+async function sellItem(itemId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/inventory/sell/${itemId}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to sell item');
+        }
+        
+        const data = await response.json();
+        
+        // Update balance
+        updateBalanceDisplay(data.newBalance);
+        
+        // Refresh inventory
+        loadInventory();
+        
+        showNotification(`Item sold for $${data.sellPrice.toFixed(2)}!`, 'success');
+    } catch (error) {
+        console.error('Error selling item:', error);
+        showNotification(error.message || 'Error selling item', 'error');
+    }
+}
+
+function showItemDetails(item) {
+    const modal = document.getElementById('item-details-modal');
+    if (!modal) return;
+    
+    document.getElementById('item-details-name').textContent = item.itemName;
+    document.getElementById('item-details-value').textContent = `$${item.value.toFixed(2)}`;
+    document.getElementById('item-details-rarity').textContent = item.rarity;
+    document.getElementById('item-details-rarity').className = `item-rarity ${item.rarity}`;
+    document.getElementById('item-details-source').textContent = `From ${item.caseSource}`;
+    document.getElementById('item-details-limited').textContent = item.isLimited ? 'Limited Item' : 'Regular Item';
+    
+    const image = document.getElementById('item-details-image');
+    image.src = item.image;
+    image.onerror = () => image.style.display = 'none';
+    
+    // Update action buttons
+    const listBtn = document.getElementById('list-item-btn');
+    if (listBtn) {
+        listBtn.style.display = item.isLimited ? 'block' : 'none';
+        listBtn.onclick = () => listItem(item._id);
+    }
+    
+    modal.classList.remove('hidden');
+}
+
+function closeItemDetailsModal() {
+    const modal = document.getElementById('item-details-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+async function listItem(itemId) {
+    // This would open a listing modal where users can set their price
+    // For now, we'll just show a notification
+    showNotification('Marketplace listing feature coming soon!', 'info');
+}
+
+function viewCaseDetails(caseId) {
+    // This would show detailed case information
+    showNotification('Case details feature coming soon!', 'info');
+}
+
+// Socket event handlers
+function handleCaseOpened(data) {
+    // Update balance if it's for current user
+    if (data.userId === currentUser?.id) {
+        updateBalanceDisplay(data.newBalance);
+        loadInventory();
+    }
+}
+
+function handleBattleCreated(data) {
+    loadBattles();
+    showNotification(`New ${data.mode} battle created!`, 'info');
+}
+
+function handleBattleCompleted(data) {
+    loadBattles();
+    showNotification(`Battle completed! Winner: ${data.winnerUsername}`, 'success');
+}
+
+function handleBattleResult(data) {
+    if (data.won) {
+        showNotification(`You won the battle! Total value: $${data.totalValue.toFixed(2)}`, 'success');
+    } else {
+        showNotification(`Battle completed. Total value: $${data.totalValue.toFixed(2)}`, 'info');
+    }
+    loadInventory();
+}
+
+function handleItemSold(data) {
+    updateBalanceDisplay(data.newBalance);
+    loadInventory();
+}
+
+function handleMarketplacePurchase(data) {
+    updateBalanceDisplay(data.newBalance);
+    loadInventory();
+}
+
+function handleMarketplaceSale(data) {
+    updateBalanceDisplay(data.newBalance);
+    showNotification(`Item sold for $${data.price.toFixed(2)}!`, 'success');
+}
+
+function handleMarketplaceTransaction(data) {
+    showNotification(`${data.itemName} sold for $${data.price.toFixed(2)}`, 'info');
+}
+
+function updateBalanceDisplay(newBalance) {
+    const balanceElements = document.querySelectorAll('#top-balance, #profile-balance');
+    balanceElements.forEach(element => {
+        if (element) {
+            element.textContent = `$${newBalance.toFixed(2)}`;
+        }
+    });
+    
+    if (currentUser) {
+        currentUser.balance = newBalance;
+    }
+}
+
+// Initialize case system when cases page is shown
+function initializeCasesPage() {
+    if (currentPage === 'cases') {
+        initializeCaseSystem();
+    }
 }
 
 // ... existing code ...

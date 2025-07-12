@@ -1,32 +1,59 @@
 const mongoose = require('mongoose');
 
 const marketplaceListingSchema = new mongoose.Schema({
-    seller: {
+    sellerId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
     },
-    item: {
+    itemId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Item',
         required: true
     },
-    quantity: {
-        type: Number,
-        default: 1,
-        min: 1
+    itemName: {
+        type: String,
+        required: true
     },
-    listingPrice: {
+    itemImage: {
+        type: String,
+        default: 'default-item.png'
+    },
+    itemRarity: {
+        type: String,
+        enum: ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythical'],
+        required: true
+    },
+    baseValue: {
         type: Number,
         required: true,
         min: 0
     },
+    listPrice: {
+        type: Number,
+        required: true,
+        min: 0
+    },
+    currentMarketPrice: {
+        type: Number,
+        required: true,
+        min: 0
+    },
+    priceHistory: [{
+        price: {
+            type: Number,
+            required: true
+        },
+        timestamp: {
+            type: Date,
+            default: Date.now
+        }
+    }],
     status: {
         type: String,
-        enum: ['active', 'sold', 'cancelled', 'expired'],
+        enum: ['active', 'sold', 'cancelled'],
         default: 'active'
     },
-    buyer: {
+    buyerId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         default: null
@@ -37,59 +64,79 @@ const marketplaceListingSchema = new mongoose.Schema({
     },
     soldPrice: {
         type: Number,
-        default: null
-    },
-    expiresAt: {
-        type: Date,
-        default: function() {
-            const expiry = new Date();
-            expiry.setDate(expiry.getDate() + 30); // 30 days default
-            return expiry;
-        }
+        default: 0
     },
     createdAt: {
         type: Date,
         default: Date.now
     },
-    updatedAt: {
+    expiresAt: {
         type: Date,
-        default: Date.now
+        default: function() {
+            return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+        }
     }
 });
 
-// Auto-expire listings
-marketplaceListingSchema.pre('save', function(next) {
-    if (this.status === 'active' && this.expiresAt < new Date()) {
-        this.status = 'expired';
+// Update market price based on recent sales
+marketplaceListingSchema.statics.updateMarketPrice = async function(itemName) {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    
+    const recentSales = await this.find({
+        itemName: itemName,
+        status: 'sold',
+        soldAt: { $gte: thirtyDaysAgo }
+    }).sort({ soldAt: -1 });
+    
+    if (recentSales.length > 0) {
+        const averagePrice = recentSales.reduce((sum, sale) => sum + sale.soldPrice, 0) / recentSales.length;
+        
+        // Update all active listings for this item
+        await this.updateMany(
+            { itemName: itemName, status: 'active' },
+            { 
+                $set: { currentMarketPrice: averagePrice },
+                $push: { 
+                    priceHistory: {
+                        price: averagePrice,
+                        timestamp: new Date()
+                    }
+                }
+            }
+        );
+        
+        return averagePrice;
     }
-    this.updatedAt = new Date();
-    next();
-});
+    
+    return null;
+};
 
-// Complete sale
-marketplaceListingSchema.methods.completeSale = function(buyerId, salePrice) {
+// Method to purchase an item
+marketplaceListingSchema.methods.purchase = async function(buyerId, purchasePrice) {
     this.status = 'sold';
-    this.buyer = buyerId;
+    this.buyerId = buyerId;
     this.soldAt = new Date();
-    this.soldPrice = salePrice || this.listingPrice;
+    this.soldPrice = purchasePrice;
+    
+    await this.save();
+    
+    // Update market price after sale
+    await this.constructor.updateMarketPrice(this.itemName);
+    
+    return this;
 };
 
-// Cancel listing
+// Method to cancel listing
 marketplaceListingSchema.methods.cancel = function() {
-    if (this.status !== 'active') {
-        throw new Error('Cannot cancel non-active listing');
-    }
     this.status = 'cancelled';
+    return this.save();
 };
 
-// Check if listing is still valid
-marketplaceListingSchema.methods.isValid = function() {
-    return this.status === 'active' && this.expiresAt > new Date();
-};
-
-marketplaceListingSchema.index({ seller: 1, status: 1 });
-marketplaceListingSchema.index({ item: 1, status: 1 });
-marketplaceListingSchema.index({ status: 1, expiresAt: 1 });
-marketplaceListingSchema.index({ listingPrice: 1 });
+// Index for efficient queries
+marketplaceListingSchema.index({ status: 1 });
+marketplaceListingSchema.index({ sellerId: 1 });
+marketplaceListingSchema.index({ itemName: 1 });
+marketplaceListingSchema.index({ createdAt: -1 });
+marketplaceListingSchema.index({ expiresAt: 1 });
 
 module.exports = mongoose.model('MarketplaceListing', marketplaceListingSchema); 

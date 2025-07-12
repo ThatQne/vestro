@@ -6,90 +6,122 @@ const caseBattleSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
-    name: {
+    mode: {
         type: String,
+        enum: ['1v1', '2v2', '1v1v1', '1v1v1v1'],
         required: true
     },
+    maxPlayers: {
+        type: Number,
+        required: true,
+        min: 2,
+        max: 4
+    },
     cases: [{
-        case: {
+        caseId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Case',
+            required: true
+        },
+        caseName: {
+            type: String,
+            required: true
+        },
+        casePrice: {
+            type: Number,
             required: true
         },
         quantity: {
             type: Number,
             default: 1,
-            min: 1
+            min: 1,
+            max: 10
         }
     }],
-    maxPlayers: {
-        type: Number,
-        default: 2,
-        min: 2,
-        max: 8
-    },
-    entryFee: {
+    totalCost: {
         type: Number,
         required: true,
         min: 0
     },
     players: [{
-        user: {
+        userId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'User'
+            ref: 'User',
+            required: true
         },
-        username: String,
-        isBot: {
-            type: Boolean,
-            default: false
+        username: {
+            type: String,
+            required: true
         },
         joinedAt: {
             type: Date,
             default: Date.now
         },
+        isBot: {
+            type: Boolean,
+            default: false
+        },
+        items: [{
+            itemName: {
+                type: String,
+                required: true
+            },
+            itemValue: {
+                type: Number,
+                required: true
+            },
+            itemImage: {
+                type: String,
+                default: 'default-item.png'
+            },
+            itemRarity: {
+                type: String,
+                enum: ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythical'],
+                required: true
+            },
+            caseSource: {
+                type: String,
+                required: true
+            },
+            isLimited: {
+                type: Boolean,
+                default: false
+            }
+        }],
         totalValue: {
             type: Number,
             default: 0
         },
-        items: [{
-            item: {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: 'Item'
-            },
-            value: Number,
-            caseIndex: Number,
-            round: Number
-        }]
+        isWinner: {
+            type: Boolean,
+            default: false
+        }
     }],
     status: {
         type: String,
-        enum: ['waiting', 'active', 'completed', 'cancelled'],
+        enum: ['waiting', 'in_progress', 'completed', 'cancelled'],
         default: 'waiting'
     },
-    winner: {
+    winnerId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'User',
+        default: null
     },
-    currentRound: {
+    winnerUsername: {
+        type: String,
+        default: null
+    },
+    totalPrizeValue: {
         type: Number,
         default: 0
-    },
-    totalRounds: {
-        type: Number,
-        default: 1
     },
     isPrivate: {
         type: Boolean,
         default: false
     },
-    password: {
-        type: String,
-        default: null
-    },
-    createdBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+    createdAt: {
+        type: Date,
+        default: Date.now
     },
     startedAt: {
         type: Date,
@@ -99,152 +131,111 @@ const caseBattleSchema = new mongoose.Schema({
         type: Date,
         default: null
     },
-    createdAt: {
+    expiresAt: {
         type: Date,
-        default: Date.now
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now
+        default: function() {
+            return new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+        }
     }
 });
 
-// Generate unique battle ID
+// Calculate total cost before saving
 caseBattleSchema.pre('save', function(next) {
-    if (!this.battleId) {
-        this.battleId = 'battle_' + Math.random().toString(36).substr(2, 9);
-    }
-    this.updatedAt = new Date();
+    this.totalCost = this.cases.reduce((sum, caseItem) => sum + (caseItem.casePrice * caseItem.quantity), 0);
+    
+    // Calculate total values for each player
+    this.players.forEach(player => {
+        player.totalValue = player.items.reduce((sum, item) => sum + item.itemValue, 0);
+    });
+    
+    // Calculate total prize value
+    this.totalPrizeValue = this.players.reduce((sum, player) => sum + player.totalValue, 0);
+    
     next();
 });
 
-// Add player to battle
+// Method to add a player
 caseBattleSchema.methods.addPlayer = function(userId, username, isBot = false) {
     if (this.players.length >= this.maxPlayers) {
         throw new Error('Battle is full');
     }
     
-    if (this.status !== 'waiting') {
-        throw new Error('Battle has already started');
-    }
-    
-    const existingPlayer = this.players.find(p => 
-        p.user && p.user.toString() === userId.toString()
-    );
-    
-    if (existingPlayer) {
-        throw new Error('Player already in battle');
+    // Check if player already joined
+    if (this.players.some(p => p.userId.toString() === userId.toString())) {
+        throw new Error('Player already joined this battle');
     }
     
     this.players.push({
-        user: isBot ? null : userId,
+        userId: userId,
         username: username,
-        isBot: isBot
+        isBot: isBot,
+        items: [],
+        totalValue: 0
     });
     
-    // Start battle if full
-    if (this.players.length === this.maxPlayers) {
-        this.status = 'active';
-        this.startedAt = new Date();
-    }
+    return this.save();
 };
 
-// Remove player from battle
-caseBattleSchema.methods.removePlayer = function(userId) {
-    if (this.status !== 'waiting') {
-        throw new Error('Cannot leave battle after it has started');
+// Method to start battle
+caseBattleSchema.methods.start = function() {
+    if (this.players.length < this.maxPlayers) {
+        throw new Error('Not enough players to start battle');
     }
     
-    this.players = this.players.filter(p => 
-        !p.user || p.user.toString() !== userId.toString()
-    );
+    this.status = 'in_progress';
+    this.startedAt = new Date();
+    return this.save();
 };
 
-// Open case for player
-caseBattleSchema.methods.openCaseForPlayer = async function(playerIndex, caseIndex) {
-    const player = this.players[playerIndex];
-    const battleCase = this.cases[caseIndex];
-    
-    if (!player || !battleCase) {
-        throw new Error('Invalid player or case index');
-    }
-    
-    // Populate case to access openCase method
-    await this.populate('cases.case');
-    const wonItemId = battleCase.case.openCase();
-    
-    // Populate item to get value
-    await this.populate('cases.case.items.item');
-    const wonItem = battleCase.case.items.find(item => 
-        item.item._id.toString() === wonItemId.toString()
+// Method to complete battle
+caseBattleSchema.methods.complete = function() {
+    // Find winner (player with highest total value)
+    let winner = this.players.reduce((prev, current) => 
+        (prev.totalValue > current.totalValue) ? prev : current
     );
     
-    if (!wonItem) {
-        throw new Error('Item not found in case');
-    }
-    
-    const itemValue = wonItem.item.isLimited ? 
-        (wonItem.item.currentPrice || wonItem.item.value) : 
-        wonItem.item.value;
-    
-    // Add item to player's battle inventory
-    player.items.push({
-        item: wonItemId,
-        value: itemValue,
-        caseIndex: caseIndex,
-        round: this.currentRound
-    });
-    
-    player.totalValue += itemValue;
-    
-    return {
-        item: wonItem.item,
-        value: itemValue
-    };
-};
-
-// Calculate winner
-caseBattleSchema.methods.calculateWinner = function() {
-    if (this.players.length === 0) return null;
-    
-    let winner = this.players[0];
-    for (const player of this.players) {
-        if (player.totalValue > winner.totalValue) {
-            winner = player;
-        }
-    }
-    
-    this.winner = winner.user;
-    return winner;
-};
-
-// Complete battle
-caseBattleSchema.methods.completeBattle = function() {
+    winner.isWinner = true;
+    this.winnerId = winner.userId;
+    this.winnerUsername = winner.username;
     this.status = 'completed';
     this.completedAt = new Date();
-    this.calculateWinner();
+    
+    return this.save();
 };
 
-// Get battle summary
+// Method to cancel battle
+caseBattleSchema.methods.cancel = function() {
+    this.status = 'cancelled';
+    return this.save();
+};
+
+// Method to check if battle is expired
+caseBattleSchema.methods.isExpired = function() {
+    return new Date() > this.expiresAt;
+};
+
+// Method to get battle summary
 caseBattleSchema.methods.getSummary = function() {
     return {
         battleId: this.battleId,
-        name: this.name,
+        mode: this.mode,
+        maxPlayers: this.maxPlayers,
+        currentPlayers: this.players.length,
+        totalCost: this.totalCost,
         status: this.status,
-        players: this.players.map(p => ({
-            username: p.username,
-            isBot: p.isBot,
-            totalValue: p.totalValue,
-            itemCount: p.items.length
-        })),
-        totalValue: this.players.reduce((sum, p) => sum + p.totalValue, 0),
-        winner: this.winner
+        winnerId: this.winnerId,
+        winnerUsername: this.winnerUsername,
+        totalPrizeValue: this.totalPrizeValue,
+        createdAt: this.createdAt,
+        expiresAt: this.expiresAt
     };
 };
 
+// Index for efficient queries
 caseBattleSchema.index({ battleId: 1 });
 caseBattleSchema.index({ status: 1 });
-caseBattleSchema.index({ createdBy: 1 });
-caseBattleSchema.index({ 'players.user': 1 });
+caseBattleSchema.index({ 'players.userId': 1 });
+caseBattleSchema.index({ createdAt: -1 });
+caseBattleSchema.index({ expiresAt: 1 });
 
 module.exports = mongoose.model('CaseBattle', caseBattleSchema); 

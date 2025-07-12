@@ -1,330 +1,377 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middleware/auth');
-const Item = require('../models/Item');
-const Inventory = require('../models/Inventory');
-const User = require('../models/User');
+const auth = require('../middleware/auth');
 const MarketplaceListing = require('../models/MarketplaceListing');
+const UserInventory = require('../models/UserInventory');
+const User = require('../models/User');
 
-// Get active marketplace listings
+// Get all marketplace listings
 router.get('/listings', async (req, res) => {
     try {
-        const listings = await MarketplaceListing.find({ status: 'active' })
-            .populate('item')
-            .populate('seller', 'username')
-            .sort({ createdAt: -1 });
-
-        // Group listings by item and calculate average prices
-        const itemStats = {};
-        listings.forEach(listing => {
-            if (!itemStats[listing.item._id]) {
-                itemStats[listing.item._id] = {
-                    totalPrice: 0,
-                    count: 0,
-                    minPrice: Infinity,
-                    maxPrice: 0
-                };
-            }
-            const stats = itemStats[listing.item._id];
-            stats.totalPrice += listing.price;
-            stats.count++;
-            stats.minPrice = Math.min(stats.minPrice, listing.price);
-            stats.maxPrice = Math.max(stats.maxPrice, listing.price);
-        });
-
-        // Add price statistics to listings
-        const listingsWithStats = listings.map(listing => {
-            const stats = itemStats[listing.item._id];
-            return {
-                ...listing.toObject(),
-                priceStats: {
-                    average: stats.totalPrice / stats.count,
-                    min: stats.minPrice,
-                    max: stats.maxPrice,
-                    listings: stats.count
-                }
-            };
-        });
-
+        const { rarity, sort = 'newest', limit = 20, page = 1 } = req.query;
+        const skip = (page - 1) * limit;
+        
+        let query = { status: 'active', expiresAt: { $gt: new Date() } };
+        
+        if (rarity) {
+            query.itemRarity = rarity;
+        }
+        
+        let sortOption = {};
+        switch (sort) {
+            case 'price_low':
+                sortOption = { listPrice: 1 };
+                break;
+            case 'price_high':
+                sortOption = { listPrice: -1 };
+                break;
+            case 'newest':
+                sortOption = { createdAt: -1 };
+                break;
+            case 'oldest':
+                sortOption = { createdAt: 1 };
+                break;
+            default:
+                sortOption = { createdAt: -1 };
+        }
+        
+        const listings = await MarketplaceListing.find(query)
+            .populate('sellerId', 'username')
+            .sort(sortOption)
+            .skip(skip)
+            .limit(parseInt(limit));
+        
+        const totalCount = await MarketplaceListing.countDocuments(query);
+        
         res.json({
             success: true,
-            listings: listingsWithStats
+            listings,
+            pagination: {
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(totalCount / limit),
+                totalItems: totalCount,
+                itemsPerPage: parseInt(limit)
+            }
         });
+        
     } catch (error) {
         console.error('Error fetching marketplace listings:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch marketplace listings'
-        });
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Get item price history
-router.get('/history/:itemId', async (req, res) => {
+// Create a marketplace listing
+router.post('/list', auth, async (req, res) => {
     try {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-        const sales = await MarketplaceListing.find({
-            item: req.params.itemId,
-            status: 'sold',
-            updatedAt: { $gte: thirtyDaysAgo }
-        })
-        .sort({ updatedAt: 1 })
-        .select('price updatedAt');
-
-        // Group sales by day and calculate average price
-        const dailyPrices = {};
-        sales.forEach(sale => {
-            const date = sale.updatedAt.toISOString().split('T')[0];
-            if (!dailyPrices[date]) {
-                dailyPrices[date] = {
-                    total: 0,
-                    count: 0
-                };
-            }
-            dailyPrices[date].total += sale.price;
-            dailyPrices[date].count++;
-        });
-
-        // Convert to array and fill missing days
-        const priceHistory = [];
-        let currentDate = new Date(thirtyDaysAgo);
-        const endDate = new Date();
-
-        while (currentDate <= endDate) {
-            const dateStr = currentDate.toISOString().split('T')[0];
-            const dayStats = dailyPrices[dateStr];
-            priceHistory.push({
-                date: dateStr,
-                price: dayStats ? dayStats.total / dayStats.count : null
-            });
-            currentDate.setDate(currentDate.getDate() + 1);
+        const { itemId, listPrice } = req.body;
+        
+        if (!itemId || !listPrice || listPrice <= 0) {
+            return res.status(400).json({ success: false, message: 'Item ID and valid price are required' });
         }
-
-        res.json({
-            success: true,
-            priceHistory
-        });
-    } catch (error) {
-        console.error('Error fetching price history:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch price history'
-        });
-    }
-});
-
-// Create new listing
-router.post('/list', authenticateToken, async (req, res) => {
-    try {
-        const { itemId, price } = req.body;
-
-        // Validate input
-        if (!itemId || !price || price <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid listing parameters'
-            });
+        
+        const userInventory = await UserInventory.findOne({ userId: req.user.id });
+        if (!userInventory) {
+            return res.status(404).json({ success: false, message: 'Inventory not found' });
         }
-
-        // Check if item exists in user's inventory
-        const inventory = await Inventory.findOne({ user: req.user.id })
-            .populate('items.item');
-
-        const inventoryItem = inventory.items.find(item => 
-            item.item._id.toString() === itemId
-        );
-
-        if (!inventoryItem) {
-            return res.status(404).json({
-                success: false,
-                message: 'Item not found in inventory'
-            });
+        
+        const item = userInventory.items.find(item => item._id.toString() === itemId);
+        if (!item) {
+            return res.status(404).json({ success: false, message: 'Item not found' });
         }
-
-        // Check if item is limited and can be listed
-        if (!inventoryItem.item.isLimited) {
-            return res.status(400).json({
-                success: false,
-                message: 'Only limited items can be listed on marketplace'
-            });
+        
+        if (!item.isLimited) {
+            return res.status(400).json({ success: false, message: 'Only limited items can be listed on marketplace' });
         }
-
-        // Remove item from inventory
-        inventory.removeItem(itemId, 1);
-        await inventory.save();
-
-        // Create listing
+        
+        if (item.isListed || item.isTrading) {
+            return res.status(400).json({ success: false, message: 'Item is already listed or being traded' });
+        }
+        
+        // Create marketplace listing
         const listing = new MarketplaceListing({
-            item: itemId,
-            seller: req.user.id,
-            price,
-            status: 'active'
+            sellerId: req.user.id,
+            itemId: itemId,
+            itemName: item.itemName,
+            itemImage: item.image,
+            itemRarity: item.rarity,
+            baseValue: item.value,
+            listPrice: listPrice,
+            currentMarketPrice: item.currentPrice || item.value
         });
+        
         await listing.save();
-
+        
+        // Mark item as listed
+        item.isListed = true;
+        await userInventory.save();
+        
         // Emit real-time update
-        if (req.io) {
-            req.io.emit('listingCreated', {
-                listing: {
-                    ...listing.toObject(),
-                    seller: { username: req.user.username }
-                }
-            });
-        }
-
+        const io = req.app.get('io');
+        io.emit('marketplace-listing-created', {
+            listingId: listing._id,
+            itemName: item.itemName,
+            listPrice: listPrice,
+            seller: req.user.username
+        });
+        
         res.json({
             success: true,
-            listing: listing.toObject(),
-            message: 'Item listed successfully'
+            message: 'Item listed successfully!',
+            listing: listing
         });
+        
     } catch (error) {
-        console.error('Error creating listing:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create listing'
-        });
+        console.error('Error creating marketplace listing:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Purchase item from marketplace
-router.post('/purchase/:listingId', authenticateToken, async (req, res) => {
+// Purchase an item from marketplace
+router.post('/purchase/:listingId', auth, async (req, res) => {
     try {
-        const listing = await MarketplaceListing.findById(req.params.listingId)
-            .populate('item')
-            .populate('seller', 'username');
-
-        if (!listing || listing.status !== 'active') {
-            return res.status(404).json({
-                success: false,
-                message: 'Listing not found or no longer active'
-            });
+        const listing = await MarketplaceListing.findById(req.params.listingId);
+        if (!listing) {
+            return res.status(404).json({ success: false, message: 'Listing not found' });
         }
-
-        // Check if user has enough balance
+        
+        if (listing.status !== 'active') {
+            return res.status(400).json({ success: false, message: 'Listing is not active' });
+        }
+        
+        if (listing.sellerId.toString() === req.user.id) {
+            return res.status(400).json({ success: false, message: 'Cannot purchase your own item' });
+        }
+        
         const buyer = await User.findById(req.user.id);
-        if (buyer.balance < listing.price) {
-            return res.status(400).json({
-                success: false,
-                message: 'Insufficient balance'
-            });
+        const seller = await User.findById(listing.sellerId);
+        
+        if (!buyer || !seller) {
+            return res.status(404).json({ success: false, message: 'User not found' });
         }
-
-        // Process transaction
-        buyer.balance -= listing.price;
+        
+        // Check if buyer has enough balance
+        if (buyer.balance < listing.listPrice) {
+            return res.status(400).json({ success: false, message: 'Insufficient balance' });
+        }
+        
+        // Transfer money
+        buyer.balance -= listing.listPrice;
+        seller.balance += listing.listPrice;
+        
+        // Update balance histories
+        buyer.balanceHistory.push(buyer.balance);
+        seller.balanceHistory.push(seller.balance);
+        
         await buyer.save();
-
-        const seller = await User.findById(listing.seller);
-        seller.balance += listing.price;
         await seller.save();
-
-        // Add item to buyer's inventory
-        let buyerInventory = await Inventory.findOne({ user: req.user.id });
-        if (!buyerInventory) {
-            buyerInventory = new Inventory({ user: req.user.id });
+        
+        // Transfer item
+        const sellerInventory = await UserInventory.findOne({ userId: listing.sellerId });
+        const buyerInventory = await UserInventory.findOne({ userId: req.user.id }) || new UserInventory({ userId: req.user.id });
+        
+        const item = sellerInventory.items.find(item => item._id.toString() === listing.itemId.toString());
+        if (item) {
+            // Add item to buyer's inventory
+            await buyerInventory.addItem({
+                name: item.itemName,
+                caseSource: item.caseSource,
+                value: item.value,
+                isLimited: item.isLimited,
+                image: item.image,
+                rarity: item.rarity
+            });
+            
+            // Remove item from seller's inventory
+            await sellerInventory.removeItem(listing.itemId.toString());
         }
-        buyerInventory.addItem(listing.item._id, 1, 'marketplace', { 
-            listingId: listing._id 
-        });
-        await buyerInventory.save();
-
-        // Update listing status
-        listing.status = 'sold';
-        listing.buyer = req.user.id;
-        listing.soldAt = new Date();
-        await listing.save();
-
+        
+        // Complete the purchase
+        await listing.purchase(req.user.id, listing.listPrice);
+        
         // Emit real-time updates
-        if (req.io) {
-            req.io.emit('listingSold', {
-                listingId: listing._id,
-                item: listing.item.name,
-                price: listing.price,
-                buyer: buyer.username,
-                seller: seller.username
-            });
-
-            // Send personal notifications
-            req.io.to(`user_${seller._id}`).emit('itemSold', {
-                item: listing.item.name,
-                price: listing.price,
-                newBalance: seller.balance
-            });
-
-            req.io.to(`user_${buyer._id}`).emit('itemPurchased', {
-                item: listing.item.name,
-                price: listing.price,
-                newBalance: buyer.balance
-            });
-        }
-
-        res.json({
-            success: true,
-            message: 'Item purchased successfully',
+        const io = req.app.get('io');
+        io.to(req.user.id).emit('marketplace-purchase', {
+            itemName: listing.itemName,
+            price: listing.listPrice,
             newBalance: buyer.balance
         });
+        
+        io.to(listing.sellerId.toString()).emit('marketplace-sale', {
+            itemName: listing.itemName,
+            price: listing.listPrice,
+            buyer: buyer.username,
+            newBalance: seller.balance
+        });
+        
+        io.emit('marketplace-transaction', {
+            itemName: listing.itemName,
+            price: listing.listPrice,
+            buyer: buyer.username,
+            seller: seller.username
+        });
+        
+        res.json({
+            success: true,
+            message: 'Item purchased successfully!',
+            purchase: {
+                itemName: listing.itemName,
+                price: listing.listPrice,
+                newBalance: buyer.balance
+            }
+        });
+        
     } catch (error) {
         console.error('Error purchasing item:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to purchase item'
-        });
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Cancel listing
-router.post('/cancel/:listingId', authenticateToken, async (req, res) => {
+// Cancel a marketplace listing
+router.post('/cancel/:listingId', auth, async (req, res) => {
     try {
-        const listing = await MarketplaceListing.findById(req.params.listingId)
-            .populate('item');
-
-        if (!listing || listing.status !== 'active') {
-            return res.status(404).json({
-                success: false,
-                message: 'Listing not found or no longer active'
-            });
+        const listing = await MarketplaceListing.findById(req.params.listingId);
+        if (!listing) {
+            return res.status(404).json({ success: false, message: 'Listing not found' });
         }
-
-        if (listing.seller.toString() !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: 'Only the seller can cancel this listing'
-            });
+        
+        if (listing.sellerId.toString() !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Not authorized to cancel this listing' });
         }
-
-        // Return item to seller's inventory
-        let sellerInventory = await Inventory.findOne({ user: req.user.id });
-        if (!sellerInventory) {
-            sellerInventory = new Inventory({ user: req.user.id });
+        
+        if (listing.status !== 'active') {
+            return res.status(400).json({ success: false, message: 'Listing is not active' });
         }
-        sellerInventory.addItem(listing.item._id, 1, 'marketplace_return', { 
-            listingId: listing._id 
-        });
-        await sellerInventory.save();
-
-        // Update listing status
-        listing.status = 'cancelled';
-        await listing.save();
-
-        // Emit real-time update
-        if (req.io) {
-            req.io.emit('listingCancelled', {
-                listingId: listing._id,
-                item: listing.item.name
-            });
+        
+        // Cancel the listing
+        await listing.cancel();
+        
+        // Unmark item as listed
+        const userInventory = await UserInventory.findOne({ userId: req.user.id });
+        if (userInventory) {
+            const item = userInventory.items.find(item => item._id.toString() === listing.itemId.toString());
+            if (item) {
+                item.isListed = false;
+                await userInventory.save();
+            }
         }
-
+        
         res.json({
             success: true,
-            message: 'Listing cancelled successfully'
+            message: 'Listing cancelled successfully!'
         });
+        
     } catch (error) {
         console.error('Error cancelling listing:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to cancel listing'
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Get price history for an item
+router.get('/price-history/:itemName', async (req, res) => {
+    try {
+        const { itemName } = req.params;
+        const { days = 30 } = req.query;
+        
+        const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        
+        const sales = await MarketplaceListing.find({
+            itemName: itemName,
+            status: 'sold',
+            soldAt: { $gte: daysAgo }
+        }).sort({ soldAt: 1 });
+        
+        const priceHistory = sales.map(sale => ({
+            price: sale.soldPrice,
+            date: sale.soldAt
+        }));
+        
+        // Calculate current market price
+        const currentMarketPrice = sales.length > 0 
+            ? sales.reduce((sum, sale) => sum + sale.soldPrice, 0) / sales.length 
+            : 0;
+        
+        res.json({
+            success: true,
+            itemName: itemName,
+            priceHistory: priceHistory,
+            currentMarketPrice: Math.round(currentMarketPrice * 100) / 100,
+            totalSales: sales.length,
+            dateRange: {
+                from: daysAgo,
+                to: new Date()
+            }
         });
+        
+    } catch (error) {
+        console.error('Error fetching price history:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Get user's marketplace listings
+router.get('/my-listings', auth, async (req, res) => {
+    try {
+        const listings = await MarketplaceListing.find({ sellerId: req.user.id })
+            .sort({ createdAt: -1 });
+        
+        res.json({ success: true, listings });
+        
+    } catch (error) {
+        console.error('Error fetching user listings:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Get marketplace statistics
+router.get('/stats', async (req, res) => {
+    try {
+        const now = new Date();
+        const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        
+        const [
+            totalListings,
+            activeListings,
+            soldLast24h,
+            soldLast7d,
+            totalVolume24h,
+            totalVolume7d
+        ] = await Promise.all([
+            MarketplaceListing.countDocuments(),
+            MarketplaceListing.countDocuments({ status: 'active' }),
+            MarketplaceListing.countDocuments({ 
+                status: 'sold', 
+                soldAt: { $gte: last24Hours } 
+            }),
+            MarketplaceListing.countDocuments({ 
+                status: 'sold', 
+                soldAt: { $gte: last7Days } 
+            }),
+            MarketplaceListing.aggregate([
+                { $match: { status: 'sold', soldAt: { $gte: last24Hours } } },
+                { $group: { _id: null, total: { $sum: '$soldPrice' } } }
+            ]),
+            MarketplaceListing.aggregate([
+                { $match: { status: 'sold', soldAt: { $gte: last7Days } } },
+                { $group: { _id: null, total: { $sum: '$soldPrice' } } }
+            ])
+        ]);
+        
+        res.json({
+            success: true,
+            stats: {
+                totalListings,
+                activeListings,
+                soldLast24h,
+                soldLast7d,
+                totalVolume24h: totalVolume24h[0]?.total || 0,
+                totalVolume7d: totalVolume7d[0]?.total || 0
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching marketplace stats:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 

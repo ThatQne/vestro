@@ -1,322 +1,331 @@
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');
+const auth = require('../middleware/auth');
 const Case = require('../models/Case');
-const Item = require('../models/Item');
-const Inventory = require('../models/Inventory');
 const User = require('../models/User');
-const { authenticateToken } = require('../middleware/auth');
+const UserInventory = require('../models/UserInventory');
+const CaseBattle = require('../models/CaseBattle');
+const { v4: uuidv4 } = require('uuid');
 
-// Middleware to attach io to request
-router.use((req, res, next) => {
-    req.io = req.app.get('io');
-    next();
-});
-
-// Get all active cases
+// Get all available cases
 router.get('/', async (req, res) => {
     try {
-        const cases = await Case.find({ isActive: true })
-            .populate('items.item')
-            .sort({ createdAt: -1 });
-        
-        const casesWithExpectedValue = await Promise.all(
-            cases.map(async (caseItem) => {
-                const expectedValue = await caseItem.getExpectedValue();
-                return {
-                    ...caseItem.toObject(),
-                    expectedValue: expectedValue
-                };
-            })
-        );
-        
-        res.json({
-            success: true,
-            cases: casesWithExpectedValue
-        });
+        const cases = await Case.find({ isActive: true }).sort({ price: 1 });
+        res.json({ success: true, cases });
     } catch (error) {
         console.error('Error fetching cases:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch cases'
-        });
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Get case by ID with items
+// Get case by ID
 router.get('/:id', async (req, res) => {
     try {
-        const caseItem = await Case.findById(req.params.id)
-            .populate('items.item');
-        
+        const caseItem = await Case.findById(req.params.id);
         if (!caseItem) {
-            return res.status(404).json({
-                success: false,
-                message: 'Case not found'
-            });
+            return res.status(404).json({ success: false, message: 'Case not found' });
         }
-        
-        const expectedValue = await caseItem.getExpectedValue();
-        const itemsByRarity = await caseItem.getItemsByRarity();
-        
-        res.json({
-            success: true,
-            case: {
-                ...caseItem.toObject(),
-                expectedValue: expectedValue,
-                itemsByRarity: itemsByRarity
-            }
-        });
+        res.json({ success: true, case: caseItem });
     } catch (error) {
         console.error('Error fetching case:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch case'
-        });
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
 // Open a case
-router.post('/:id/open', authenticateToken, async (req, res) => {
+router.post('/open/:id', auth, async (req, res) => {
     try {
-        const caseItem = await Case.findById(req.params.id)
-            .populate('items.item');
-        
+        const caseItem = await Case.findById(req.params.id);
         if (!caseItem) {
-            return res.status(404).json({
-                success: false,
-                message: 'Case not found'
-            });
+            return res.status(404).json({ success: false, message: 'Case not found' });
         }
-        
+
         if (!caseItem.isActive) {
-            return res.status(400).json({
-                success: false,
-                message: 'Case is not active'
-            });
+            return res.status(400).json({ success: false, message: 'Case is not available' });
         }
-        
-        // Check if user has enough balance
+
         const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Check if user has enough balance
         if (user.balance < caseItem.price) {
-            return res.status(400).json({
-                success: false,
-                message: 'Insufficient balance'
-            });
+            return res.status(400).json({ success: false, message: 'Insufficient balance' });
         }
-        
-        // Open the case
-        const wonItemId = caseItem.openCase();
-        const wonItem = await Item.findById(wonItemId);
-        
-        if (!wonItem) {
-            return res.status(500).json({
-                success: false,
-                message: 'Error processing case opening'
-            });
-        }
+
+        // Get random item from case
+        const wonItem = caseItem.getRandomItem();
         
         // Deduct case price from user balance
         user.balance -= caseItem.price;
+        user.balanceHistory.push(user.balance);
         await user.save();
-        
-        // Add item to user's inventory
-        let inventory = await Inventory.findOne({ user: req.user.id });
-        if (!inventory) {
-            inventory = new Inventory({ user: req.user.id });
+
+        // Add item to user inventory
+        let userInventory = await UserInventory.findOne({ userId: req.user.id });
+        if (!userInventory) {
+            userInventory = new UserInventory({ userId: req.user.id });
         }
-        
-        inventory.addItem(wonItemId, 1, 'case', { caseId: caseItem._id });
-        await inventory.save();
-        
-        // Update case statistics
+
+        await userInventory.addItem({
+            name: wonItem.name,
+            caseSource: caseItem.name,
+            value: wonItem.value,
+            isLimited: wonItem.isLimited,
+            image: wonItem.image,
+            rarity: wonItem.rarity
+        });
+
+        // Update case opening statistics
+        caseItem.totalOpenings += 1;
         await caseItem.save();
-        
-        // Emit real-time update
-        if (req.io) {
-            req.io.to(`user_${req.user.id}`).emit('caseOpened', {
-                case: caseItem.name,
-                item: wonItem,
-                newBalance: user.balance
-            });
-        }
-        
+
+        // Emit real-time update to user
+        const io = req.app.get('io');
+        io.to(req.user.id).emit('case-opened', {
+            caseId: caseItem._id,
+            caseName: caseItem.name,
+            item: wonItem,
+            newBalance: user.balance
+        });
+
         res.json({
             success: true,
+            message: 'Case opened successfully!',
             item: wonItem,
-            newBalance: user.balance,
-            message: `You won ${wonItem.name}!`
+            caseName: caseItem.name,
+            newBalance: user.balance
         });
+
     } catch (error) {
         console.error('Error opening case:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to open case'
-        });
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Get user's inventory
-router.get('/inventory/items', authenticateToken, async (req, res) => {
+// Create a case battle
+router.post('/battle/create', auth, async (req, res) => {
     try {
-        let inventory = await Inventory.findOne({ user: req.user.id })
-            .populate('items.item');
-        
-        if (!inventory) {
-            inventory = new Inventory({ user: req.user.id });
-            await inventory.save();
+        const { cases, mode, isPrivate = false } = req.body;
+
+        if (!cases || !Array.isArray(cases) || cases.length === 0) {
+            return res.status(400).json({ success: false, message: 'Cases are required' });
         }
-        
-        // Initialize empty structures for new inventories
-        const itemsByCategory = {};
-        const itemsByRarity = {};
-        
-        if (inventory.items && inventory.items.length > 0) {
-            inventory.items.forEach(invItem => {
-                if (!invItem.item) return; // Skip if item reference is invalid
-                
-                const category = invItem.item.category;
-                const rarity = invItem.item.rarity;
-                
-                if (!itemsByCategory[category]) {
-                    itemsByCategory[category] = [];
-                }
-                if (!itemsByRarity[rarity]) {
-                    itemsByRarity[rarity] = [];
-                }
-                
-                const itemData = {
-                    ...invItem.toObject(),
-                    sellPrice: invItem.item.getSellPrice(),
-                    rarityColor: invItem.item.getRarityColor()
-                };
-                
-                itemsByCategory[category].push(itemData);
-                itemsByRarity[rarity].push(itemData);
-            });
+
+        if (!mode || !['1v1', '2v2', '1v1v1', '1v1v1v1'].includes(mode)) {
+            return res.status(400).json({ success: false, message: 'Invalid battle mode' });
         }
-        
-        const totalValue = await inventory.calculateTotalValue();
-        const limitedItems = await inventory.getLimitedItems();
-        
-        res.json({
-            success: true,
-            inventory: {
-                items: inventory.items || [],
-                totalValue: totalValue || 0,
-                itemsByCategory: itemsByCategory,
-                itemsByRarity: itemsByRarity,
-                limitedItems: limitedItems || []
+
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Validate and calculate total cost
+        let totalCost = 0;
+        const battleCases = [];
+
+        for (const caseData of cases) {
+            const caseItem = await Case.findById(caseData.caseId);
+            if (!caseItem || !caseItem.isActive) {
+                return res.status(400).json({ success: false, message: `Case ${caseData.caseId} not found or inactive` });
             }
-        });
-    } catch (error) {
-        console.error('Error fetching inventory:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch inventory'
-        });
-    }
-});
 
-// Sell item from inventory
-router.post('/inventory/sell/:itemId', authenticateToken, async (req, res) => {
-    try {
-        const { quantity = 1 } = req.body;
-        const itemId = req.params.itemId;
-        
-        const inventory = await Inventory.findOne({ user: req.user.id })
-            .populate('items.item');
-        
-        if (!inventory) {
-            return res.status(404).json({
-                success: false,
-                message: 'Inventory not found'
+            const quantity = caseData.quantity || 1;
+            totalCost += caseItem.price * quantity;
+
+            battleCases.push({
+                caseId: caseItem._id,
+                caseName: caseItem.name,
+                casePrice: caseItem.price,
+                quantity: quantity
             });
         }
-        
-        const inventoryItem = inventory.items.find(invItem => 
-            invItem.item._id.toString() === itemId
-        );
-        
-        if (!inventoryItem) {
-            return res.status(404).json({
-                success: false,
-                message: 'Item not found in inventory'
-            });
+
+        // Check if user has enough balance
+        if (user.balance < totalCost) {
+            return res.status(400).json({ success: false, message: 'Insufficient balance' });
         }
-        
-        if (inventoryItem.quantity < quantity) {
-            return res.status(400).json({
-                success: false,
-                message: 'Insufficient quantity'
-            });
-        }
-        
-        const sellPrice = inventoryItem.item.getSellPrice();
-        const totalSellValue = sellPrice * quantity;
-        
-        // Remove item from inventory
-        inventory.removeItem(itemId, quantity);
-        await inventory.save();
-        
-        // Add money to user balance
-        const user = await User.findById(req.user.id);
-        user.balance += totalSellValue;
+
+        // Determine max players based on mode
+        const maxPlayers = mode === '1v1' ? 2 : mode === '2v2' ? 4 : mode === '1v1v1' ? 3 : 4;
+
+        // Create battle
+        const battle = new CaseBattle({
+            battleId: uuidv4(),
+            mode: mode,
+            maxPlayers: maxPlayers,
+            cases: battleCases,
+            totalCost: totalCost,
+            isPrivate: isPrivate
+        });
+
+        await battle.save();
+
+        // Add creator to battle
+        await battle.addPlayer(req.user.id, user.username);
+
+        // Deduct cost from user balance
+        user.balance -= totalCost;
+        user.balanceHistory.push(user.balance);
         await user.save();
-        
-        // Emit real-time update
-        if (req.io) {
-            req.io.to(`user_${req.user.id}`).emit('itemSold', {
-                item: inventoryItem.item.name,
-                quantity: quantity,
-                sellPrice: totalSellValue,
-                newBalance: user.balance
-            });
+
+        // Emit battle created event
+        const io = req.app.get('io');
+        if (!isPrivate) {
+            io.emit('battle-created', battle.getSummary());
         }
-        
+
         res.json({
             success: true,
-            soldPrice: totalSellValue,
-            newBalance: user.balance,
-            message: `Sold ${quantity}x ${inventoryItem.item.name} for $${totalSellValue.toFixed(2)}`
+            message: 'Battle created successfully!',
+            battle: battle.getSummary(),
+            newBalance: user.balance
         });
+
     } catch (error) {
-        console.error('Error selling item:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to sell item'
-        });
+        console.error('Error creating battle:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
-// Create sample cases (admin only)
-router.post('/create-samples', authenticateToken, async (req, res) => {
+// Join a case battle
+router.post('/battle/join/:battleId', auth, async (req, res) => {
     try {
-        // Check if user is admin
+        const battle = await CaseBattle.findOne({ battleId: req.params.battleId });
+        if (!battle) {
+            return res.status(404).json({ success: false, message: 'Battle not found' });
+        }
+
+        if (battle.status !== 'waiting') {
+            return res.status(400).json({ success: false, message: 'Battle is not available to join' });
+        }
+
+        if (battle.isExpired()) {
+            battle.status = 'cancelled';
+            await battle.save();
+            return res.status(400).json({ success: false, message: 'Battle has expired' });
+        }
+
         const user = await User.findById(req.user.id);
-        if (!user.isAdmin) {
-            return res.status(403).json({
-                success: false,
-                message: 'Unauthorized'
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Check if user has enough balance
+        if (user.balance < battle.totalCost) {
+            return res.status(400).json({ success: false, message: 'Insufficient balance' });
+        }
+
+        // Add player to battle
+        await battle.addPlayer(req.user.id, user.username);
+
+        // Deduct cost from user balance
+        user.balance -= battle.totalCost;
+        user.balanceHistory.push(user.balance);
+        await user.save();
+
+        // Check if battle is full and start it
+        if (battle.players.length >= battle.maxPlayers) {
+            await battle.start();
+            
+            // Process all case openings for all players
+            for (const player of battle.players) {
+                for (const caseData of battle.cases) {
+                    const caseItem = await Case.findById(caseData.caseId);
+                    
+                    for (let i = 0; i < caseData.quantity; i++) {
+                        const wonItem = caseItem.getRandomItem();
+                        
+                        // Find player in battle and add item
+                        const battlePlayer = battle.players.find(p => p.userId.toString() === player.userId.toString());
+                        battlePlayer.items.push({
+                            itemName: wonItem.name,
+                            itemValue: wonItem.value,
+                            itemImage: wonItem.image,
+                            itemRarity: wonItem.rarity,
+                            caseSource: caseItem.name,
+                            isLimited: wonItem.isLimited
+                        });
+
+                        // Add to user inventory
+                        let userInventory = await UserInventory.findOne({ userId: player.userId });
+                        if (!userInventory) {
+                            userInventory = new UserInventory({ userId: player.userId });
+                        }
+
+                        await userInventory.addItem({
+                            name: wonItem.name,
+                            caseSource: caseItem.name,
+                            value: wonItem.value,
+                            isLimited: wonItem.isLimited,
+                            image: wonItem.image,
+                            rarity: wonItem.rarity
+                        });
+                    }
+                }
+            }
+
+            await battle.complete();
+            
+            // Emit battle completed event
+            const io = req.app.get('io');
+            io.emit('battle-completed', battle);
+            
+            // Notify all players
+            battle.players.forEach(player => {
+                io.to(player.userId.toString()).emit('battle-result', {
+                    battleId: battle.battleId,
+                    won: player.isWinner,
+                    items: player.items,
+                    totalValue: player.totalValue
+                });
             });
         }
 
-        // Delete existing cases and items
-        await Case.deleteMany({});
-        await Item.deleteMany({});
-
-        // Create sample cases
-        await Case.createSampleCases();
-
         res.json({
             success: true,
-            message: 'Sample cases created successfully'
+            message: 'Joined battle successfully!',
+            battle: battle.getSummary(),
+            newBalance: user.balance
         });
+
     } catch (error) {
-        console.error('Error creating sample cases:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create sample cases'
-        });
+        console.error('Error joining battle:', error);
+        res.status(500).json({ success: false, message: error.message || 'Server error' });
+    }
+});
+
+// Get active battles
+router.get('/battles/active', async (req, res) => {
+    try {
+        const battles = await CaseBattle.find({ 
+            status: 'waiting',
+            isPrivate: false,
+            expiresAt: { $gt: new Date() }
+        }).sort({ createdAt: -1 }).limit(20);
+
+        res.json({ success: true, battles: battles.map(b => b.getSummary()) });
+    } catch (error) {
+        console.error('Error fetching battles:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Get battle details
+router.get('/battle/:battleId', async (req, res) => {
+    try {
+        const battle = await CaseBattle.findOne({ battleId: req.params.battleId });
+        if (!battle) {
+            return res.status(404).json({ success: false, message: 'Battle not found' });
+        }
+
+        res.json({ success: true, battle });
+    } catch (error) {
+        console.error('Error fetching battle:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 

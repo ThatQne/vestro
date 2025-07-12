@@ -16,9 +16,9 @@ const gameRoutes = require('./routes/games');
 const randomRoutes = require('./routes/random');
 const badgeRoutes = require('./routes/badges');
 const leaderboardRoutes = require('./routes/leaderboard');
-const caseRoutes = require('./routes/cases');
+const casesRoutes = require('./routes/cases');
+const inventoryRoutes = require('./routes/inventory');
 const marketplaceRoutes = require('./routes/marketplace');
-const caseBattleRoutes = require('./routes/case-battles');
 
 const app = express();
 const server = http.createServer(app);
@@ -98,9 +98,9 @@ if (process.env.NODE_ENV === 'development') {
     app.use('/api/random', randomRoutes);
     app.use('/api/badges', badgeRoutes);
     app.use('/api/leaderboard', leaderboardRoutes);
-    app.use('/api/cases', caseRoutes);
+    app.use('/api/cases', casesRoutes);
+    app.use('/api/inventory', inventoryRoutes);
     app.use('/api/marketplace', marketplaceRoutes);
-    app.use('/api/case-battles', caseBattleRoutes);
 
     // Socket.IO connection handling
     io.on('connection', (socket) => {
