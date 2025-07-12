@@ -24,6 +24,7 @@ function authenticateToken(req, res, next) {
         }
 
         console.log('Auth middleware - User authenticated:', user.id); // Debug log
+        console.log('Auth middleware - Full user object:', user); // Debug log
         req.user = user;
         next();
     });

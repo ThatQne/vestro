@@ -8,6 +8,23 @@ const UserInventory = require('../models/UserInventory');
 const CaseBattle = require('../models/CaseBattle');
 const { v4: uuidv4 } = require('uuid');
 
+console.log('Cases routes loaded, User model:', User ? 'Loaded' : 'Not loaded'); // Debug log
+
+// Test route to check user existence
+router.get('/test-user/:userId', async (req, res) => {
+    try {
+        const user = await User.findById(req.params.userId);
+        res.json({ 
+            success: true, 
+            userExists: !!user,
+            user: user ? { id: user._id, username: user.username, balance: user.balance } : null
+        });
+    } catch (error) {
+        console.error('Error testing user:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 // Get all available cases
 router.get('/', async (req, res) => {
     try {
@@ -37,8 +54,11 @@ router.get('/:id', async (req, res) => {
 router.post('/open/:id', auth, async (req, res) => {
     try {
         console.log('Case opening request for case:', req.params.id, 'by user:', req.user.id); // Debug log
+        console.log('User object from token:', req.user); // Debug log
+        
         const caseItem = await Case.findById(req.params.id);
         if (!caseItem) {
+            console.log('Case not found:', req.params.id); // Debug log
             return res.status(404).json({ success: false, message: 'Case not found' });
         }
 
@@ -46,8 +66,11 @@ router.post('/open/:id', auth, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Case is not available' });
         }
 
+        console.log('Looking for user with ID:', req.user.id); // Debug log
         const user = await User.findById(req.user.id);
+        console.log('User found:', user ? 'Yes' : 'No'); // Debug log
         if (!user) {
+            console.log('User not found in database for ID:', req.user.id); // Debug log
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 

@@ -6029,14 +6029,17 @@ function displayCases(cases) {
         // Add click event listeners
         const openBtn = caseCard.querySelector('.case-action-btn.primary');
         
-        // Make entire card clickable for details
+        // Make entire card clickable for details (but not buttons)
         caseCard.addEventListener('click', (e) => {
-            if (!e.target.closest('.case-action-btn')) {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('Case card clicked for details:', caseItem._id);
-                showCaseDetails(caseItem);
+            // Don't trigger if clicking on buttons
+            if (e.target.closest('.case-action-btn')) {
+                return;
             }
+            
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Case card clicked for details:', caseItem._id);
+            showCaseDetails(caseItem);
         });
         
         if (openBtn) {
@@ -6400,20 +6403,7 @@ async function loadInventory() {
         const token = localStorage.getItem('token');
         console.log('Loading inventory with token:', token ? 'Token exists' : 'No token'); // Debug log
         
-        const rarityFilter = document.getElementById('rarity-filter')?.value || '';
-        const limitedFilter = document.getElementById('limited-filter')?.value || '';
-        
-        let url = `${API_BASE_URL}/api/inventory`;
-        const params = new URLSearchParams();
-        
-        if (rarityFilter) params.append('rarity', rarityFilter);
-        if (limitedFilter) params.append('limited', limitedFilter);
-        
-        if (params.toString()) {
-            url += `?${params.toString()}`;
-        }
-        
-        const response = await fetch(url, {
+        const response = await fetch(`${API_BASE_URL}/api/inventory`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -6429,7 +6419,9 @@ async function loadInventory() {
         updateInventoryStats(data.inventory);
     } catch (error) {
         console.error('Error loading inventory:', error);
-        showNotification('Error loading inventory', 'error');
+        // Show empty inventory instead of error
+        displayInventory({ items: [] });
+        updateInventoryStats({ totalItems: 0, totalValue: 0, limitedItems: 0 });
     }
 }
 
@@ -6440,7 +6432,7 @@ function displayInventory(inventory) {
     grid.innerHTML = '';
     
     if (!inventory || !inventory.items || inventory.items.length === 0) {
-        grid.innerHTML = '<div class="no-items">No items in inventory</div>';
+        grid.innerHTML = '<div class="no-items">No items in inventory yet. Open some cases to get started!</div>';
         return;
     }
     

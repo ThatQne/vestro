@@ -5300,6 +5300,7 @@ input, textarea {
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 51, 234, 0.1) 100%);
     opacity: 0;
     transition: opacity 0.3s ease;
+    z-index: 1;
 }
 
 .case-card:hover::before {
@@ -5470,6 +5471,8 @@ input, textarea {
 .case-actions {
     display: flex;
     gap: 0.5rem;
+    position: relative;
+    z-index: 10;
 }
 
 .case-action-btn {
@@ -5480,6 +5483,8 @@ input, textarea {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
+    position: relative;
+    z-index: 15;
 }
 
 .case-action-btn.primary {
@@ -5504,15 +5509,48 @@ input, textarea {
 /* Case Details Modal */
 .case-details-content {
     max-width: 800px;
-    max-height: 80vh;
-    overflow-y: auto;
+    width: 100%;
+    max-height: 90vh;
+    background: rgba(15, 15, 15, 0.95);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .case-details-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     margin-bottom: 1.5rem;
+}
+
+.case-details-header h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #f1f1f1;
+}
+
+.case-details-body {
+    padding: 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.case-details-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.case-details-body::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.case-details-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.case-details-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
 }
 
 .case-details-info {
@@ -5523,9 +5561,10 @@ input, textarea {
 }
 
 .case-details-stat {
-    background: rgba(55, 65, 81, 0.4);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 12px;
     padding: 1rem;
-    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     text-align: center;
 }
 
@@ -5548,9 +5587,9 @@ input, textarea {
 }
 
 .case-detail-item {
-    background: rgba(55, 65, 81, 0.4);
+    background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 1rem;
     transition: all 0.3s ease;
     position: relative;
@@ -5945,7 +5984,7 @@ input, textarea {
 }
 
 .modal-content {
-    background: rgba(31, 41, 55, 0.95);
+    background: rgba(15, 15, 15, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 16px;
     max-width: 90vw;

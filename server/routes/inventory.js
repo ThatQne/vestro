@@ -4,10 +4,21 @@ const { authenticateToken: auth } = require('../middleware/auth');
 const UserInventory = require('../models/UserInventory');
 const User = require('../models/User');
 
+console.log('Inventory routes loaded, User model:', User ? 'Loaded' : 'Not loaded'); // Debug log
+
 // Get user's inventory
 router.get('/', auth, async (req, res) => {
     try {
         console.log('Inventory request for user:', req.user.id); // Debug log
+        console.log('User object from token:', req.user); // Debug log
+        
+        // First check if user exists
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            console.log('User not found in database for inventory request:', req.user.id); // Debug log
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
         let userInventory = await UserInventory.findOne({ userId: req.user.id });
         if (!userInventory) {
             console.log('Creating new inventory for user:', req.user.id); // Debug log
