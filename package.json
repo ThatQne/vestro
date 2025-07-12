@@ -22,7 +22,8 @@
     "http-proxy-middleware": "^2.0.6",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^7.6.3",
-    "socket.io": "^4.7.2"
+    "socket.io": "^4.7.2",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "browser-sync": "^3.0.4",
