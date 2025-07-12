@@ -5322,8 +5322,6 @@ function populatePlayerDetailModal(player) {
     document.getElementById('player-chart-wins').textContent = wins;
     document.getElementById('player-chart-losses').textContent = losses;
     
-    // Draw player balance chart
-    console.log('About to draw chart with balanceHistory:', player.balanceHistory);
     drawPlayerBalanceChart(player.balanceHistory || []);
     
     // Update badges
