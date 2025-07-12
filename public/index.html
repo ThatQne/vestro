@@ -924,18 +924,15 @@
         <div id="leaderboard-page" class="page-content hidden">
             <div class="page-header">
                 <h1>Leaderboard</h1>
-                <p>Top players and live game activity</p>
+                <p>Top players and rankings</p>
             </div>
             
             <div class="leaderboard-container">
-                <div class="leaderboard-main">
+                <div class="leaderboard-main leaderboard-full-width">
                     <!-- Search Section -->
                     <div class="search-section">
                         <div class="search-box">
                             <input type="text" id="player-search" placeholder="Search player by username..." class="search-input">
-                            <button id="search-btn" class="search-btn">
-                                <i data-lucide="search"></i>
-                            </button>
                         </div>
                     </div>
                     
@@ -1007,20 +1004,7 @@
                     </div>
                 </div>
                 
-                <!-- Live Games Feed -->
-                <div class="live-games-section">
-                    <div class="live-games-header">
-                        <h3>Live Games</h3>
-                        <div class="live-indicator">
-                            <div class="live-dot"></div>
-                            <span>Live</span>
-                        </div>
-                    </div>
-                    
-                    <div class="live-games-feed" id="live-games-feed">
-                        <!-- Live games will be populated here -->
-                    </div>
-                </div>
+
             </div>
             
             <!-- Player Detail Modal -->
@@ -1077,6 +1061,29 @@
                                     <div class="stat-label">Best Streak</div>
                                     <div class="stat-value" id="player-detail-best-streak">0</div>
                                 </div>
+                            </div>
+                        </div>
+                        
+                        <div class="player-detail-chart">
+                            <div class="chart-header">
+                                <h3 class="chart-title">Balance History</h3>
+                                <div class="chart-stats">
+                                    <div class="chart-stat">
+                                        <div class="chart-stat-dot wins"></div>
+                                        <span class="chart-stat-label">Wins:</span>
+                                        <span class="chart-stat-value" id="player-chart-wins">0</span>
+                                    </div>
+                                    <div class="chart-stat">
+                                        <div class="chart-stat-dot losses"></div>
+                                        <span class="chart-stat-label">Losses:</span>
+                                        <span class="chart-stat-value" id="player-chart-losses">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <div class="chart-grid"></div>
+                                <canvas id="player-balance-chart" width="400" height="200"></canvas>
+                                <div class="chart-points" id="player-chart-points"></div>
                             </div>
                         </div>
                         

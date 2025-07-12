@@ -78,7 +78,7 @@ router.get('/search', authenticateToken, async (req, res) => {
             bestWinStreak: 1,
             createdAt: 1
         })
-        .limit(20)
+        .sort({ balance: -1 })
         .lean();
 
         // Get all players sorted by balance to calculate ranks
@@ -137,6 +137,13 @@ router.get('/profile/:username', authenticateToken, async (req, res) => {
             });
         }
 
+        // Get player's game history for the chart
+        const GameHistory = require('../models/GameHistory');
+        const gameHistory = await GameHistory.find({ userId: player._id })
+            .sort({ timestamp: -1 })
+            .limit(100) // Limit to last 100 games for performance
+            .lean();
+
         // Get all players sorted by balance to calculate rank
         const allPlayers = await User.find({}, { _id: 1, balance: 1 })
             .sort({ balance: -1 })
@@ -184,6 +191,7 @@ router.get('/profile/:username', authenticateToken, async (req, res) => {
             losses: player.losses || 0,
             totalWagered: player.totalWagered || 0,
             badges: badges,
+            gameHistory: gameHistory, // Add game history for the chart
             createdAt: player.createdAt,
             lastLogin: player.lastLogin
         };

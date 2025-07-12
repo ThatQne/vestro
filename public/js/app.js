@@ -5041,25 +5041,14 @@ function initializeLeaderboard() {
     setupLeaderboardControls();
     loadLeaderboard();
     startLeaderboardTimer();
-    setupLiveGamesFeed();
 }
 
 // Setup leaderboard controls
 function setupLeaderboardControls() {
     const searchInput = document.getElementById('player-search');
-    const searchBtn = document.getElementById('search-btn');
     
     if (searchInput) {
         searchInput.addEventListener('input', debounce(handlePlayerSearch, 300));
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                handlePlayerSearch();
-            }
-        });
-    }
-    
-    if (searchBtn) {
-        searchBtn.addEventListener('click', handlePlayerSearch);
     }
 }
 
@@ -5156,14 +5145,25 @@ function updatePodium() {
 async function handlePlayerSearch() {
     const searchInput = document.getElementById('player-search');
     const query = searchInput.value.trim();
+    const tableHeader = document.querySelector('.table-header h3');
+    const podiumSection = document.querySelector('.podium-section');
+    const updateTimer = document.querySelector('.update-timer');
     
     if (!query) {
         leaderboardState.searchResults = null;
         updateLeaderboardDisplay();
+        tableHeader.textContent = 'Top 50 Players';
+        podiumSection.style.display = 'block';
+        updateTimer.style.display = 'block';
         return;
     }
     
     try {
+        // Show loading state
+        tableHeader.textContent = 'Searching...';
+        podiumSection.style.display = 'none';
+        updateTimer.style.display = 'none';
+        
         const response = await fetch(`${API_BASE_URL}/api/leaderboard/search?username=${encodeURIComponent(query)}`, {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -5174,12 +5174,25 @@ async function handlePlayerSearch() {
         
         if (data.success) {
             leaderboardState.searchResults = data.players;
+            tableHeader.textContent = `Search Results (${data.players.length} ${data.players.length === 1 ? 'player' : 'players'} found)`;
             updateSearchResults();
+            
+            // Stop leaderboard auto-update while showing search results
+            if (leaderboardState.updateTimer) {
+                clearInterval(leaderboardState.updateTimer);
+                leaderboardState.updateTimer = null;
+            }
         } else {
             console.error('Search failed:', data.message);
+            tableHeader.textContent = 'Search Results (0 players found)';
+            leaderboardState.searchResults = [];
+            updateSearchResults();
         }
     } catch (error) {
         console.error('Error searching players:', error);
+        tableHeader.textContent = 'Search Results (Error)';
+        leaderboardState.searchResults = [];
+        updateSearchResults();
     }
 }
 
@@ -5191,11 +5204,20 @@ function updateSearchResults() {
     tableBody.innerHTML = '';
     
     if (!leaderboardState.searchResults || leaderboardState.searchResults.length === 0) {
-        tableBody.innerHTML = '<div class="no-results">No players found</div>';
+        tableBody.innerHTML = `
+            <div class="no-results">
+                <i data-lucide="search-x" style="width: 48px; height: 48px; color: #6b7280; margin-bottom: 1rem;"></i>
+                <div>No players found</div>
+                <div style="font-size: 0.9rem; color: #6b7280; margin-top: 0.5rem;">Try a different search term</div>
+            </div>
+        `;
+        lucide.createIcons();
         return;
     }
     
-    leaderboardState.searchResults.forEach((player) => {
+    // Display search results directly
+    
+    leaderboardState.searchResults.forEach((player, index) => {
         const row = document.createElement('div');
         row.className = 'table-row search-result';
         row.onclick = () => showPlayerDetails(player);
@@ -5228,8 +5250,27 @@ function updateSearchResults() {
             </div>
         `;
         
+        // Add alternating background for better readability
+        if (index % 2 === 1) {
+            row.style.background = 'rgba(255, 255, 255, 0.02)';
+        }
+        
         tableBody.appendChild(row);
     });
+    
+    lucide.createIcons();
+}
+
+// Clear search and return to top players
+function clearSearch() {
+    const searchInput = document.getElementById('player-search');
+    searchInput.value = '';
+    leaderboardState.searchResults = null;
+    updateLeaderboardDisplay();
+    document.querySelector('.table-header h3').textContent = 'Top 50 Players';
+    document.querySelector('.podium-section').style.display = 'block';
+    document.querySelector('.update-timer').style.display = 'block';
+    startLeaderboardTimer();
 }
 
 // Show player details modal
@@ -5269,6 +5310,15 @@ function populatePlayerDetailModal(player) {
     document.getElementById('player-detail-best-win').textContent = `$${(player.bestWin || 0).toFixed(2)}`;
     document.getElementById('player-detail-best-streak').textContent = player.bestStreak || 0;
     
+    // Update chart stats
+    const wins = player.wins || 0;
+    const losses = player.losses || 0;
+    document.getElementById('player-chart-wins').textContent = wins;
+    document.getElementById('player-chart-losses').textContent = losses;
+    
+    // Draw player balance chart
+    drawPlayerBalanceChart(player.gameHistory || []);
+    
     // Update badges
     const badgesContainer = document.getElementById('player-detail-badges');
     badgesContainer.innerHTML = '';
@@ -5303,58 +5353,113 @@ function populatePlayerDetailModal(player) {
     }
 }
 
+// Draw player balance chart
+function drawPlayerBalanceChart(gameHistory) {
+    const canvas = document.getElementById('player-balance-chart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    
+    // Set canvas size
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    
+    const width = rect.width;
+    const height = rect.height;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    if (!gameHistory || gameHistory.length === 0) {
+        // Draw "No data" message
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '14px Outfit';
+        ctx.textAlign = 'center';
+        ctx.fillText('No game history available', width / 2, height / 2);
+        return;
+    }
+    
+    // Calculate balance progression
+    let balanceHistory = [];
+    let currentBalance = gameHistory[0].balanceBefore || 0;
+    balanceHistory.push({ balance: currentBalance, timestamp: gameHistory[0].timestamp });
+    
+    gameHistory.forEach(game => {
+        currentBalance = game.balanceAfter || currentBalance;
+        balanceHistory.push({ balance: currentBalance, timestamp: game.timestamp });
+    });
+    
+    if (balanceHistory.length < 2) return;
+    
+    // Calculate bounds
+    const minBalance = Math.min(...balanceHistory.map(h => h.balance));
+    const maxBalance = Math.max(...balanceHistory.map(h => h.balance));
+    const balanceRange = maxBalance - minBalance || 1;
+    
+    const padding = 20;
+    const chartWidth = width - padding * 2;
+    const chartHeight = height - padding * 2;
+    
+    // Draw grid lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    
+    // Horizontal grid lines
+    for (let i = 0; i <= 4; i++) {
+        const y = padding + (chartHeight * i) / 4;
+        ctx.beginPath();
+        ctx.moveTo(padding, y);
+        ctx.lineTo(width - padding, y);
+        ctx.stroke();
+    }
+    
+    // Vertical grid lines
+    for (let i = 0; i <= 4; i++) {
+        const x = padding + (chartWidth * i) / 4;
+        ctx.beginPath();
+        ctx.moveTo(x, padding);
+        ctx.lineTo(x, height - padding);
+        ctx.stroke();
+    }
+    
+    // Draw balance line
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    
+    balanceHistory.forEach((point, index) => {
+        const x = padding + (chartWidth * index) / (balanceHistory.length - 1);
+        const y = height - padding - ((point.balance - minBalance) / balanceRange) * chartHeight;
+        
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
+    
+    ctx.stroke();
+    
+    // Draw points
+    ctx.fillStyle = '#3b82f6';
+    balanceHistory.forEach((point, index) => {
+        const x = padding + (chartWidth * index) / (balanceHistory.length - 1);
+        const y = height - padding - ((point.balance - minBalance) / balanceRange) * chartHeight;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.fill();
+    });
+}
+
 // Close player detail modal
 function closePlayerDetailModal() {
     document.getElementById('player-detail-modal').classList.add('hidden');
 }
 
-// Setup live games feed
-function setupLiveGamesFeed() {
-    if (socket) {
-        socket.on('live-game', (gameData) => {
-            addLiveGameToFeed(gameData);
-        });
-    }
-}
 
-// Add live game to feed
-function addLiveGameToFeed(gameData) {
-    const feed = document.getElementById('live-games-feed');
-    if (!feed) return;
-    
-    const gameEl = document.createElement('div');
-    gameEl.className = `live-game-item ${gameData.won ? 'win' : 'loss'}`;
-    
-    const gameIcon = getGameIcon(gameData.game);
-    const amount = Math.abs(gameData.amount);
-    
-    gameEl.innerHTML = `
-        <div class="live-game-icon">${gameIcon}</div>
-        <div class="live-game-info">
-            <div class="live-game-player">${gameData.username}</div>
-            <div class="live-game-details">
-                <span class="live-game-game">${gameData.game}</span>
-                <span class="live-game-amount ${gameData.won ? 'win' : 'loss'}">
-                    ${gameData.won ? '+' : '-'}$${amount.toFixed(2)}
-                </span>
-            </div>
-        </div>
-        <div class="live-game-time">${formatTimeAgo(gameData.timestamp)}</div>
-    `;
-    
-    // Add to top of feed
-    feed.insertBefore(gameEl, feed.firstChild);
-    
-    // Limit to 50 items
-    while (feed.children.length > 50) {
-        feed.removeChild(feed.lastChild);
-    }
-    
-    // Add animation
-    setTimeout(() => {
-        gameEl.classList.add('animate-in');
-    }, 10);
-}
 
 // Start leaderboard timer
 function startLeaderboardTimer() {
