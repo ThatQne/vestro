@@ -22,16 +22,7 @@ let minesPattern = {
 
 // API_BASE_URL is now defined in constants.js
 
-// Global variables for chart
-let chartOffset = 0;
-let pointsToShow = 50;
-let isDragging = false;
-let dragStartX = 0;
-let dragStartOffset = 0;
-let dragVelocity = 0;
-let lastDragTime = 0;
-let lastDragX = 0;
-let activePoint = null;
+// Chart variables are now managed by the unified chart system
 
 // Auto bet state
 let isAutoBetting = false;
@@ -143,7 +134,7 @@ function initializeApp() {
         }
     });
 
-    initializeChart();
+    initializeChart('dashboard');
     initializeMobileMenu();
 }
 
@@ -603,6 +594,33 @@ function showPage(pageId) {
         }, 100);
     }
     
+    // Initialize Cases when showing the cases page
+    if (pageId === 'cases') {
+        setTimeout(() => {
+            if (typeof loadCases === 'function') {
+                loadCases();
+            }
+        }, 100);
+    }
+    
+    // Initialize Case Battles when showing the case battles page
+    if (pageId === 'case-battles') {
+        setTimeout(() => {
+            if (typeof loadCaseBattles === 'function') {
+                loadCaseBattles();
+            }
+        }, 100);
+    }
+    
+    // Initialize Inventory when showing the inventory page
+    if (pageId === 'inventory') {
+        setTimeout(() => {
+            if (typeof loadInventory === 'function') {
+                loadInventory();
+            }
+        }, 100);
+    }
+    
     // Reinitialize icons after page change
     if (typeof lucide !== 'undefined') {
         setTimeout(() => lucide.createIcons(), 50);
@@ -632,376 +650,9 @@ function updateChart() {
     drawBalanceChart();
 }
 
-function drawBalanceChart() {
-    const canvas = document.getElementById('balance-chart');
-    if (!canvas || !currentUser || !currentUser.balanceHistory || currentUser.balanceHistory.length === 0) return;
+// Old drawBalanceChart function removed - now using unified chart system
 
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width = canvas.parentElement.clientWidth;
-    const height = canvas.height = 400;
-    const padding = 40;
-    
-    // Get data points with offset
-    const allDataPoints = currentUser.balanceHistory;
-    const maxOffset = Math.max(0, allDataPoints.length - pointsToShow);
-    chartOffset = Math.max(0, Math.min(chartOffset, maxOffset)); // Clamp offset
-    
-    const startIndex = Math.max(0, allDataPoints.length - pointsToShow - chartOffset);
-    const endIndex = allDataPoints.length - chartOffset;
-    const dataPoints = allDataPoints.slice(startIndex, endIndex);
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, width, height);
-    
-    // Set up scales
-    const xScale = (width - padding * 2) / Math.max(1, dataPoints.length - 1);
-    const minBalance = Math.min(...dataPoints);
-    const maxBalance = Math.max(...dataPoints);
-    const balanceRange = Math.max(1, maxBalance - minBalance);
-    const yScale = (height - padding * 2) / balanceRange;
-
-    // Store point coordinates for hover detection
-    canvas.dataPoints = dataPoints.map((value, i) => ({
-        x: padding + i * xScale,
-        y: height - padding - (value - minBalance) * yScale,
-        value: value
-    }));
-    
-    // Draw horizontal grid lines and labels
-    ctx.fillStyle = '#8b949e';
-    ctx.font = '12px Inter';
-    ctx.textAlign = 'right';
-    for (let i = 0; i <= 5; i++) {
-        const y = padding + (height - padding * 2) * (i / 5);
-        const value = maxBalance - (balanceRange * (i / 5));
-        
-        // Format value with K/M for thousands/millions
-        let label = value;
-        if (value >= 1000000) {
-            label = (value / 1000000).toFixed(1) + 'M';
-        } else if (value >= 1000) {
-            label = (value / 1000).toFixed(1) + 'K';
-        } else {
-            label = value.toFixed(0);
-        }
-        ctx.fillText('$' + label, padding - 5, y + 4);
-    }
-    
-    // Draw lines between points with win/loss colors
-    for (let i = 1; i < dataPoints.length; i++) {
-        const x1 = padding + (i - 1) * xScale;
-        const y1 = height - padding - (dataPoints[i - 1] - minBalance) * yScale;
-        const x2 = padding + i * xScale;
-        const y2 = height - padding - (dataPoints[i] - minBalance) * yScale;
-        
-        // Determine if this segment represents a win or loss
-        const isWin = dataPoints[i] > dataPoints[i - 1];
-        
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.strokeStyle = isWin ? '#3fb950' : '#f85149';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-    }
-    
-    // Draw points
-    for (let i = 0; i < dataPoints.length; i++) {
-        const x = padding + i * xScale;
-        const y = height - padding - (dataPoints[i] - minBalance) * yScale;
-        const isWin = i > 0 && dataPoints[i] > dataPoints[i-1];
-        const isActive = activePoint === i;
-        
-        ctx.beginPath();
-        ctx.arc(x, y, isActive ? 6 : 4, 0, Math.PI * 2);
-        ctx.fillStyle = isWin ? '#3fb950' : '#f85149';
-        ctx.fill();
-        ctx.strokeStyle = '#0d1117';
-        ctx.lineWidth = isActive ? 2 : 1;
-        ctx.stroke();
-
-        if (isActive) {
-            ctx.beginPath();
-            ctx.arc(x, y, 8, 0, Math.PI * 2);
-            ctx.strokeStyle = isWin ? '#3fb95080' : '#f8514980';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-        }
-    }
-    
-    // Add drag indicator if there are more games
-    if (allDataPoints.length > pointsToShow) {
-        const navY = height - 15;
-        ctx.fillStyle = '#8b949e';
-        ctx.textAlign = 'center';
-        ctx.font = '11px Inter';
-        
-        // Game range indicator - use rounded values for display
-        const displayStartIndex = Math.max(0, allDataPoints.length - pointsToShow - Math.round(chartOffset));
-        const displayEndIndex = allDataPoints.length - Math.round(chartOffset);
-        
-        ctx.fillText(
-            `Games ${allDataPoints.length - displayEndIndex + 1} - ${allDataPoints.length - displayStartIndex} of ${allDataPoints.length}`,
-            width/2,
-            navY
-        );
-        
-        // Drag hint
-        ctx.fillStyle = '#6b7280';
-        ctx.font = '10px Inter';
-        ctx.fillText('← Drag to scroll →', width/2, navY + 15);
-        
-        // Progress indicator
-        const progressWidth = width - padding * 2;
-        const progressHeight = 3;
-        const progressY = height - 35;
-        
-        // Background
-        ctx.fillStyle = '#374151';
-        ctx.fillRect(padding, progressY, progressWidth, progressHeight);
-        
-        // Progress
-        const progress = chartOffset / maxOffset;
-        const progressBarWidth = progressWidth * (pointsToShow / allDataPoints.length);
-        const progressBarX = padding + (progressWidth - progressBarWidth) * (1 - progress);
-        
-        ctx.fillStyle = '#10b981';
-        ctx.fillRect(progressBarX, progressY, progressBarWidth, progressHeight);
-    }
-}
-
-// Handle mouse/touch events for dragging
-function handleChartMouseDown(event) {
-    const canvas = document.getElementById('balance-chart');
-    if (!canvas || !currentUser || !currentUser.balanceHistory) return;
-    
-    isDragging = true;
-    const rect = canvas.getBoundingClientRect();
-    dragStartX = event.clientX - rect.left;
-    dragStartOffset = chartOffset;
-    dragVelocity = 0;
-    lastDragTime = Date.now();
-    lastDragX = dragStartX;
-    
-    canvas.style.cursor = 'grabbing';
-    event.preventDefault();
-}
-
-function handleChartMouseMove(event) {
-    const canvas = document.getElementById('balance-chart');
-    if (!canvas || !currentUser || !currentUser.balanceHistory) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
-
-    // Handle dragging
-    if (isDragging) {
-        const currentX = mouseX;
-        const deltaX = currentX - dragStartX;
-        const currentTime = Date.now();
-        
-        // Calculate velocity for momentum
-        const timeDelta = currentTime - lastDragTime;
-        if (timeDelta > 0) {
-            dragVelocity = (currentX - lastDragX) / timeDelta;
-        }
-        lastDragTime = currentTime;
-        lastDragX = currentX;
-        
-        // Calculate new offset based on drag distance
-        const maxOffset = Math.max(0, currentUser.balanceHistory.length - pointsToShow);
-        const sensitivity = maxOffset / (canvas.width - 80); // Adjust sensitivity
-        const newOffset = dragStartOffset - (deltaX * sensitivity);
-        
-        chartOffset = Math.max(0, Math.min(newOffset, maxOffset));
-        drawBalanceChart();
-        
-        event.preventDefault();
-        return;
-    }
-
-    // Handle hover effects
-    const tooltip = document.querySelector('.price-tooltip');
-    if (!canvas.dataPoints) return;
-
-    // Find the closest point
-    let minDistance = Infinity;
-    let closestPoint = -1;
-    
-    canvas.dataPoints.forEach((point, index) => {
-        const distance = Math.sqrt(
-            Math.pow(mouseX - point.x, 2) + 
-            Math.pow(mouseY - point.y, 2)
-        );
-        if (distance < minDistance && distance < 20) {
-            minDistance = distance;
-            closestPoint = index;
-        }
-    });
-
-    if (closestPoint !== -1) {
-        const point = canvas.dataPoints[closestPoint];
-        activePoint = closestPoint;
-        
-        // Show and position tooltip
-        tooltip.style.opacity = '1';
-        tooltip.style.left = `${point.x + rect.left}px`;
-        tooltip.style.top = `${point.y + rect.top - 30}px`;
-        
-        // Format the value
-        let displayValue = point.value;
-        if (displayValue >= 1000000) {
-            displayValue = (displayValue / 1000000).toFixed(2) + 'M';
-        } else if (displayValue >= 1000) {
-            displayValue = (displayValue / 1000).toFixed(2) + 'K';
-        } else {
-            displayValue = displayValue.toFixed(2);
-        }
-        
-        tooltip.textContent = '$' + displayValue;
-        drawBalanceChart();
-    } else {
-        tooltip.style.opacity = '0';
-        if (activePoint !== null) {
-            activePoint = null;
-            drawBalanceChart();
-        }
-    }
-}
-
-function handleChartMouseUp(event) {
-    const canvas = document.getElementById('balance-chart');
-    if (!canvas || !isDragging) return;
-    
-    isDragging = false;
-    canvas.style.cursor = 'grab';
-    
-    // Apply momentum and snap to nearest data point
-    if (Math.abs(dragVelocity) > 0.1) {
-        animateChartMomentum();
-    } else {
-        snapToNearestPoint();
-    }
-    
-    event.preventDefault();
-}
-
-function animateChartMomentum() {
-    const friction = 0.95;
-    const minVelocity = 0.1;
-    
-    function animate() {
-        if (Math.abs(dragVelocity) < minVelocity) {
-            snapToNearestPoint();
-            return;
-        }
-        
-        const maxOffset = Math.max(0, currentUser.balanceHistory.length - pointsToShow);
-        const sensitivity = maxOffset / 300; // Adjust momentum sensitivity
-        chartOffset -= dragVelocity * sensitivity * 10;
-        chartOffset = Math.max(0, Math.min(chartOffset, maxOffset));
-        
-        dragVelocity *= friction;
-        drawBalanceChart();
-        
-        requestAnimationFrame(animate);
-    }
-    
-    animate();
-}
-
-function snapToNearestPoint() {
-    const maxOffset = Math.max(0, currentUser.balanceHistory.length - pointsToShow);
-    const targetOffset = Math.round(chartOffset);
-    
-    if (Math.abs(targetOffset - chartOffset) > 0.1) {
-        const startOffset = chartOffset;
-        const startTime = Date.now();
-        const duration = 200;
-        
-        function animate() {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const easeProgress = 1 - Math.pow(1 - progress, 3); // Ease out cubic
-            
-            chartOffset = startOffset + (targetOffset - startOffset) * easeProgress;
-            drawBalanceChart();
-            
-            if (progress < 1) {
-                requestAnimationFrame(animate);
-            }
-        }
-        
-        animate();
-    }
-}
-
-// Touch events for mobile
-function handleChartTouchStart(event) {
-    if (event.touches.length === 1) {
-        const touch = event.touches[0];
-        const mouseEvent = new MouseEvent('mousedown', {
-            clientX: touch.clientX,
-            clientY: touch.clientY
-        });
-        handleChartMouseDown(mouseEvent);
-    }
-}
-
-function handleChartTouchMove(event) {
-    if (event.touches.length === 1) {
-        const touch = event.touches[0];
-        const mouseEvent = new MouseEvent('mousemove', {
-            clientX: touch.clientX,
-            clientY: touch.clientY
-        });
-        handleChartMouseMove(mouseEvent);
-    }
-}
-
-function handleChartTouchEnd(event) {
-    const mouseEvent = new MouseEvent('mouseup', {});
-    handleChartMouseUp(mouseEvent);
-}
-
-function handleChartMouseLeave() {
-    const tooltip = document.querySelector('.price-tooltip');
-    tooltip.style.opacity = '0';
-    if (activePoint !== null) {
-        activePoint = null;
-        drawBalanceChart();
-    }
-}
-
-// Initialize chart controls
-function initializeChart() {
-    const canvas = document.getElementById('balance-chart');
-    if (canvas) {
-        canvas.style.cursor = 'grab';
-        
-        // Create tooltip element if it doesn't exist
-        if (!document.querySelector('.price-tooltip')) {
-            const tooltip = document.createElement('div');
-            tooltip.className = 'price-tooltip';
-            document.body.appendChild(tooltip);
-        }
-        
-        // Mouse events
-        canvas.addEventListener('mousedown', handleChartMouseDown);
-        document.addEventListener('mousemove', handleChartMouseMove);
-        document.addEventListener('mouseup', handleChartMouseUp);
-        canvas.addEventListener('mouseleave', handleChartMouseLeave);
-        
-        // Touch events
-        canvas.addEventListener('touchstart', handleChartTouchStart, { passive: false });
-        canvas.addEventListener('touchmove', handleChartTouchMove, { passive: false });
-        canvas.addEventListener('touchend', handleChartTouchEnd, { passive: false });
-        
-        // Prevent context menu on right click
-        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    }
-}
+// Old chart event handlers removed - now using unified chart system
 
 // Initialize mobile menu
 function initializeMobileMenu() {
@@ -5284,14 +4935,26 @@ async function showPlayerDetails(player) {
         });
         
         const data = await response.json();
-        console.log('Server response for player details:', data);
         
         if (data.success) {
             const playerData = data.user;
-            console.log('Player data received:', playerData);
-            console.log('Balance history in player data:', playerData.balanceHistory);
             populatePlayerDetailModal(playerData);
             document.getElementById('player-detail-modal').classList.remove('hidden');
+            
+            // Store balance history on canvas element for dragging
+            const canvas = document.getElementById('player-balance-chart');
+            if (canvas) {
+                canvas.balanceHistory = playerData.balanceHistory || [];
+                canvas.style.cursor = 'grab';
+            }
+            
+            // Initialize chart controls
+            initializePlayerChart();
+            
+            // Draw chart after modal is visible
+            setTimeout(() => {
+                drawPlayerBalanceChart(playerData.balanceHistory || []);
+            }, 100);
         } else {
             showError('Failed to load player details');
         }
@@ -5321,8 +4984,6 @@ function populatePlayerDetailModal(player) {
     const losses = player.losses || 0;
     document.getElementById('player-chart-wins').textContent = wins;
     document.getElementById('player-chart-losses').textContent = losses;
-    
-    drawPlayerBalanceChart(player.balanceHistory || []);
     
     // Update badges
     const badgesContainer = document.getElementById('player-detail-badges');
@@ -5358,120 +5019,222 @@ function populatePlayerDetailModal(player) {
     }
 }
 
-// Draw player balance chart
-function drawPlayerBalanceChart(balanceHistory) {
+// Old player chart function removed - now using unified chart system
+
+// Handle mouse/touch events for player chart
+function handlePlayerChartMouseDown(event) {
     const canvas = document.getElementById('player-balance-chart');
-    if (!canvas) {
-        console.log('Canvas not found: player-balance-chart');
-        return;
-    }
+    if (!canvas) return;
     
-    console.log('Drawing player chart with balance history:', balanceHistory);
-    
-    const ctx = canvas.getContext('2d');
+    isPlayerDragging = true;
     const rect = canvas.getBoundingClientRect();
+    playerDragStartX = event.clientX - rect.left;
+    playerDragStartOffset = playerChartOffset;
+    playerDragVelocity = 0;
+    playerLastDragTime = Date.now();
+    playerLastDragX = playerDragStartX;
     
-    // Set canvas size
-    canvas.width = rect.width * window.devicePixelRatio;
-    canvas.height = rect.height * window.devicePixelRatio;
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    canvas.style.cursor = 'grabbing';
+    event.preventDefault();
+}
+
+function handlePlayerChartMouseMove(event) {
+    const canvas = document.getElementById('player-balance-chart');
+    if (!canvas) return;
     
-    const width = rect.width;
-    const height = rect.height;
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, width, height);
-    
-    if (!balanceHistory || balanceHistory.length === 0) {
-        // Draw "No data" message
-        ctx.fillStyle = '#9ca3af';
-        ctx.font = '14px Outfit';
-        ctx.textAlign = 'center';
-        ctx.fillText('No balance history available', width / 2, height / 2);
-        console.log('No balance history data available');
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    // Handle dragging
+    if (isPlayerDragging) {
+        const currentX = mouseX;
+        const deltaX = currentX - playerDragStartX;
+        const currentTime = Date.now();
+        
+        // Calculate velocity for momentum
+        const timeDelta = currentTime - playerLastDragTime;
+        if (timeDelta > 0) {
+            playerDragVelocity = (currentX - playerLastDragX) / timeDelta;
+        }
+        playerLastDragTime = currentTime;
+        playerLastDragX = currentX;
+        
+        // Calculate new offset based on drag distance
+        const maxOffset = Math.max(0, canvas.balanceHistory.length - playerPointsToShow);
+        const sensitivity = maxOffset / (canvas.width - 80);
+        const newOffset = playerDragStartOffset - (deltaX * sensitivity);
+        
+        playerChartOffset = Math.max(0, Math.min(newOffset, maxOffset));
+        drawPlayerBalanceChart(canvas.balanceHistory);
+        
+        event.preventDefault();
         return;
     }
+
+    // Handle hover effects
+    const tooltip = document.querySelector('.player-price-tooltip');
+    if (!canvas.dataPoints) return;
+
+    // Find the closest point
+    let minDistance = Infinity;
+    let closestPoint = -1;
     
-    if (balanceHistory.length < 2) {
-        // Draw "Not enough data" message
-        ctx.fillStyle = '#9ca3af';
-        ctx.font = '14px Outfit';
-        ctx.textAlign = 'center';
-        ctx.fillText('Not enough data to display chart', width / 2, height / 2);
-        return;
-    }
-    
-    // Calculate bounds
-    const minBalance = Math.min(...balanceHistory);
-    const maxBalance = Math.max(...balanceHistory);
-    const balanceRange = maxBalance - minBalance || 1;
-    
-    const padding = 20;
-    const chartWidth = width - padding * 2;
-    const chartHeight = height - padding * 2;
-    
-    // Draw grid lines
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.lineWidth = 1;
-    
-    // Horizontal grid lines
-    for (let i = 0; i <= 4; i++) {
-        const y = padding + (chartHeight * i) / 4;
-        ctx.beginPath();
-        ctx.moveTo(padding, y);
-        ctx.lineTo(width - padding, y);
-        ctx.stroke();
-    }
-    
-    // Vertical grid lines
-    for (let i = 0; i <= 4; i++) {
-        const x = padding + (chartWidth * i) / 4;
-        ctx.beginPath();
-        ctx.moveTo(x, padding);
-        ctx.lineTo(x, height - padding);
-        ctx.stroke();
-    }
-    
-    // Draw lines between points with win/loss colors (similar to dashboard)
-    for (let i = 1; i < balanceHistory.length; i++) {
-        const x1 = padding + (chartWidth * (i - 1)) / (balanceHistory.length - 1);
-        const y1 = height - padding - ((balanceHistory[i - 1] - minBalance) / balanceRange) * chartHeight;
-        const x2 = padding + (chartWidth * i) / (balanceHistory.length - 1);
-        const y2 = height - padding - ((balanceHistory[i] - minBalance) / balanceRange) * chartHeight;
+    canvas.dataPoints.forEach((point, index) => {
+        const distance = Math.sqrt(
+            Math.pow(mouseX - point.x, 2) + 
+            Math.pow(mouseY - point.y, 2)
+        );
+        if (distance < minDistance && distance < 20) {
+            minDistance = distance;
+            closestPoint = index;
+        }
+    });
+
+    if (closestPoint !== -1) {
+        const point = canvas.dataPoints[closestPoint];
+        playerActivePoint = closestPoint;
         
-        // Determine if this segment represents a win or loss
-        const isWin = balanceHistory[i] > balanceHistory[i - 1];
+        // Show and position tooltip
+        tooltip.style.opacity = '1';
+        tooltip.style.left = `${point.x + rect.left}px`;
+        tooltip.style.top = `${point.y + rect.top - 30}px`;
         
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.strokeStyle = isWin ? '#3fb950' : '#f85149';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-    }
-    
-    // Draw points
-    for (let i = 0; i < balanceHistory.length; i++) {
-        const x = padding + (chartWidth * i) / (balanceHistory.length - 1);
-        const y = height - padding - ((balanceHistory[i] - minBalance) / balanceRange) * chartHeight;
-        const isWin = i > 0 && balanceHistory[i] > balanceHistory[i - 1];
+        // Format the value
+        let displayValue = point.value;
+        if (displayValue >= 1000000) {
+            displayValue = (displayValue / 1000000).toFixed(2) + 'M';
+        } else if (displayValue >= 1000) {
+            displayValue = (displayValue / 1000).toFixed(2) + 'K';
+        } else {
+            displayValue = displayValue.toFixed(2);
+        }
         
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = isWin ? '#3fb950' : '#f85149';
-        ctx.fill();
-        ctx.strokeStyle = '#0d1117';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        tooltip.textContent = '$' + displayValue;
+        drawPlayerBalanceChart(canvas.balanceHistory);
+    } else {
+        tooltip.style.opacity = '0';
+        if (playerActivePoint !== null) {
+            playerActivePoint = null;
+            const canvas = document.getElementById('player-balance-chart');
+            if (canvas && canvas.balanceHistory) {
+                drawPlayerBalanceChart(canvas.balanceHistory);
+            }
+        }
     }
 }
 
-// Close player detail modal
-function closePlayerDetailModal() {
-    document.getElementById('player-detail-modal').classList.add('hidden');
+function handlePlayerChartMouseUp(event) {
+    const canvas = document.getElementById('player-balance-chart');
+    if (!canvas || !isPlayerDragging) return;
+    
+    isPlayerDragging = false;
+    canvas.style.cursor = 'grab';
+    
+    // Apply momentum and snap to nearest data point
+    if (Math.abs(playerDragVelocity) > 0.1) {
+        animatePlayerChartMomentum();
+    } else {
+        snapPlayerToNearestPoint();
+    }
+    
+    event.preventDefault();
 }
 
+function animatePlayerChartMomentum() {
+    const friction = 0.95;
+    const minVelocity = 0.1;
+    
+    function animate() {
+        if (Math.abs(playerDragVelocity) < minVelocity) {
+            snapPlayerToNearestPoint();
+            return;
+        }
+        
+        const canvas = document.getElementById('player-balance-chart');
+        const maxOffset = Math.max(0, canvas.balanceHistory.length - playerPointsToShow);
+        const sensitivity = maxOffset / 300;
+        playerChartOffset -= playerDragVelocity * sensitivity * 10;
+        playerChartOffset = Math.max(0, Math.min(playerChartOffset, maxOffset));
+        
+        playerDragVelocity *= friction;
+        drawPlayerBalanceChart(canvas.balanceHistory);
+        
+        requestAnimationFrame(animate);
+    }
+    
+    animate();
+}
 
+function snapPlayerToNearestPoint() {
+    const canvas = document.getElementById('player-balance-chart');
+    const maxOffset = Math.max(0, canvas.balanceHistory.length - playerPointsToShow);
+    const targetOffset = Math.round(playerChartOffset);
+    
+    if (Math.abs(targetOffset - playerChartOffset) > 0.1) {
+        const startOffset = playerChartOffset;
+        const startTime = Date.now();
+        const duration = 200;
+        
+        function animate() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const easeProgress = 1 - Math.pow(1 - progress, 3);
+            
+            playerChartOffset = startOffset + (targetOffset - startOffset) * easeProgress;
+            drawPlayerBalanceChart(canvas.balanceHistory);
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            }
+        }
+        
+        animate();
+    }
+}
+
+function handlePlayerChartMouseLeave() {
+    const tooltip = document.querySelector('.player-price-tooltip');
+    tooltip.style.opacity = '0';
+    if (playerActivePoint !== null) {
+        playerActivePoint = null;
+        const canvas = document.getElementById('player-balance-chart');
+        if (canvas && canvas.balanceHistory) {
+            drawPlayerBalanceChart(canvas.balanceHistory);
+        }
+    }
+}
+
+// Initialize player chart controls
+function initializePlayerChart() {
+    const canvas = document.getElementById('player-balance-chart');
+    if (canvas) {
+        canvas.style.cursor = 'grab';
+        
+        // Create tooltip element if it doesn't exist
+        if (!document.querySelector('.player-price-tooltip')) {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'player-price-tooltip price-tooltip';
+            document.body.appendChild(tooltip);
+        }
+        
+        // Mouse events
+        canvas.addEventListener('mousedown', handlePlayerChartMouseDown);
+        document.addEventListener('mousemove', handlePlayerChartMouseMove);
+        document.addEventListener('mouseup', handlePlayerChartMouseUp);
+        canvas.addEventListener('mouseleave', handlePlayerChartMouseLeave);
+        
+        // Touch events
+        canvas.addEventListener('touchstart', handlePlayerChartTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handlePlayerChartTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handlePlayerChartTouchEnd, { passive: false });
+        
+        // Prevent context menu on right click
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+}
+
+// ... existing code ...
 
 // Start leaderboard timer
 function startLeaderboardTimer() {
@@ -5531,3 +5294,605 @@ function debounce(func, wait) {
         timeout = setTimeout(later, wait);
     };
 } 
+
+// Handle touch events for player chart
+function handlePlayerChartTouchStart(event) {
+    const canvas = document.getElementById('player-balance-chart');
+    if (!canvas) return;
+    
+    const touch = event.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    
+    isPlayerDragging = true;
+    playerDragStartX = touch.clientX - rect.left;
+    playerDragStartOffset = playerChartOffset;
+    playerDragVelocity = 0;
+    playerLastDragTime = Date.now();
+    playerLastDragX = playerDragStartX;
+    
+    canvas.style.cursor = 'grabbing';
+    event.preventDefault();
+}
+
+function handlePlayerChartTouchMove(event) {
+    const canvas = document.getElementById('player-balance-chart');
+    if (!canvas || !isPlayerDragging) return;
+    
+    const touch = event.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const currentX = touch.clientX - rect.left;
+    const deltaX = currentX - playerDragStartX;
+    const currentTime = Date.now();
+    
+    // Calculate velocity for momentum
+    const timeDelta = currentTime - playerLastDragTime;
+    if (timeDelta > 0) {
+        playerDragVelocity = (currentX - playerLastDragX) / timeDelta;
+    }
+    playerLastDragTime = currentTime;
+    playerLastDragX = currentX;
+    
+    // Calculate new offset based on drag distance
+    const maxOffset = Math.max(0, canvas.balanceHistory.length - playerPointsToShow);
+    const sensitivity = maxOffset / (canvas.width - 80);
+    const newOffset = playerDragStartOffset - (deltaX * sensitivity);
+    
+    playerChartOffset = Math.max(0, Math.min(newOffset, maxOffset));
+    drawPlayerBalanceChart(canvas.balanceHistory);
+    
+    event.preventDefault();
+}
+
+function handlePlayerChartTouchEnd(event) {
+    const canvas = document.getElementById('player-balance-chart');
+    if (!canvas || !isPlayerDragging) return;
+    
+    isPlayerDragging = false;
+    canvas.style.cursor = 'grab';
+    
+    // Apply momentum and snap to nearest data point
+    if (Math.abs(playerDragVelocity) > 0.1) {
+        animatePlayerChartMomentum();
+    } else {
+        snapPlayerToNearestPoint();
+    }
+    
+    event.preventDefault();
+}
+
+// Unified chart system
+const chartInstances = {
+    dashboard: {
+        canvasId: 'balance-chart',
+        tooltipClass: 'price-tooltip',
+        offset: 0,
+        pointsToShow: 50,
+        isDragging: false,
+        dragStartX: 0,
+        dragStartOffset: 0,
+        dragVelocity: 0,
+        lastDragTime: 0,
+        lastDragX: 0,
+        activePoint: null,
+        balanceHistory: null
+    },
+    player: {
+        canvasId: 'player-balance-chart',
+        tooltipClass: 'player-price-tooltip',
+        offset: 0,
+        pointsToShow: 50,
+        isDragging: false,
+        dragStartX: 0,
+        dragStartOffset: 0,
+        dragVelocity: 0,
+        lastDragTime: 0,
+        lastDragX: 0,
+        activePoint: null,
+        balanceHistory: null
+    }
+};
+
+// Unified chart drawing function
+function drawChart(instanceKey, balanceHistory) {
+    const instance = chartInstances[instanceKey];
+    const canvas = document.getElementById(instance.canvasId);
+    
+    if (!canvas || !balanceHistory || balanceHistory.length === 0) {
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            
+            ctx.clearRect(0, 0, rect.width, rect.height);
+            ctx.fillStyle = '#9ca3af';
+            ctx.font = '14px Outfit';
+            ctx.textAlign = 'center';
+            ctx.fillText('No balance history available', rect.width / 2, rect.height / 2);
+        }
+        return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    
+    // Set canvas size
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    
+    const width = rect.width;
+    const height = rect.height;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    if (balanceHistory.length < 2) {
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '14px Outfit';
+        ctx.textAlign = 'center';
+        ctx.fillText('Not enough data to display chart', width / 2, height / 2);
+        return;
+    }
+
+    // Store balance history
+    instance.balanceHistory = balanceHistory;
+
+    // Get data points with offset
+    const allDataPoints = balanceHistory;
+    const maxOffset = Math.max(0, allDataPoints.length - instance.pointsToShow);
+    instance.offset = Math.max(0, Math.min(instance.offset, maxOffset));
+    
+    const startIndex = Math.max(0, allDataPoints.length - instance.pointsToShow - instance.offset);
+    const endIndex = allDataPoints.length - instance.offset;
+    const dataPoints = allDataPoints.slice(startIndex, endIndex);
+    
+    const padding = 40;
+    const chartWidth = width - padding * 2;
+    const chartHeight = height - padding * 2;
+    
+    // Calculate bounds for visible data points
+    const minBalance = Math.min(...dataPoints);
+    const maxBalance = Math.max(...dataPoints);
+    const balanceRange = Math.max(1, maxBalance - minBalance);
+    
+    // Draw grid lines and labels
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '12px Inter';
+    ctx.textAlign = 'right';
+    
+    // Draw horizontal grid lines and labels
+    for (let i = 0; i <= 5; i++) {
+        const y = padding + (chartHeight * i) / 5;
+        const value = maxBalance - (balanceRange * (i / 5));
+        
+        // Draw grid line
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding, y);
+        ctx.lineTo(width - padding, y);
+        ctx.stroke();
+        
+        // Format value with K/M for thousands/millions
+        let label = value;
+        if (value >= 1000000) {
+            label = (value / 1000000).toFixed(1) + 'M';
+        } else if (value >= 1000) {
+            label = (value / 1000).toFixed(1) + 'K';
+        } else {
+            label = value.toFixed(0);
+        }
+        ctx.fillText('$' + label, padding - 5, y + 4);
+    }
+    
+    // Store point coordinates for hover detection
+    const xScale = chartWidth / Math.max(1, dataPoints.length - 1);
+    const yScale = chartHeight / balanceRange;
+    
+    canvas.dataPoints = dataPoints.map((value, i) => ({
+        x: padding + i * xScale,
+        y: height - padding - (value - minBalance) * yScale,
+        value: value
+    }));
+    
+    // Draw lines between points with win/loss colors
+    for (let i = 1; i < dataPoints.length; i++) {
+        const x1 = padding + (i - 1) * xScale;
+        const y1 = height - padding - (dataPoints[i - 1] - minBalance) * yScale;
+        const x2 = padding + i * xScale;
+        const y2 = height - padding - (dataPoints[i] - minBalance) * yScale;
+        
+        const isWin = dataPoints[i] > dataPoints[i - 1];
+        
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = isWin ? '#3fb950' : '#f85149';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+    
+    // Draw points
+    for (let i = 0; i < dataPoints.length; i++) {
+        const x = padding + i * xScale;
+        const y = height - padding - (dataPoints[i] - minBalance) * yScale;
+        const isWin = i > 0 && dataPoints[i] > dataPoints[i-1];
+        const isActive = instance.activePoint === i;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, isActive ? 6 : 4, 0, Math.PI * 2);
+        ctx.fillStyle = isWin ? '#3fb950' : '#f85149';
+        ctx.fill();
+        ctx.strokeStyle = '#0d1117';
+        ctx.lineWidth = isActive ? 2 : 1;
+        ctx.stroke();
+
+        if (isActive) {
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.strokeStyle = isWin ? '#3fb95080' : '#f8514980';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    }
+    
+    // Add drag indicator if there are more games
+    if (allDataPoints.length > instance.pointsToShow) {
+        const navY = height - 15;
+        ctx.fillStyle = '#8b949e';
+        ctx.textAlign = 'center';
+        ctx.font = '11px Inter';
+        
+        // Game range indicator
+        const displayStartIndex = Math.max(0, allDataPoints.length - instance.pointsToShow - Math.round(instance.offset));
+        const displayEndIndex = allDataPoints.length - Math.round(instance.offset);
+        
+        ctx.fillText(
+            `Games ${allDataPoints.length - displayEndIndex + 1} - ${allDataPoints.length - displayStartIndex} of ${allDataPoints.length}`,
+            width/2,
+            navY
+        );
+        
+        // Drag hint
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '10px Inter';
+        ctx.fillText('← Drag to scroll →', width/2, navY + 15);
+        
+        // Progress indicator
+        const progressWidth = width - padding * 2;
+        const progressHeight = 3;
+        const progressY = height - 35;
+        
+        // Background
+        ctx.fillStyle = '#374151';
+        ctx.fillRect(padding, progressY, progressWidth, progressHeight);
+        
+        // Progress
+        const progress = instance.offset / maxOffset;
+        const progressBarWidth = progressWidth * (instance.pointsToShow / allDataPoints.length);
+        const progressBarX = padding + (progressWidth - progressBarWidth) * (1 - progress);
+        
+        ctx.fillStyle = '#10b981';
+        ctx.fillRect(progressBarX, progressY, progressBarWidth, progressHeight);
+    }
+}
+
+// Unified chart event handlers
+function handleChartMouseDown(event, instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const canvas = document.getElementById(instance.canvasId);
+    if (!canvas) return;
+    
+    instance.isDragging = true;
+    const rect = canvas.getBoundingClientRect();
+    instance.dragStartX = event.clientX - rect.left;
+    instance.dragStartOffset = instance.offset;
+    instance.dragVelocity = 0;
+    instance.lastDragTime = Date.now();
+    instance.lastDragX = instance.dragStartX;
+    
+    canvas.style.cursor = 'grabbing';
+    event.preventDefault();
+}
+
+function handleChartMouseMove(event, instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const canvas = document.getElementById(instance.canvasId);
+    if (!canvas || !instance.balanceHistory) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    // Handle dragging
+    if (instance.isDragging) {
+        const currentX = mouseX;
+        const deltaX = currentX - instance.dragStartX;
+        const currentTime = Date.now();
+        
+        // Calculate velocity for momentum
+        const timeDelta = currentTime - instance.lastDragTime;
+        if (timeDelta > 0) {
+            instance.dragVelocity = (currentX - instance.lastDragX) / timeDelta;
+        }
+        instance.lastDragTime = currentTime;
+        instance.lastDragX = currentX;
+        
+        // Calculate new offset based on drag distance
+        const maxOffset = Math.max(0, instance.balanceHistory.length - instance.pointsToShow);
+        const sensitivity = maxOffset / (canvas.width - 80);
+        const newOffset = instance.dragStartOffset - (deltaX * sensitivity);
+        
+        instance.offset = Math.max(0, Math.min(newOffset, maxOffset));
+        drawChart(instanceKey, instance.balanceHistory);
+        
+        event.preventDefault();
+        return;
+    }
+
+    // Handle hover effects
+    const tooltip = document.querySelector('.' + instance.tooltipClass);
+    if (!canvas.dataPoints || !tooltip) return;
+
+    // Find the closest point
+    let minDistance = Infinity;
+    let closestPoint = -1;
+    
+    canvas.dataPoints.forEach((point, index) => {
+        const distance = Math.sqrt(
+            Math.pow(mouseX - point.x, 2) + 
+            Math.pow(mouseY - point.y, 2)
+        );
+        if (distance < minDistance && distance < 20) {
+            minDistance = distance;
+            closestPoint = index;
+        }
+    });
+
+    if (closestPoint !== -1) {
+        const point = canvas.dataPoints[closestPoint];
+        instance.activePoint = closestPoint;
+        
+        // Show and position tooltip
+        tooltip.style.opacity = '1';
+        tooltip.style.left = `${point.x + rect.left}px`;
+        tooltip.style.top = `${point.y + rect.top - 30}px`;
+        
+        // Format the value
+        let displayValue = point.value;
+        if (displayValue >= 1000000) {
+            displayValue = (displayValue / 1000000).toFixed(2) + 'M';
+        } else if (displayValue >= 1000) {
+            displayValue = (displayValue / 1000).toFixed(2) + 'K';
+        } else {
+            displayValue = displayValue.toFixed(2);
+        }
+        
+        tooltip.textContent = '$' + displayValue;
+        drawChart(instanceKey, instance.balanceHistory);
+    } else {
+        tooltip.style.opacity = '0';
+        if (instance.activePoint !== null) {
+            instance.activePoint = null;
+            drawChart(instanceKey, instance.balanceHistory);
+        }
+    }
+}
+
+function handleChartMouseUp(event, instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const canvas = document.getElementById(instance.canvasId);
+    if (!canvas || !instance.isDragging) return;
+    
+    instance.isDragging = false;
+    canvas.style.cursor = 'grab';
+    
+    // Apply momentum and snap to nearest data point
+    if (Math.abs(instance.dragVelocity) > 0.1) {
+        animateChartMomentum(instanceKey);
+    } else {
+        snapToNearestPoint(instanceKey);
+    }
+    
+    event.preventDefault();
+}
+
+function handleChartMouseLeave(instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const tooltip = document.querySelector('.' + instance.tooltipClass);
+    if (tooltip) tooltip.style.opacity = '0';
+    
+    if (instance.activePoint !== null) {
+        instance.activePoint = null;
+        if (instance.balanceHistory) {
+            drawChart(instanceKey, instance.balanceHistory);
+        }
+    }
+}
+
+function animateChartMomentum(instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const friction = 0.95;
+    const minVelocity = 0.1;
+    
+    function animate() {
+        if (Math.abs(instance.dragVelocity) < minVelocity) {
+            snapToNearestPoint(instanceKey);
+            return;
+        }
+        
+        const maxOffset = Math.max(0, instance.balanceHistory.length - instance.pointsToShow);
+        const sensitivity = maxOffset / 300;
+        instance.offset -= instance.dragVelocity * sensitivity * 10;
+        instance.offset = Math.max(0, Math.min(instance.offset, maxOffset));
+        
+        instance.dragVelocity *= friction;
+        drawChart(instanceKey, instance.balanceHistory);
+        
+        requestAnimationFrame(animate);
+    }
+    
+    animate();
+}
+
+function snapToNearestPoint(instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const maxOffset = Math.max(0, instance.balanceHistory.length - instance.pointsToShow);
+    const targetOffset = Math.round(instance.offset);
+    
+    if (Math.abs(targetOffset - instance.offset) > 0.1) {
+        const startOffset = instance.offset;
+        const startTime = Date.now();
+        const duration = 200;
+        
+        function animate() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const easeProgress = 1 - Math.pow(1 - progress, 3);
+            
+            instance.offset = startOffset + (targetOffset - startOffset) * easeProgress;
+            drawChart(instanceKey, instance.balanceHistory);
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            }
+        }
+        
+        animate();
+    }
+}
+
+// Touch event handlers
+function handleChartTouchStart(event, instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const canvas = document.getElementById(instance.canvasId);
+    if (!canvas) return;
+    
+    const touch = event.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    
+    instance.isDragging = true;
+    instance.dragStartX = touch.clientX - rect.left;
+    instance.dragStartOffset = instance.offset;
+    instance.dragVelocity = 0;
+    instance.lastDragTime = Date.now();
+    instance.lastDragX = instance.dragStartX;
+    
+    canvas.style.cursor = 'grabbing';
+    event.preventDefault();
+}
+
+function handleChartTouchMove(event, instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const canvas = document.getElementById(instance.canvasId);
+    if (!canvas || !instance.isDragging) return;
+    
+    const touch = event.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const currentX = touch.clientX - rect.left;
+    const deltaX = currentX - instance.dragStartX;
+    const currentTime = Date.now();
+    
+    // Calculate velocity for momentum
+    const timeDelta = currentTime - instance.lastDragTime;
+    if (timeDelta > 0) {
+        instance.dragVelocity = (currentX - instance.lastDragX) / timeDelta;
+    }
+    instance.lastDragTime = currentTime;
+    instance.lastDragX = currentX;
+    
+    // Calculate new offset based on drag distance
+    const maxOffset = Math.max(0, instance.balanceHistory.length - instance.pointsToShow);
+    const sensitivity = maxOffset / (canvas.width - 80);
+    const newOffset = instance.dragStartOffset - (deltaX * sensitivity);
+    
+    instance.offset = Math.max(0, Math.min(newOffset, maxOffset));
+    drawChart(instanceKey, instance.balanceHistory);
+    
+    event.preventDefault();
+}
+
+function handleChartTouchEnd(event, instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const canvas = document.getElementById(instance.canvasId);
+    if (!canvas || !instance.isDragging) return;
+    
+    instance.isDragging = false;
+    canvas.style.cursor = 'grab';
+    
+    // Apply momentum and snap to nearest data point
+    if (Math.abs(instance.dragVelocity) > 0.1) {
+        animateChartMomentum(instanceKey);
+    } else {
+        snapToNearestPoint(instanceKey);
+    }
+    
+    event.preventDefault();
+}
+
+// Initialize chart with event listeners
+function initializeChart(instanceKey) {
+    const instance = chartInstances[instanceKey];
+    const canvas = document.getElementById(instance.canvasId);
+    if (!canvas) return;
+    
+    canvas.style.cursor = 'grab';
+    
+    // Create tooltip element if it doesn't exist
+    if (!document.querySelector('.' + instance.tooltipClass)) {
+        const tooltip = document.createElement('div');
+        tooltip.className = instance.tooltipClass + ' price-tooltip';
+        document.body.appendChild(tooltip);
+    }
+    
+    // Remove existing event listeners to prevent duplicates
+    const existingHandlers = canvas._chartHandlers || {};
+    Object.keys(existingHandlers).forEach(event => {
+        canvas.removeEventListener(event, existingHandlers[event]);
+    });
+    
+    // Add new event listeners
+    const handlers = {
+        mousedown: (e) => handleChartMouseDown(e, instanceKey),
+        mousemove: (e) => handleChartMouseMove(e, instanceKey),
+        mouseup: (e) => handleChartMouseUp(e, instanceKey),
+        mouseleave: () => handleChartMouseLeave(instanceKey),
+        touchstart: (e) => handleChartTouchStart(e, instanceKey),
+        touchmove: (e) => handleChartTouchMove(e, instanceKey),
+        touchend: (e) => handleChartTouchEnd(e, instanceKey),
+        contextmenu: (e) => e.preventDefault()
+    };
+    
+    Object.keys(handlers).forEach(event => {
+        canvas.addEventListener(event, handlers[event], { passive: false });
+    });
+    
+    // Store handlers for cleanup
+    canvas._chartHandlers = handlers;
+}
+
+// Wrapper functions for backward compatibility
+function drawBalanceChart() {
+    if (currentUser && currentUser.balanceHistory) {
+        drawChart('dashboard', currentUser.balanceHistory);
+    }
+}
+
+function drawPlayerBalanceChart(balanceHistory) {
+    drawChart('player', balanceHistory);
+}
+
+function initializePlayerChart() {
+    initializeChart('player');
+}
+
+// ... existing code ...
+
+// Close player detail modal
+function closePlayerDetailModal() {
+    document.getElementById('player-detail-modal').classList.add('hidden');
+}
+
+// ... existing code ...

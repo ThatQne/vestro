@@ -55,6 +55,18 @@
                 <i data-lucide="trophy"></i>
                 <span>Leaderboard</span>
             </a>
+            <a href="#" onclick="showPage('cases')" class="nav-item" data-page="cases">
+                <i data-lucide="package"></i>
+                <span>Cases</span>
+            </a>
+            <a href="#" onclick="showPage('case-battles')" class="nav-item" data-page="case-battles">
+                <i data-lucide="swords"></i>
+                <span>Case Battles</span>
+            </a>
+            <a href="#" onclick="showPage('inventory')" class="nav-item" data-page="inventory">
+                <i data-lucide="backpack"></i>
+                <span>Inventory</span>
+            </a>
         </div>
         
         <div class="sidebar-footer">
@@ -1097,6 +1109,109 @@
                 </div>
             </div>
         </div>
+
+        <!-- Cases Page -->
+        <div id="cases-page" class="page-content hidden">
+            <div class="page-header">
+                <h1>Cases</h1>
+                <p>Open cases to discover rare items and collectibles</p>
+            </div>
+            
+            <div class="cases-container">
+                <div class="cases-grid" id="cases-grid">
+                    <!-- Cases will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Case Battles Page -->
+        <div id="case-battles-page" class="page-content hidden">
+            <div class="page-header">
+                <h1>Case Battles</h1>
+                <p>Compete against other players in real-time case opening battles</p>
+            </div>
+            
+            <div class="case-battles-container">
+                <div class="battles-actions">
+                    <button class="btn-primary" onclick="showCreateBattleModal()">
+                        <i data-lucide="plus"></i>
+                        Create Battle
+                    </button>
+                    <button class="btn-secondary" onclick="loadCaseBattles()">
+                        <i data-lucide="refresh-cw"></i>
+                        Refresh
+                    </button>
+                </div>
+                
+                <div class="battles-grid" id="battles-grid">
+                    <!-- Case battles will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Inventory Page -->
+        <div id="inventory-page" class="page-content hidden">
+            <div class="page-header">
+                <h1>Inventory</h1>
+                <p>Manage your items and collectibles</p>
+            </div>
+            
+            <div class="inventory-container">
+                <div class="inventory-stats">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Items</div>
+                        <div class="stat-value" id="total-items">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Value</div>
+                        <div class="stat-value" id="total-value">$0.00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Limited Items</div>
+                        <div class="stat-value" id="limited-items">0</div>
+                    </div>
+                </div>
+                
+                <div class="inventory-filters">
+                    <div class="filter-group">
+                        <label>Category:</label>
+                        <select id="category-filter">
+                            <option value="">All Categories</option>
+                            <option value="weapon">Weapons</option>
+                            <option value="skin">Skins</option>
+                            <option value="accessory">Accessories</option>
+                            <option value="consumable">Consumables</option>
+                            <option value="decoration">Decorations</option>
+                            <option value="misc">Miscellaneous</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Rarity:</label>
+                        <select id="rarity-filter">
+                            <option value="">All Rarities</option>
+                            <option value="common">Common</option>
+                            <option value="uncommon">Uncommon</option>
+                            <option value="rare">Rare</option>
+                            <option value="epic">Epic</option>
+                            <option value="legendary">Legendary</option>
+                            <option value="mythic">Mythic</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Type:</label>
+                        <select id="type-filter">
+                            <option value="">All Items</option>
+                            <option value="limited">Limited Only</option>
+                            <option value="regular">Regular Only</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="inventory-grid" id="inventory-grid">
+                    <!-- Inventory items will be populated here -->
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- Game Result Modal -->
@@ -1110,12 +1225,261 @@
         </div>
     </div>
 
+    <!-- Case Opening Modal -->
+    <div id="case-opening-modal" class="modal-overlay hidden">
+        <div class="modal-content case-opening-content">
+            <div class="modal-header">
+                <h2 id="case-opening-title">Opening Case...</h2>
+                <button class="modal-close" onclick="closeCaseOpeningModal()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            
+            <div class="case-opening-body">
+                <div class="case-opening-animation">
+                    <div class="case-reel" id="case-reel">
+                        <!-- Items will be populated here -->
+                    </div>
+                    <div class="case-pointer"></div>
+                </div>
+                
+                <div class="case-result hidden" id="case-result">
+                    <div class="result-item">
+                        <div class="item-icon" id="result-item-icon">
+                            <i data-lucide="package"></i>
+                        </div>
+                        <div class="item-details">
+                            <div class="item-name" id="result-item-name">Item Name</div>
+                            <div class="item-rarity" id="result-item-rarity">Common</div>
+                            <div class="item-value" id="result-item-value">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="result-actions">
+                        <button class="btn-primary" onclick="closeCaseOpeningModal()">Continue</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Item Detail Modal -->
+    <div id="item-detail-modal" class="modal-overlay hidden">
+        <div class="modal-content item-detail-content">
+            <div class="modal-header">
+                <h2 id="item-detail-name">Item Details</h2>
+                <button class="modal-close" onclick="closeItemDetailModal()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            
+            <div class="item-detail-body">
+                <div class="item-detail-main">
+                    <div class="item-detail-icon">
+                        <i data-lucide="package" id="item-detail-icon"></i>
+                    </div>
+                    <div class="item-detail-info">
+                        <div class="item-detail-rarity" id="item-detail-rarity">Common</div>
+                        <div class="item-detail-category" id="item-detail-category">Miscellaneous</div>
+                        <div class="item-detail-value" id="item-detail-value">$0.00</div>
+                    </div>
+                </div>
+                
+                <div class="item-detail-description" id="item-detail-description">
+                    Item description will appear here.
+                </div>
+                
+                <div class="item-detail-stats">
+                    <div class="stat-row">
+                        <span>Quantity:</span>
+                        <span id="item-detail-quantity">1</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Sell Price:</span>
+                        <span id="item-detail-sell-price">$0.00</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Obtained:</span>
+                        <span id="item-detail-obtained">Case Opening</span>
+                    </div>
+                </div>
+                
+                <div class="item-detail-actions">
+                    <button class="btn-secondary" id="sell-item-btn" onclick="sellItem()">
+                        <i data-lucide="dollar-sign"></i>
+                        Sell Item
+                    </button>
+                    <button class="btn-primary" id="list-item-btn" onclick="listItem()" style="display: none;">
+                        <i data-lucide="shopping-cart"></i>
+                        List on Marketplace
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Battle Modal -->
+    <div id="create-battle-modal" class="modal-overlay hidden">
+        <div class="modal-content create-battle-content">
+            <div class="modal-header">
+                <h2>Create Case Battle</h2>
+                <button class="modal-close" onclick="closeCreateBattleModal()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            
+            <div class="create-battle-body">
+                <div class="form-group">
+                    <label for="battle-name">Battle Name</label>
+                    <input type="text" id="battle-name" placeholder="Enter battle name" maxlength="50">
+                </div>
+                
+                <div class="form-group">
+                    <label for="battle-players">Max Players</label>
+                    <select id="battle-players">
+                        <option value="2">2 Players</option>
+                        <option value="3">3 Players</option>
+                        <option value="4">4 Players</option>
+                        <option value="6">6 Players</option>
+                        <option value="8">8 Players</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="battle-entry-fee">Entry Fee</label>
+                    <input type="number" id="battle-entry-fee" placeholder="0.00" min="0" step="0.01">
+                </div>
+                
+                <div class="form-group">
+                    <label>Selected Cases</label>
+                    <div class="battle-cases-selection" id="battle-cases-selection">
+                        <!-- Cases will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="battle-private">
+                        Private Battle
+                    </label>
+                </div>
+                
+                <div class="form-group hidden" id="battle-password-group">
+                    <label for="battle-password">Password</label>
+                    <input type="text" id="battle-password" placeholder="Enter password">
+                </div>
+                
+                <div class="create-battle-actions">
+                    <button class="btn-secondary" onclick="closeCreateBattleModal()">Cancel</button>
+                    <button class="btn-primary" onclick="createCaseBattle()">Create Battle</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Battle Room Modal -->
+    <div id="battle-room-modal" class="modal-overlay hidden">
+        <div class="modal-content battle-room-content">
+            <div class="modal-header">
+                <h2 id="battle-room-title">Battle Room</h2>
+                <button class="modal-close" onclick="leaveBattleRoom()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            
+            <div class="battle-room-body">
+                <div class="battle-info">
+                    <div class="battle-stat">
+                        <span>Entry Fee:</span>
+                        <span id="battle-room-entry-fee">$0.00</span>
+                    </div>
+                    <div class="battle-stat">
+                        <span>Players:</span>
+                        <span id="battle-room-players">0/2</span>
+                    </div>
+                    <div class="battle-stat">
+                        <span>Status:</span>
+                        <span id="battle-room-status">Waiting</span>
+                    </div>
+                </div>
+                
+                <div class="battle-cases">
+                    <h3>Cases in Battle</h3>
+                    <div class="battle-cases-list" id="battle-cases-list">
+                        <!-- Cases will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="battle-players">
+                    <h3>Players</h3>
+                    <div class="battle-players-list" id="battle-players-list">
+                        <!-- Players will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="battle-actions">
+                    <button class="btn-secondary" id="add-bot-btn" onclick="addBotToBattle()">
+                        <i data-lucide="bot"></i>
+                        Add Bot
+                    </button>
+                    <button class="btn-primary" id="start-battle-btn" onclick="startBattle()" style="display: none;">
+                        <i data-lucide="play"></i>
+                        Start Battle
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Battle Modal -->
+    <div id="join-battle-modal" class="modal-overlay hidden">
+        <div class="modal-content join-battle-content">
+            <div class="modal-header">
+                <h2>Join Battle</h2>
+                <button class="modal-close" onclick="closeJoinBattleModal()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            
+            <div class="join-battle-body">
+                <div class="battle-preview">
+                    <div class="battle-name" id="join-battle-name">Battle Name</div>
+                    <div class="battle-details">
+                        <div class="battle-detail">
+                            <span>Entry Fee:</span>
+                            <span id="join-battle-fee">$0.00</span>
+                        </div>
+                        <div class="battle-detail">
+                            <span>Players:</span>
+                            <span id="join-battle-players">0/2</span>
+                        </div>
+                        <div class="battle-detail">
+                            <span>Creator:</span>
+                            <span id="join-battle-creator">Unknown</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group" id="join-battle-password-group" style="display: none;">
+                    <label for="join-battle-password">Password</label>
+                    <input type="text" id="join-battle-password" placeholder="Enter battle password">
+                </div>
+                
+                <div class="join-battle-actions">
+                    <button class="btn-secondary" onclick="closeJoinBattleModal()">Cancel</button>
+                    <button class="btn-primary" onclick="joinCaseBattle()">Join Battle</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Notification Container -->
     <div id="notification-container" class="notification-container"></div>
 
     <script src="js/constants.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/notifications.js"></script>
+    <script src="js/cases.js"></script>
+    <script src="js/case-battles.js"></script>
     <script src="js/app.js"></script>
     <script>
         // Initialize Lucide icons
