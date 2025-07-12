@@ -5276,6 +5276,7 @@ function clearSearch() {
 // Show player details modal
 async function showPlayerDetails(player) {
     try {
+        console.log('Fetching player details for:', player.username);
         const response = await fetch(`${API_BASE_URL}/api/leaderboard/profile/${player.username}`, {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -5283,9 +5284,12 @@ async function showPlayerDetails(player) {
         });
         
         const data = await response.json();
+        console.log('Server response for player details:', data);
         
         if (data.success) {
             const playerData = data.user;
+            console.log('Player data received:', playerData);
+            console.log('Balance history in player data:', playerData.balanceHistory);
             populatePlayerDetailModal(playerData);
             document.getElementById('player-detail-modal').classList.remove('hidden');
         } else {
@@ -5299,6 +5303,8 @@ async function showPlayerDetails(player) {
 
 // Populate player detail modal
 function populatePlayerDetailModal(player) {
+    console.log('Populating player detail modal with player data:', player);
+    
     document.getElementById('player-detail-name').textContent = player.username;
     document.getElementById('player-detail-avatar-text').textContent = player.username.charAt(0).toUpperCase();
     document.getElementById('player-detail-rank').textContent = `#${player.rank || 'N/A'}`;
@@ -5317,7 +5323,8 @@ function populatePlayerDetailModal(player) {
     document.getElementById('player-chart-losses').textContent = losses;
     
     // Draw player balance chart
-    drawPlayerBalanceChart(player.gameHistory || []);
+    console.log('About to draw chart with balanceHistory:', player.balanceHistory);
+    drawPlayerBalanceChart(player.balanceHistory || []);
     
     // Update badges
     const badgesContainer = document.getElementById('player-detail-badges');
@@ -5354,9 +5361,14 @@ function populatePlayerDetailModal(player) {
 }
 
 // Draw player balance chart
-function drawPlayerBalanceChart(gameHistory) {
+function drawPlayerBalanceChart(balanceHistory) {
     const canvas = document.getElementById('player-balance-chart');
-    if (!canvas) return;
+    if (!canvas) {
+        console.log('Canvas not found: player-balance-chart');
+        return;
+    }
+    
+    console.log('Drawing player chart with balance history:', balanceHistory);
     
     const ctx = canvas.getContext('2d');
     const rect = canvas.getBoundingClientRect();
@@ -5372,30 +5384,28 @@ function drawPlayerBalanceChart(gameHistory) {
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
     
-    if (!gameHistory || gameHistory.length === 0) {
+    if (!balanceHistory || balanceHistory.length === 0) {
         // Draw "No data" message
         ctx.fillStyle = '#9ca3af';
         ctx.font = '14px Outfit';
         ctx.textAlign = 'center';
-        ctx.fillText('No game history available', width / 2, height / 2);
+        ctx.fillText('No balance history available', width / 2, height / 2);
+        console.log('No balance history data available');
         return;
     }
     
-    // Calculate balance progression
-    let balanceHistory = [];
-    let currentBalance = gameHistory[0].balanceBefore || 0;
-    balanceHistory.push({ balance: currentBalance, timestamp: gameHistory[0].timestamp });
-    
-    gameHistory.forEach(game => {
-        currentBalance = game.balanceAfter || currentBalance;
-        balanceHistory.push({ balance: currentBalance, timestamp: game.timestamp });
-    });
-    
-    if (balanceHistory.length < 2) return;
+    if (balanceHistory.length < 2) {
+        // Draw "Not enough data" message
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '14px Outfit';
+        ctx.textAlign = 'center';
+        ctx.fillText('Not enough data to display chart', width / 2, height / 2);
+        return;
+    }
     
     // Calculate bounds
-    const minBalance = Math.min(...balanceHistory.map(h => h.balance));
-    const maxBalance = Math.max(...balanceHistory.map(h => h.balance));
+    const minBalance = Math.min(...balanceHistory);
+    const maxBalance = Math.max(...balanceHistory);
     const balanceRange = maxBalance - minBalance || 1;
     
     const padding = 20;
@@ -5424,34 +5434,38 @@ function drawPlayerBalanceChart(gameHistory) {
         ctx.stroke();
     }
     
-    // Draw balance line
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    
-    balanceHistory.forEach((point, index) => {
-        const x = padding + (chartWidth * index) / (balanceHistory.length - 1);
-        const y = height - padding - ((point.balance - minBalance) / balanceRange) * chartHeight;
+    // Draw lines between points with win/loss colors (similar to dashboard)
+    for (let i = 1; i < balanceHistory.length; i++) {
+        const x1 = padding + (chartWidth * (i - 1)) / (balanceHistory.length - 1);
+        const y1 = height - padding - ((balanceHistory[i - 1] - minBalance) / balanceRange) * chartHeight;
+        const x2 = padding + (chartWidth * i) / (balanceHistory.length - 1);
+        const y2 = height - padding - ((balanceHistory[i] - minBalance) / balanceRange) * chartHeight;
         
-        if (index === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
-        }
-    });
-    
-    ctx.stroke();
-    
-    // Draw points
-    ctx.fillStyle = '#3b82f6';
-    balanceHistory.forEach((point, index) => {
-        const x = padding + (chartWidth * index) / (balanceHistory.length - 1);
-        const y = height - padding - ((point.balance - minBalance) / balanceRange) * chartHeight;
+        // Determine if this segment represents a win or loss
+        const isWin = balanceHistory[i] > balanceHistory[i - 1];
         
         ctx.beginPath();
-        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = isWin ? '#3fb950' : '#f85149';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+    
+    // Draw points
+    for (let i = 0; i < balanceHistory.length; i++) {
+        const x = padding + (chartWidth * i) / (balanceHistory.length - 1);
+        const y = height - padding - ((balanceHistory[i] - minBalance) / balanceRange) * chartHeight;
+        const isWin = i > 0 && balanceHistory[i] > balanceHistory[i - 1];
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = isWin ? '#3fb950' : '#f85149';
         ctx.fill();
-    });
+        ctx.strokeStyle = '#0d1117';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
 }
 
 // Close player detail modal
