@@ -101,7 +101,7 @@ function addCaseToBattle(caseId) {
     }
     
     updateSelectedCasesDisplay();
-    updateBattleEntryFee();
+    updateBattleTotalCost();
 }
 
 // Remove case from battle selection
@@ -116,7 +116,7 @@ function removeCaseFromBattle(caseId) {
     }
     
     updateSelectedCasesDisplay();
-    updateBattleEntryFee();
+    updateBattleTotalCost();
 }
 
 // Update selected cases display
@@ -157,16 +157,19 @@ function updateSelectedCasesDisplay() {
         container.appendChild(caseCard);
     });
     
+    // Update total cost
+    updateBattleTotalCost();
+    
     // Refresh icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
 }
 
-// Update battle entry fee based on selected cases
-function updateBattleEntryFee() {
+// Update battle total cost based on selected cases
+function updateBattleTotalCost() {
     const totalCost = selectedCases.reduce((sum, c) => sum + (c.price * c.quantity), 0);
-    document.getElementById('battle-entry-fee').value = totalCost.toFixed(2);
+    document.getElementById('battle-total-cost').textContent = `$${totalCost.toFixed(2)}`;
 }
 
 // Load and display case battles
@@ -213,16 +216,19 @@ function displayCaseBattles(battles) {
     }
     
     battles.forEach(battle => {
+        // Determine battle mode based on max players
+        const mode = getBattleMode(battle.maxPlayers);
+        
         const battleCard = document.createElement('div');
         battleCard.className = 'battle-card';
         battleCard.innerHTML = `
             <div class="battle-header">
-                <div class="battle-name">${battle.name}</div>
+                <div class="battle-mode">${mode}</div>
                 <div class="battle-status ${battle.status}">${battle.status}</div>
             </div>
             <div class="battle-info">
                 <div class="battle-stat">
-                    <span>Entry Fee:</span>
+                    <span>Cost:</span>
                     <span>$${battle.entryFee.toFixed(2)}</span>
                 </div>
                 <div class="battle-stat">
@@ -233,10 +239,14 @@ function displayCaseBattles(battles) {
                     <span>Cases:</span>
                     <span>${battle.cases.length}</span>
                 </div>
-                <div class="battle-stat">
-                    <span>Creator:</span>
-                    <span>${battle.createdBy.username}</span>
-                </div>
+            </div>
+            <div class="battle-cases-preview">
+                ${battle.cases.map(c => `
+                    <div class="case-preview-item">
+                        <i data-lucide="${c.case.icon || 'package'}"></i>
+                        <span>x${c.quantity || 1}</span>
+                    </div>
+                `).join('')}
             </div>
             <div class="battle-actions">
                 ${battle.status === 'waiting' ? `
@@ -258,6 +268,18 @@ function displayCaseBattles(battles) {
     // Refresh icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
+    }
+}
+
+// Helper function to get battle mode string
+function getBattleMode(maxPlayers) {
+    switch (maxPlayers) {
+        case 2: return '1v1';
+        case 3: return '1v1v1';
+        case 4: return '2v2';
+        case 6: return '2v2v2';
+        case 8: return '1v1v1v1';
+        default: return `${maxPlayers} Players`;
     }
 }
 
@@ -328,35 +350,18 @@ async function loadBattleDetails(battleId) {
     }
 }
 
-// Create case battle
+// Create new case battle
 async function createCaseBattle() {
-    const name = document.getElementById('battle-name').value.trim();
-    const maxPlayers = parseInt(document.getElementById('battle-players').value);
-    const entryFee = parseFloat(document.getElementById('battle-entry-fee').value);
-    const isPrivate = document.getElementById('battle-private').checked;
-    const password = document.getElementById('battle-password').value;
-    
-    if (!name) {
-        showError('Please enter a battle name');
-        return;
-    }
-    
-    if (selectedCases.length === 0) {
-        showError('Please select at least one case');
-        return;
-    }
-    
-    if (isNaN(entryFee) || entryFee <= 0) {
-        showError('Please enter a valid entry fee');
-        return;
-    }
-    
-    if (currentUser.balance < entryFee) {
-        showError('Insufficient balance to create battle');
-        return;
-    }
-    
     try {
+        if (selectedCases.length === 0) {
+            showError('Please select at least one case');
+            return;
+        }
+
+        const mode = document.getElementById('battle-mode').value;
+        const maxPlayers = mode.split('v').length;
+        const totalCost = selectedCases.reduce((sum, c) => sum + (c.price * c.quantity), 0);
+
         const response = await fetch(`${API_BASE_URL}/api/case-battles/create`, {
             method: 'POST',
             headers: {
@@ -364,37 +369,34 @@ async function createCaseBattle() {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
             },
             body: JSON.stringify({
-                name,
+                name: `${mode} Battle`, // Auto-generated name based on mode
+                maxPlayers: maxPlayers,
+                entryFee: totalCost,
                 cases: selectedCases,
-                maxPlayers,
-                entryFee,
-                isPrivate,
-                password: isPrivate ? password : null
+                isPrivate: false
             })
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
-            // Update balance
-            currentUser.balance -= entryFee;
-            updateUserInterface();
-            
+            showSuccess('Battle created successfully');
             closeCreateBattleModal();
-            showSuccess('Battle created successfully!');
+            loadCaseBattles();
             
-            // Enter battle room
+            // Clear selected cases
+            selectedCases = [];
+            updateSelectedCasesDisplay();
+            
+            // Show battle room
             currentBattle = data.battle;
             currentBattleId = data.battle.battleId;
             showBattleRoom();
-            
-            // Refresh battles list
-            loadCaseBattles();
         } else {
             showError(data.message || 'Failed to create battle');
         }
     } catch (error) {
-        console.error('Error creating battle:', error);
+        console.error('Error creating case battle:', error);
         showError('Failed to create battle');
     }
 }

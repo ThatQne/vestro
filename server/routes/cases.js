@@ -166,41 +166,46 @@ router.get('/inventory/items', authenticateToken, async (req, res) => {
             await inventory.save();
         }
         
-        const totalValue = await inventory.calculateTotalValue();
-        
-        // Group items by category and rarity
+        // Initialize empty structures for new inventories
         const itemsByCategory = {};
         const itemsByRarity = {};
         
-        inventory.items.forEach(invItem => {
-            const category = invItem.item.category;
-            const rarity = invItem.item.rarity;
-            
-            if (!itemsByCategory[category]) {
-                itemsByCategory[category] = [];
-            }
-            if (!itemsByRarity[rarity]) {
-                itemsByRarity[rarity] = [];
-            }
-            
-            const itemData = {
-                ...invItem.toObject(),
-                sellPrice: invItem.item.getSellPrice(),
-                rarityColor: invItem.item.getRarityColor()
-            };
-            
-            itemsByCategory[category].push(itemData);
-            itemsByRarity[rarity].push(itemData);
-        });
+        if (inventory.items && inventory.items.length > 0) {
+            inventory.items.forEach(invItem => {
+                if (!invItem.item) return; // Skip if item reference is invalid
+                
+                const category = invItem.item.category;
+                const rarity = invItem.item.rarity;
+                
+                if (!itemsByCategory[category]) {
+                    itemsByCategory[category] = [];
+                }
+                if (!itemsByRarity[rarity]) {
+                    itemsByRarity[rarity] = [];
+                }
+                
+                const itemData = {
+                    ...invItem.toObject(),
+                    sellPrice: invItem.item.getSellPrice(),
+                    rarityColor: invItem.item.getRarityColor()
+                };
+                
+                itemsByCategory[category].push(itemData);
+                itemsByRarity[rarity].push(itemData);
+            });
+        }
+        
+        const totalValue = await inventory.calculateTotalValue();
+        const limitedItems = await inventory.getLimitedItems();
         
         res.json({
             success: true,
             inventory: {
-                items: inventory.items,
-                totalValue: totalValue,
+                items: inventory.items || [],
+                totalValue: totalValue || 0,
                 itemsByCategory: itemsByCategory,
                 itemsByRarity: itemsByRarity,
-                limitedItems: await inventory.getLimitedItems()
+                limitedItems: limitedItems || []
             }
         });
     } catch (error) {
@@ -279,6 +284,38 @@ router.post('/inventory/sell/:itemId', authenticateToken, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to sell item'
+        });
+    }
+});
+
+// Create sample cases (admin only)
+router.post('/create-samples', authenticateToken, async (req, res) => {
+    try {
+        // Check if user is admin
+        const user = await User.findById(req.user.id);
+        if (!user.isAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: 'Unauthorized'
+            });
+        }
+
+        // Delete existing cases and items
+        await Case.deleteMany({});
+        await Item.deleteMany({});
+
+        // Create sample cases
+        await Case.createSampleCases();
+
+        res.json({
+            success: true,
+            message: 'Sample cases created successfully'
+        });
+    } catch (error) {
+        console.error('Error creating sample cases:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create sample cases'
         });
     }
 });

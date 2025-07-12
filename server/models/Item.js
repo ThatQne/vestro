@@ -10,11 +10,6 @@ const itemSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
-    rarity: {
-        type: String,
-        enum: ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'],
-        required: true
-    },
     value: {
         type: Number,
         required: true,
@@ -43,7 +38,7 @@ const itemSchema = new mongoose.Schema({
     }],
     icon: {
         type: String,
-        default: 'package' // Lucide icon name as placeholder
+        required: true
     },
     image: {
         type: String,
@@ -51,10 +46,13 @@ const itemSchema = new mongoose.Schema({
     },
     category: {
         type: String,
-        enum: ['weapon', 'skin', 'accessory', 'consumable', 'decoration', 'misc'],
-        default: 'misc'
+        enum: ['weapon', 'armor', 'tech', 'special', 'mixed'],
+        default: 'mixed'
     },
-    tags: [String],
+    obtainedFrom: {
+        type: String,
+        default: null // Name of the case this item comes from
+    },
     createdAt: {
         type: Date,
         default: Date.now
@@ -105,19 +103,6 @@ itemSchema.methods.addSale = function(price, volume = 1) {
     this.updatePrice();
 };
 
-// Get rarity color for UI
-itemSchema.methods.getRarityColor = function() {
-    const colors = {
-        common: '#9CA3AF',
-        uncommon: '#10B981',
-        rare: '#3B82F6',
-        epic: '#8B5CF6',
-        legendary: '#F59E0B',
-        mythic: '#EF4444'
-    };
-    return colors[this.rarity] || colors.common;
-};
-
 // Get sell price (70% of value for non-limited items)
 itemSchema.methods.getSellPrice = function() {
     if (this.isLimited) {
@@ -131,8 +116,8 @@ itemSchema.pre('save', function(next) {
     next();
 });
 
-itemSchema.index({ rarity: 1, isLimited: 1 });
 itemSchema.index({ category: 1 });
 itemSchema.index({ name: 'text', description: 'text' });
+itemSchema.index({ isLimited: 1, currentPrice: 1 });
 
 module.exports = mongoose.model('Item', itemSchema); 

@@ -178,116 +178,109 @@ function populateCaseReel(caseItem) {
     });
 }
 
-// Open case with animation
-async function openCase(caseId) {
-    try {
-        // Check if user has enough balance
-        const userBalance = parseFloat(document.getElementById('top-balance').textContent.replace('$', ''));
-        if (userBalance < currentCase.price) {
-            showError('Insufficient balance to open this case');
-            return;
-        }
-        
-        // Disable button during opening
-        const openBtn = event.target;
-        openBtn.disabled = true;
-        openBtn.textContent = 'Opening...';
-        
-        // Start case opening animation
-        startCaseOpeningAnimation();
-        
-        // Make API call to open case
-        const response = await fetch(`${API_BASE_URL}/api/cases/${caseId}/open`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Update balance
-            document.getElementById('top-balance').textContent = `$${data.newBalance.toFixed(2)}`;
-            
-            // Show result after animation
-            setTimeout(() => {
-                showCaseResult(data.item);
-            }, 3000);
-            
-            // Show success notification
-            showSuccess(data.message);
-        } else {
-            showError(data.message || 'Failed to open case');
-            closeCaseOpeningModal();
-        }
-    } catch (error) {
-        console.error('Error opening case:', error);
-        showError('Failed to open case');
-        closeCaseOpeningModal();
-    }
-}
-
-// Start case opening animation
-function startCaseOpeningAnimation() {
+// Display case opening animation
+function displayCaseOpening(caseItems, wonItem) {
     const reel = document.getElementById('case-reel');
-    const reelItems = reel.children;
+    reel.innerHTML = '';
     
-    // Calculate final position (center on a random item)
-    const finalIndex = Math.floor(Math.random() * (reelItems.length - 10)) + 5;
-    const itemWidth = 140; // 120px + 20px gap
-    const finalPosition = -(finalIndex * itemWidth - (reel.parentElement.offsetWidth / 2) + 60);
+    // Generate 50 items for smooth animation (mix of random and actual items)
+    const items = [];
+    for (let i = 0; i < 50; i++) {
+        // Every 5th item is from the actual case
+        if (i % 5 === 0) {
+            const caseItem = caseItems[Math.floor(Math.random() * caseItems.length)];
+            items.push(caseItem.item);
+        } else {
+            // Random items from other cases for variety
+            const randomItem = availableCases.flatMap(c => c.items).map(i => i.item)[
+                Math.floor(Math.random() * availableCases.flatMap(c => c.items).length)
+            ];
+            items.push(randomItem);
+        }
+    }
     
-    // Apply animation
-    reel.style.transform = `translateX(${finalPosition}px)`;
+    // Add the winning item at a specific position
+    const winningPosition = 35; // This will be roughly in the middle after animation
+    items[winningPosition] = wonItem;
     
-    // Add spinning effect to individual items
-    Array.from(reelItems).forEach((item, index) => {
-        setTimeout(() => {
-            item.style.transform = 'scale(1.1) rotate(360deg)';
-            setTimeout(() => {
-                item.style.transform = 'scale(1) rotate(0deg)';
-            }, 200);
-        }, index * 50);
+    // Create item elements
+    items.forEach((item, index) => {
+        const itemElement = document.createElement('div');
+        itemElement.className = 'case-item';
+        
+        // Add special class for winning item
+        if (index === winningPosition) {
+            itemElement.classList.add('winning-item');
+        }
+        
+        itemElement.innerHTML = `
+            <div class="item-icon">
+                <i data-lucide="${item.icon}"></i>
+            </div>
+            <div class="item-info">
+                <div class="item-name">${item.name}</div>
+                <div class="item-value">$${item.value.toFixed(2)}</div>
+            </div>
+        `;
+        reel.appendChild(itemElement);
     });
-}
-
-// Show case result
-function showCaseResult(item) {
-    // Hide animation, show result
-    document.querySelector('.case-opening-animation').style.display = 'none';
-    document.getElementById('case-result').classList.remove('hidden');
     
-    // Populate result
-    const resultIcon = document.getElementById('result-item-icon');
-    const resultName = document.getElementById('result-item-name');
-    const resultRarity = document.getElementById('result-item-rarity');
-    const resultValue = document.getElementById('result-item-value');
-    
-    const rarityColor = getRarityColor(item.rarity);
-    
-    resultIcon.innerHTML = `<i data-lucide="${item.icon}"></i>`;
-    resultIcon.style.setProperty('--rarity-color', rarityColor);
-    resultName.textContent = item.name;
-    resultRarity.textContent = item.rarity;
-    resultRarity.style.color = rarityColor;
-    resultValue.textContent = `$${item.value.toFixed(2)}`;
-    
-    // Animate result in
-    const resultElement = document.getElementById('case-result');
-    resultElement.style.opacity = '0';
-    resultElement.style.transform = 'scale(0.8)';
-    
-    setTimeout(() => {
-        resultElement.style.transition = 'all 0.5s cubic-bezier(0.23, 1, 0.32, 1)';
-        resultElement.style.opacity = '1';
-        resultElement.style.transform = 'scale(1)';
-    }, 100);
-    
-    // Initialize Lucide icons
+    // Refresh Lucide icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
+    }
+    
+    // Start animation
+    setTimeout(() => {
+        reel.style.transform = `translateX(calc(-${winningPosition * 200}px + 50%))`;
+        reel.style.transition = 'transform 8s cubic-bezier(0.21, 0.53, 0.29, 0.99)';
+        
+        // Show result after animation
+        setTimeout(() => {
+            showCaseResult(wonItem);
+        }, 8500);
+    }, 100);
+}
+
+// Show case opening result
+function showCaseResult(item) {
+    const resultContainer = document.getElementById('case-result');
+    const itemIcon = document.getElementById('result-item-icon');
+    const itemName = document.getElementById('result-item-name');
+    const itemValue = document.getElementById('result-item-value');
+    
+    // Update result UI
+    itemIcon.innerHTML = `<i data-lucide="${item.icon}"></i>`;
+    itemName.textContent = item.name;
+    itemValue.textContent = `$${item.value.toFixed(2)}`;
+    
+    // Add value-based classes
+    itemValue.className = 'item-value';
+    if (item.value >= 100) {
+        itemValue.classList.add('mythic-value');
+    } else if (item.value >= 50) {
+        itemValue.classList.add('legendary-value');
+    } else if (item.value >= 20) {
+        itemValue.classList.add('epic-value');
+    }
+    
+    // Show result
+    resultContainer.classList.remove('hidden');
+    
+    // Refresh icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    
+    // Play sound effect based on value
+    if (item.value >= 100) {
+        playSound('mythic');
+    } else if (item.value >= 50) {
+        playSound('legendary');
+    } else if (item.value >= 20) {
+        playSound('epic');
+    } else {
+        playSound('normal');
     }
 }
 

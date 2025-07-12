@@ -19,26 +19,26 @@ const sampleItems = [
     { name: 'Camping Gear', description: 'Essential outdoor equipment', rarity: 'uncommon', value: 18.00, category: 'misc', icon: 'tent' },
     
     // Rare items
-    { name: 'Plasma Rifle', description: 'Advanced energy weapon', rarity: 'rare', value: 50.00, category: 'weapon', icon: 'zap', isLimited: true },
-    { name: 'Nano Suit', description: 'High-tech protective armor', rarity: 'rare', value: 75.00, category: 'accessory', icon: 'shield', isLimited: true },
-    { name: 'Quantum Core', description: 'Rare energy source', rarity: 'rare', value: 60.00, category: 'misc', icon: 'cpu', isLimited: true },
+    { name: 'Plasma Rifle', description: 'Advanced energy weapon', rarity: 'rare', value: 50.00, category: 'weapon', icon: 'zap' },
+    { name: 'Nano Suit', description: 'High-tech protective armor', rarity: 'rare', value: 75.00, category: 'accessory', icon: 'shield' },
+    { name: 'Quantum Core', description: 'Rare energy source', rarity: 'rare', value: 60.00, category: 'misc', icon: 'cpu' },
     { name: 'Holo Projector', description: 'Holographic display device', rarity: 'rare', value: 45.00, category: 'decoration', icon: 'projector' },
     { name: 'Medkit Pro', description: 'Advanced medical equipment', rarity: 'rare', value: 35.00, category: 'consumable', icon: 'heart' },
     
     // Epic items
-    { name: 'Dragon Blade', description: 'Legendary weapon of ancient power', rarity: 'epic', value: 150.00, category: 'weapon', icon: 'sword', isLimited: true },
-    { name: 'Phoenix Armor', description: 'Mystical protective gear', rarity: 'epic', value: 200.00, category: 'accessory', icon: 'shield', isLimited: true },
-    { name: 'Void Crystal', description: 'Mysterious dark energy crystal', rarity: 'epic', value: 120.00, category: 'misc', icon: 'gem', isLimited: true },
-    { name: 'Time Manipulator', description: 'Device that bends time itself', rarity: 'epic', value: 180.00, category: 'misc', icon: 'clock', isLimited: true },
+    { name: 'Dragon Blade', description: 'Legendary weapon of ancient power', rarity: 'epic', value: 150.00, category: 'weapon', icon: 'sword' },
+    { name: 'Phoenix Armor', description: 'Mystical protective gear', rarity: 'epic', value: 200.00, category: 'accessory', icon: 'shield' },
+    { name: 'Void Crystal', description: 'Mysterious dark energy crystal', rarity: 'epic', value: 120.00, category: 'misc', icon: 'gem' },
+    { name: 'Time Manipulator', description: 'Device that bends time itself', rarity: 'epic', value: 180.00, category: 'misc', icon: 'clock' },
     
     // Legendary items
-    { name: 'Excalibur', description: 'The legendary sword of kings', rarity: 'legendary', value: 500.00, category: 'weapon', icon: 'sword', isLimited: true },
-    { name: 'Crown of Eternity', description: 'Grants immortality to the wearer', rarity: 'legendary', value: 750.00, category: 'accessory', icon: 'crown', isLimited: true },
-    { name: 'Philosophers Stone', description: 'Turns base metals into gold', rarity: 'legendary', value: 1000.00, category: 'misc', icon: 'gem', isLimited: true },
+    { name: 'Excalibur', description: 'The legendary sword of kings', rarity: 'legendary', value: 500.00, category: 'weapon', icon: 'sword' },
+    { name: 'Crown of Eternity', description: 'Grants immortality to the wearer', rarity: 'legendary', value: 750.00, category: 'accessory', icon: 'crown' },
+    { name: 'Philosophers Stone', description: 'Turns base metals into gold', rarity: 'legendary', value: 1000.00, category: 'misc', icon: 'gem' },
     
     // Mythic items
-    { name: 'Godslayer', description: 'Weapon capable of slaying gods', rarity: 'mythic', value: 2500.00, category: 'weapon', icon: 'sword', isLimited: true },
-    { name: 'Universe Orb', description: 'Contains the power of creation', rarity: 'mythic', value: 5000.00, category: 'misc', icon: 'globe', isLimited: true }
+    { name: 'Godslayer', description: 'Weapon capable of slaying gods', rarity: 'mythic', value: 2500.00, category: 'weapon', icon: 'sword' },
+    { name: 'Universe Orb', description: 'Contains the power of creation', rarity: 'mythic', value: 5000.00, category: 'misc', icon: 'globe' }
 ];
 
 // Sample cases data (will be populated after items are created)
@@ -163,17 +163,32 @@ async function seedDatabase() {
         const createdCases = await Case.insertMany(sampleCases);
         console.log(`Created ${createdCases.length} cases`);
         
-        // Add some price history to limited items
-        const limitedItems = createdItems.filter(item => item.isLimited);
-        for (const item of limitedItems) {
-            // Add some fake price history
-            const basePrice = item.value;
-            for (let i = 0; i < 10; i++) {
-                const variation = (Math.random() - 0.5) * 0.2; // ±20% variation
-                const price = basePrice * (1 + variation);
-                item.addSale(price, 1);
+        // Set limited status for rarest items in each case
+        for (const caseData of createdCases) {
+            // Find the rarest item in the case
+            let rarestItem = null;
+            let lowestProbability = Infinity;
+            
+            for (const caseItem of caseData.items) {
+                if (caseItem.probability < lowestProbability) {
+                    lowestProbability = caseItem.probability;
+                    rarestItem = await Item.findById(caseItem.item);
+                }
             }
-            await item.save();
+            
+            if (rarestItem) {
+                rarestItem.isLimited = true;
+                await rarestItem.save();
+                
+                // Add some fake price history for the limited item
+                const basePrice = rarestItem.value;
+                for (let i = 0; i < 10; i++) {
+                    const variation = (Math.random() - 0.5) * 0.2; // ±20% variation
+                    const price = basePrice * (1 + variation);
+                    rarestItem.addSale(price, 1);
+                }
+                await rarestItem.save();
+            }
         }
         
         console.log('Database seeding completed successfully!');
