@@ -6073,7 +6073,7 @@ async function openCase(caseId) {
         
         const data = await response.json();
         console.log('Case opened successfully:', data); // Debug log
-        showCaseOpeningModal(data.caseName, data.item);
+        showCaseOpeningModal(data.caseName, data.item, data.caseItems);
         
         // Update balance
         updateBalanceDisplay(data.newBalance);
@@ -6088,7 +6088,10 @@ async function openCase(caseId) {
     }
 }
 
-function showCaseOpeningModal(caseName, wonItem) {
+// Store the last won item for quick sell
+let lastWonItem = null;
+
+function showCaseOpeningModal(caseName, wonItem, caseItems) {
     const modal = document.getElementById('case-opening-modal');
     const title = document.getElementById('case-opening-title');
     const reel = document.getElementById('case-opening-reel');
@@ -6096,31 +6099,72 @@ function showCaseOpeningModal(caseName, wonItem) {
     
     if (!modal) return;
     
+    // Store the won item for quick sell
+    lastWonItem = wonItem;
+    
     title.textContent = `Opening ${caseName}`;
     modal.classList.remove('hidden');
     
     // Hide result initially
     result.classList.add('hidden');
     
-    // Create animation items
+    // Create animation items with actual case items
     const items = [];
-    for (let i = 0; i < 20; i++) {
+    const totalItems = 50; // More items for better animation
+    const wonItemIndex = Math.floor(totalItems * 0.7 + Math.random() * totalItems * 0.2); // Position won item towards the end
+    
+    for (let i = 0; i < totalItems; i++) {
         const item = document.createElement('div');
         item.className = 'case-opening-item';
-        item.innerHTML = `
-            <div class="item-name">${i === 10 ? wonItem.name : 'Random Item'}</div>
-            <div class="item-rarity ${i === 10 ? wonItem.rarity : 'common'}">${i === 10 ? wonItem.rarity : 'common'}</div>
-        `;
-        if (i === 10) {
+        
+        let displayItem;
+        if (i === wonItemIndex) {
+            displayItem = wonItem;
             item.classList.add('won');
+        } else {
+            // Use random items from the case
+            displayItem = caseItems[Math.floor(Math.random() * caseItems.length)];
         }
+        
+        // Get icon based on rarity
+        const rarityIcons = {
+            'common': 'package',
+            'uncommon': 'gem',
+            'rare': 'diamond',
+            'epic': 'star',
+            'legendary': 'crown',
+            'mythical': 'sparkles'
+        };
+        
+        item.innerHTML = `
+            <div class="item-icon rarity-${displayItem.rarity}">
+                <i data-lucide="${rarityIcons[displayItem.rarity] || 'package'}"></i>
+            </div>
+            <div class="item-name">${displayItem.name}</div>
+            <div class="item-value">$${displayItem.value.toFixed(2)}</div>
+            <div class="item-rarity ${displayItem.rarity}">${displayItem.rarity}</div>
+        `;
+        
         items.push(item);
         reel.appendChild(item);
     }
     
+    // Initialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    
+    // Calculate proper animation distance to land on won item
+    const itemWidth = 150; // Approximate width of each item
+    const reelWidth = reel.offsetWidth;
+    const targetPosition = wonItemIndex * itemWidth;
+    const centerOffset = reelWidth / 2 - itemWidth / 2;
+    const finalTransform = -(targetPosition - centerOffset);
+    
     // Start animation
     setTimeout(() => {
-        reel.style.transform = 'translateX(-50%)';
+        reel.style.transition = 'transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99)';
+        reel.style.transform = `translateX(${finalTransform}px)`;
         
         // Show result after animation
         setTimeout(() => {
@@ -6132,11 +6176,99 @@ function showCaseOpeningModal(caseName, wonItem) {
             document.getElementById('won-item-rarity').textContent = wonItem.rarity;
             document.getElementById('won-item-rarity').className = `item-rarity ${wonItem.rarity}`;
             
+            // Update quick sell button
+            const quickSellBtn = document.getElementById('quick-sell-btn');
+            if (quickSellBtn) {
+                const sellPrice = wonItem.isLimited ? wonItem.value : Math.floor(wonItem.value * 0.7);
+                quickSellBtn.textContent = `Quick Sell ($${sellPrice.toFixed(2)})`;
+            }
+            
             const wonItemImage = document.getElementById('won-item-image');
-            wonItemImage.src = wonItem.image;
-            wonItemImage.onerror = () => wonItemImage.style.display = 'none';
-        }, 3000);
+            if (wonItem.image && wonItem.image !== 'default-item.png') {
+                wonItemImage.src = wonItem.image;
+                wonItemImage.onerror = () => {
+                    wonItemImage.style.display = 'none';
+                    // Show icon instead
+                    const iconContainer = document.createElement('div');
+                    iconContainer.className = `item-icon-large rarity-${wonItem.rarity}`;
+                    iconContainer.innerHTML = `<i data-lucide="${rarityIcons[wonItem.rarity] || 'package'}"></i>`;
+                    wonItemImage.parentNode.appendChild(iconContainer);
+                    lucide.createIcons();
+                };
+            } else {
+                wonItemImage.style.display = 'none';
+                // Show icon instead
+                const iconContainer = document.createElement('div');
+                iconContainer.className = `item-icon-large rarity-${wonItem.rarity}`;
+                iconContainer.innerHTML = `<i data-lucide="${rarityIcons[wonItem.rarity] || 'package'}"></i>`;
+                wonItemImage.parentNode.appendChild(iconContainer);
+                lucide.createIcons();
+            }
+        }, 4200);
     }, 500);
+}
+
+// Quick sell the last won item
+async function quickSellItem() {
+    if (!lastWonItem) {
+        showNotification('No item to sell', 'error');
+        return;
+    }
+    
+    try {
+        // First, we need to find the item in the inventory
+        const response = await fetch(`${API_BASE_URL}/api/inventory`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to load inventory');
+        }
+        
+        const inventoryData = await response.json();
+        
+        // Find the most recent item that matches the won item
+        const matchingItem = inventoryData.inventory.items
+            .sort((a, b) => new Date(b.obtainedAt) - new Date(a.obtainedAt))
+            .find(item => 
+                item.itemName === lastWonItem.name && 
+                item.rarity === lastWonItem.rarity &&
+                item.value === lastWonItem.value
+            );
+        
+        if (!matchingItem) {
+            throw new Error('Item not found in inventory');
+        }
+        
+        // Sell the item
+        const sellResponse = await fetch(`${API_BASE_URL}/api/inventory/sell/${matchingItem._id}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!sellResponse.ok) {
+            const error = await sellResponse.json();
+            throw new Error(error.message || 'Failed to sell item');
+        }
+        
+        const sellData = await sellResponse.json();
+        
+        // Update balance
+        updateBalanceDisplay(sellData.newBalance);
+        
+        // Close modal
+        closeCaseOpeningModal();
+        
+        showNotification(`Item sold for $${sellData.sellPrice.toFixed(2)}!`, 'success');
+        
+    } catch (error) {
+        console.error('Error selling item:', error);
+        showNotification(error.message || 'Error selling item', 'error');
+    }
 }
 
 function closeCaseOpeningModal() {
@@ -6147,8 +6279,16 @@ function closeCaseOpeningModal() {
         modal.classList.add('hidden');
         
         // Reset animation
+        reel.style.transition = '';
         reel.style.transform = 'translateX(0)';
         reel.innerHTML = '';
+        
+        // Clean up any icon containers
+        const iconContainers = modal.querySelectorAll('.item-icon-large');
+        iconContainers.forEach(container => container.remove());
+        
+        // Reset last won item
+        lastWonItem = null;
     }
 }
 
@@ -6439,18 +6579,40 @@ function displayInventory(inventory) {
     inventory.items.forEach(item => {
         const itemCard = document.createElement('div');
         itemCard.className = `inventory-item ${item.isLimited ? 'limited' : ''}`;
+        
+        // Get icon based on rarity
+        const rarityIcons = {
+            'common': 'package',
+            'uncommon': 'gem',
+            'rare': 'diamond',
+            'epic': 'star',
+            'legendary': 'crown',
+            'mythical': 'sparkles'
+        };
+        
+        const sellPrice = item.isLimited ? item.value : Math.floor(item.value * 0.7);
+        
         itemCard.innerHTML = `
             <div class="item-image">
-                <img src="${item.image}" alt="${item.itemName}" onerror="this.style.display='none'">
+                ${item.image && item.image !== 'default-item.png' ? 
+                    `<img src="${item.image}" alt="${item.itemName}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : 
+                    ''
+                }
+                <div class="item-icon rarity-${item.rarity}" style="${item.image && item.image !== 'default-item.png' ? 'display: none;' : ''}">
+                    <i data-lucide="${rarityIcons[item.rarity] || 'package'}"></i>
+                </div>
             </div>
             <div class="item-details">
-                <div class="item-name">${item.itemName}</div>
-                <div class="item-value">$${item.value.toFixed(2)}</div>
+                <div class="item-header">
+                    <div class="item-name">${item.itemName}</div>
+                    ${item.count > 1 ? `<div class="item-count">x${item.count}</div>` : ''}
+                </div>
+                <div class="item-value">$${item.value.toFixed(2)}${item.count > 1 ? ' each' : ''}</div>
                 <div class="item-rarity ${item.rarity}">${item.rarity}</div>
                 <div class="item-source">From ${item.caseSource}</div>
                 <div class="item-actions">
-                    <button class="item-action-btn sell" onclick="sellItem('${item._id}')">
-                        Sell ${item.isLimited ? '$' + item.value.toFixed(2) : '70%'}
+                    <button class="item-action-btn sell" onclick="showSellModal('${item._id}', '${item.itemName}', ${item.count}, ${sellPrice})">
+                        Sell ($${sellPrice.toFixed(2)})
                     </button>
                     ${item.isLimited ? `
                         <button class="item-action-btn list" onclick="listItem('${item._id}')">
@@ -6463,6 +6625,11 @@ function displayInventory(inventory) {
         itemCard.onclick = () => showItemDetails(item);
         grid.appendChild(itemCard);
     });
+    
+    // Initialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
 function updateInventoryStats(inventory) {
@@ -6477,13 +6644,86 @@ function updateInventoryStats(inventory) {
     if (limitedItems) limitedItems.textContent = inventory.limitedItems || 0;
 }
 
-async function sellItem(itemId) {
+// Global variables for sell modal
+let currentSellItem = null;
+
+function showSellModal(itemId, itemName, maxCount, sellPricePerItem) {
+    const modal = document.getElementById('sell-item-modal');
+    const nameElement = document.getElementById('sell-item-name');
+    const quantityInput = document.getElementById('sell-quantity');
+    const totalPriceElement = document.getElementById('sell-total-price');
+    
+    if (!modal) return;
+    
+    currentSellItem = {
+        id: itemId,
+        name: itemName,
+        maxCount: maxCount,
+        pricePerItem: sellPricePerItem
+    };
+    
+    nameElement.textContent = itemName;
+    quantityInput.value = 1;
+    quantityInput.max = maxCount;
+    totalPriceElement.textContent = `$${sellPricePerItem.toFixed(2)}`;
+    
+    modal.classList.remove('hidden');
+}
+
+function closeSellModal() {
+    const modal = document.getElementById('sell-item-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        currentSellItem = null;
+    }
+}
+
+function adjustSellQuantity(change) {
+    const quantityInput = document.getElementById('sell-quantity');
+    const totalPriceElement = document.getElementById('sell-total-price');
+    
+    if (!currentSellItem) return;
+    
+    let newQuantity = parseInt(quantityInput.value) + change;
+    newQuantity = Math.max(1, Math.min(newQuantity, currentSellItem.maxCount));
+    
+    quantityInput.value = newQuantity;
+    const totalPrice = newQuantity * currentSellItem.pricePerItem;
+    totalPriceElement.textContent = `$${totalPrice.toFixed(2)}`;
+}
+
+// Update quantity when input changes
+document.addEventListener('DOMContentLoaded', () => {
+    const quantityInput = document.getElementById('sell-quantity');
+    if (quantityInput) {
+        quantityInput.addEventListener('input', () => {
+            const totalPriceElement = document.getElementById('sell-total-price');
+            if (!currentSellItem) return;
+            
+            let quantity = parseInt(quantityInput.value) || 1;
+            quantity = Math.max(1, Math.min(quantity, currentSellItem.maxCount));
+            quantityInput.value = quantity;
+            
+            const totalPrice = quantity * currentSellItem.pricePerItem;
+            totalPriceElement.textContent = `$${totalPrice.toFixed(2)}`;
+        });
+    }
+});
+
+async function confirmSellItem() {
+    if (!currentSellItem) return;
+    
+    const quantityInput = document.getElementById('sell-quantity');
+    const quantity = parseInt(quantityInput.value) || 1;
+    
     try {
-        const response = await fetch(`${API_BASE_URL}/api/inventory/sell/${itemId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/inventory/sell/${currentSellItem.id}`, {
             method: 'POST',
             headers: {
+                'Content-Type': 'application/json',
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
+            },
+            body: JSON.stringify({ count: quantity })
         });
         
         if (!response.ok) {
@@ -6496,14 +6736,23 @@ async function sellItem(itemId) {
         // Update balance
         updateBalanceDisplay(data.newBalance);
         
+        // Close modal
+        closeSellModal();
+        
         // Refresh inventory
         loadInventory();
         
-        showNotification(`Item sold for $${data.sellPrice.toFixed(2)}!`, 'success');
+        showNotification(data.message, 'success');
     } catch (error) {
         console.error('Error selling item:', error);
         showNotification(error.message || 'Error selling item', 'error');
     }
+}
+
+// Legacy function for backward compatibility
+async function sellItem(itemId) {
+    // This is now handled through the sell modal
+    console.warn('sellItem called directly, should use showSellModal instead');
 }
 
 function showItemDetails(item) {

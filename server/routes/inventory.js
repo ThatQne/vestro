@@ -82,6 +82,8 @@ router.get('/stats', auth, async (req, res) => {
 // Sell an item (70% of value for non-limited items)
 router.post('/sell/:itemId', auth, async (req, res) => {
     try {
+        const { count = 1 } = req.body; // Allow selling multiple items at once
+        
         const userInventory = await UserInventory.findOne({ userId: req.user.id });
         if (!userInventory) {
             return res.status(404).json({ success: false, message: 'Inventory not found' });
@@ -96,15 +98,21 @@ router.post('/sell/:itemId', auth, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Item is currently listed or being traded' });
         }
 
-        // Calculate sell price (70% of value for non-limited items)
-        const sellPrice = item.isLimited ? item.value : Math.floor(item.value * 0.7);
+        // Validate count
+        if (count > item.count) {
+            return res.status(400).json({ success: false, message: 'Not enough items to sell' });
+        }
 
-        // Remove item from inventory
-        await userInventory.removeItem(req.params.itemId);
+        // Calculate sell price (70% of value for non-limited items)
+        const sellPricePerItem = item.isLimited ? item.value : Math.floor(item.value * 0.7);
+        const totalSellPrice = sellPricePerItem * count;
+
+        // Remove item(s) from inventory
+        await userInventory.removeItem(req.params.itemId, count);
 
         // Add money to user balance
         const user = await User.findById(req.user.id);
-        user.balance += sellPrice;
+        user.balance += totalSellPrice;
         user.balanceHistory.push(user.balance);
         await user.save();
 
@@ -113,14 +121,17 @@ router.post('/sell/:itemId', auth, async (req, res) => {
         io.to(req.user.id).emit('item-sold', {
             itemId: req.params.itemId,
             itemName: item.itemName,
-            sellPrice: sellPrice,
+            sellPrice: totalSellPrice,
+            count: count,
             newBalance: user.balance
         });
 
         res.json({
             success: true,
-            message: 'Item sold successfully!',
-            sellPrice: sellPrice,
+            message: count === 1 ? 'Item sold successfully!' : `${count} items sold successfully!`,
+            sellPrice: totalSellPrice,
+            sellPricePerItem: sellPricePerItem,
+            count: count,
             newBalance: user.balance
         });
 

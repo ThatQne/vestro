@@ -1227,6 +1227,7 @@
                     </div>
                 </div>
                 <div class="case-opening-actions">
+                    <button class="btn-secondary" id="quick-sell-btn" onclick="quickSellItem()">Quick Sell (70%)</button>
                     <button class="btn-primary" onclick="closeCaseOpeningModal()">Continue</button>
                 </div>
             </div>
@@ -1342,6 +1343,39 @@
                 <div class="item-details-actions">
                     <button class="btn-secondary" onclick="sellItem()">Sell for 70%</button>
                     <button class="btn-primary" id="list-item-btn" onclick="listItem()">List on Marketplace</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sell Item Modal -->
+    <div id="sell-item-modal" class="modal-overlay hidden">
+        <div class="modal-content sell-item-content">
+            <div class="modal-header">
+                <h2>Sell Item</h2>
+                <button class="modal-close" onclick="closeSellModal()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="sell-item-body">
+                <div class="sell-item-info">
+                    <h3 id="sell-item-name">Item Name</h3>
+                    <p>How many items would you like to sell?</p>
+                </div>
+                <div class="sell-item-controls">
+                    <div class="quantity-selector">
+                        <button class="quantity-btn" onclick="adjustSellQuantity(-1)">-</button>
+                        <input type="number" id="sell-quantity" value="1" min="1" max="1">
+                        <button class="quantity-btn" onclick="adjustSellQuantity(1)">+</button>
+                    </div>
+                    <div class="sell-price-info">
+                        <div class="sell-price-label">Total Sale Price:</div>
+                        <div class="sell-price-value" id="sell-total-price">$0.00</div>
+                    </div>
+                </div>
+                <div class="sell-item-actions">
+                    <button class="btn-secondary" onclick="closeSellModal()">Cancel</button>
+                    <button class="btn-primary" onclick="confirmSellItem()">Sell Items</button>
                 </div>
             </div>
         </div>

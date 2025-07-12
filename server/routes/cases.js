@@ -120,7 +120,8 @@ router.post('/open/:id', auth, async (req, res) => {
             message: 'Case opened successfully!',
             item: wonItem,
             caseName: caseItem.name,
-            newBalance: user.balance
+            newBalance: user.balance,
+            caseItems: caseItem.items // Include all items from the case for animation
         });
 
     } catch (error) {
