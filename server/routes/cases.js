@@ -4,7 +4,7 @@ const Case = require('../models/Case');
 const Item = require('../models/Item');
 const Inventory = require('../models/Inventory');
 const User = require('../models/User');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 // Middleware to attach io to request
 router.use((req, res, next) => {
@@ -76,7 +76,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Open a case
-router.post('/:id/open', auth, async (req, res) => {
+router.post('/:id/open', authenticateToken, async (req, res) => {
     try {
         const caseItem = await Case.findById(req.params.id)
             .populate('items.item');
@@ -156,7 +156,7 @@ router.post('/:id/open', auth, async (req, res) => {
 });
 
 // Get user's inventory
-router.get('/inventory/items', auth, async (req, res) => {
+router.get('/inventory/items', authenticateToken, async (req, res) => {
     try {
         let inventory = await Inventory.findOne({ user: req.user.id })
             .populate('items.item');
@@ -213,7 +213,7 @@ router.get('/inventory/items', auth, async (req, res) => {
 });
 
 // Sell item from inventory
-router.post('/inventory/sell/:itemId', auth, async (req, res) => {
+router.post('/inventory/sell/:itemId', authenticateToken, async (req, res) => {
     try {
         const { quantity = 1 } = req.body;
         const itemId = req.params.itemId;
