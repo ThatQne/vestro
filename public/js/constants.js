@@ -16,7 +16,7 @@ const MINES_MIN_COUNT = 1;
 const MINES_MAX_COUNT = 24;
 
 // UI constants
-const NOTIFICATION_DURATION = 5000;
+const NOTIFICATION_DURATION = 5100;
 const CHART_POINTS_LIMIT = 100;
 
 // Colors
