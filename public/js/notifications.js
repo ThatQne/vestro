@@ -248,6 +248,32 @@ function showCopyFeedback() {
     notifications.success('Copied!', 'Hash copied to clipboard');
 }
 
+// Global showNotification function for compatibility
+function showNotification(message, type = 'info') {
+    const titleMap = {
+        'success': 'Success',
+        'error': 'Error',
+        'warning': 'Warning',
+        'info': 'Info'
+    };
+    
+    const title = titleMap[type] || 'Info';
+    
+    switch (type) {
+        case 'success':
+            notifications.success(title, message);
+            break;
+        case 'error':
+            notifications.error(title, message);
+            break;
+        case 'warning':
+            notifications.warning(title, message);
+            break;
+        default:
+            notifications.info(title, message);
+    }
+}
+
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {

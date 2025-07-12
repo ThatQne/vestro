@@ -5976,6 +5976,7 @@ async function loadCases() {
         }
         
         const data = await response.json();
+        console.log('Cases loaded:', data.cases); // Debug log
         displayCases(data.cases);
     } catch (error) {
         console.error('Error loading cases:', error);
@@ -5994,7 +5995,9 @@ function displayCases(cases) {
         caseCard.className = 'case-card';
         caseCard.innerHTML = `
             <div class="case-image">
-                <img src="${caseItem.image}" alt="${caseItem.name}" onerror="this.style.display='none'">
+                <div class="case-image-placeholder">
+                    <div class="case-image-text">${caseItem.name.charAt(0)}</div>
+                </div>
             </div>
             <div class="case-info">
                 <div class="case-name">${caseItem.name}</div>
@@ -6031,6 +6034,7 @@ function displayCases(cases) {
 
 async function openCase(caseId) {
     try {
+        console.log('Opening case:', caseId); // Debug log
         const response = await fetch(`${API_BASE_URL}/api/cases/open/${caseId}`, {
             method: 'POST',
             headers: {
@@ -6044,6 +6048,7 @@ async function openCase(caseId) {
         }
         
         const data = await response.json();
+        console.log('Case opened successfully:', data); // Debug log
         showCaseOpeningModal(data.caseName, data.item);
         
         // Update balance
@@ -6395,6 +6400,7 @@ async function loadInventory() {
         }
         
         const data = await response.json();
+        console.log('Inventory loaded:', data.inventory); // Debug log
         displayInventory(data.inventory);
         updateInventoryStats(data.inventory);
     } catch (error) {
