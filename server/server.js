@@ -41,8 +41,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Development mode - proxy to Render backend
-if (process.env.NODE_ENV === 'development') {
+// Check if we should run in proxy mode (only if explicitly configured)
+if (process.env.USE_PROXY === 'true' && process.env.BACKEND_URL) {
     const { createProxyMiddleware } = require('http-proxy-middleware');
     
     // Proxy API requests to Render backend
@@ -62,10 +62,9 @@ if (process.env.NODE_ENV === 'development') {
         ws: true
     }));
 
-    // Only serve static files in development
-    console.log('Development mode: Proxying requests to', process.env.BACKEND_URL);
+    console.log('Proxy mode: Forwarding requests to', process.env.BACKEND_URL);
 } else {
-    // Production mode - use full server functionality
+    // Full server mode - use all server functionality
     
     // Rate limiting
     const limiter = rateLimit({

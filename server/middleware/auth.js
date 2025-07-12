@@ -23,9 +23,16 @@ function authenticateToken(req, res, next) {
             });
         }
 
-        console.log('Auth middleware - User authenticated:', user.id); // Debug log
-        console.log('Auth middleware - Full user object:', user); // Debug log
-        req.user = user;
+        // Normalize the user object to ensure both id and userId are available
+        const normalizedUser = {
+            ...user,
+            id: user.userId || user.id, // Ensure id is available
+            userId: user.userId || user.id // Ensure userId is available
+        };
+
+        console.log('Auth middleware - User authenticated:', normalizedUser.id); // Debug log
+        console.log('Auth middleware - Full user object:', normalizedUser); // Debug log
+        req.user = normalizedUser;
         next();
     });
 }
