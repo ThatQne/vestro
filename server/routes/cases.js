@@ -36,6 +36,7 @@ router.get('/:id', async (req, res) => {
 // Open a case
 router.post('/open/:id', auth, async (req, res) => {
     try {
+        console.log('Case opening request for case:', req.params.id, 'by user:', req.user.id); // Debug log
         const caseItem = await Case.findById(req.params.id);
         if (!caseItem) {
             return res.status(404).json({ success: false, message: 'Case not found' });

@@ -93,6 +93,7 @@ if (process.env.NODE_ENV === 'development') {
     app.set('io', io);
     
     // Routes
+    console.log('Registering API routes...'); // Debug log
     app.use('/api/auth', authRoutes);
     app.use('/api/games', gameRoutes);
     app.use('/api/random', randomRoutes);
@@ -101,6 +102,7 @@ if (process.env.NODE_ENV === 'development') {
     app.use('/api/cases', casesRoutes);
     app.use('/api/inventory', inventoryRoutes);
     app.use('/api/marketplace', marketplaceRoutes);
+    console.log('All API routes registered successfully'); // Debug log
 
     // Socket.IO connection handling
     io.on('connection', (socket) => {

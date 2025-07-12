@@ -6019,15 +6019,35 @@ function displayCases(cases) {
                     ).join('')}
                 </div>
                 <div class="case-actions">
-                    <button class="case-action-btn primary" onclick="openCase('${caseItem._id}')">
+                    <button class="case-action-btn primary" type="button">
                         Open $${caseItem.price.toFixed(2)}
-                    </button>
-                    <button class="case-action-btn secondary" onclick="viewCaseDetails('${caseItem._id}')">
-                        Details
                     </button>
                 </div>
             </div>
         `;
+        
+        // Add click event listeners
+        const openBtn = caseCard.querySelector('.case-action-btn.primary');
+        
+        // Make entire card clickable for details
+        caseCard.addEventListener('click', (e) => {
+            if (!e.target.closest('.case-action-btn')) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Case card clicked for details:', caseItem._id);
+                showCaseDetails(caseItem);
+            }
+        });
+        
+        if (openBtn) {
+            openBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Open button clicked for case:', caseItem._id);
+                openCase(caseItem._id);
+            });
+        }
+        
         casesGrid.appendChild(caseCard);
     });
 }
@@ -6035,6 +6055,7 @@ function displayCases(cases) {
 async function openCase(caseId) {
     try {
         console.log('Opening case:', caseId); // Debug log
+        console.log('Current user token:', localStorage.getItem('token') ? 'Token exists' : 'No token'); // Debug auth
         const response = await fetch(`${API_BASE_URL}/api/cases/open/${caseId}`, {
             method: 'POST',
             headers: {
@@ -6376,6 +6397,9 @@ async function createBattle() {
 
 async function loadInventory() {
     try {
+        const token = localStorage.getItem('token');
+        console.log('Loading inventory with token:', token ? 'Token exists' : 'No token'); // Debug log
+        
         const rarityFilter = document.getElementById('rarity-filter')?.value || '';
         const limitedFilter = document.getElementById('limited-filter')?.value || '';
         
@@ -6391,7 +6415,7 @@ async function loadInventory() {
         
         const response = await fetch(url, {
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${token}`
             }
         });
         
@@ -6528,9 +6552,42 @@ async function listItem(itemId) {
     showNotification('Marketplace listing feature coming soon!', 'info');
 }
 
-function viewCaseDetails(caseId) {
-    // This would show detailed case information
-    showNotification('Case details feature coming soon!', 'info');
+function showCaseDetails(caseItem) {
+    const modal = document.getElementById('case-details-modal');
+    if (!modal) return;
+    
+    // Populate modal with case details
+    document.getElementById('case-details-name').textContent = caseItem.name;
+    document.getElementById('case-details-description').textContent = caseItem.description;
+    document.getElementById('case-details-price').textContent = `$${caseItem.price.toFixed(2)}`;
+    document.getElementById('case-details-items-count').textContent = caseItem.items.length;
+    document.getElementById('case-details-openings').textContent = caseItem.totalOpenings;
+    
+    // Display items
+    const itemsContainer = document.getElementById('case-details-items');
+    itemsContainer.innerHTML = '';
+    
+    caseItem.items.forEach(item => {
+        const itemElement = document.createElement('div');
+        itemElement.className = `case-detail-item ${item.rarity}`;
+        itemElement.innerHTML = `
+            <div class="case-detail-item-name">${item.name}</div>
+            <div class="case-detail-item-value">$${item.value.toFixed(2)}</div>
+            <div class="case-detail-item-rarity ${item.rarity}">${item.rarity}</div>
+            <div class="case-detail-item-probability">${item.probability}%</div>
+            ${item.isLimited ? '<div class="case-detail-item-limited">Limited</div>' : ''}
+        `;
+        itemsContainer.appendChild(itemElement);
+    });
+    
+    modal.classList.remove('hidden');
+}
+
+function closeCaseDetailsModal() {
+    const modal = document.getElementById('case-details-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
 }
 
 // Socket event handlers

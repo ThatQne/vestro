@@ -1233,6 +1233,38 @@
         </div>
     </div>
 
+    <!-- Case Details Modal -->
+    <div id="case-details-modal" class="modal-overlay hidden">
+        <div class="modal-content case-details-content">
+            <div class="modal-header">
+                <h2 id="case-details-name">Case Details</h2>
+                <button class="modal-close" onclick="closeCaseDetailsModal()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="case-details-header">
+                <p id="case-details-description">Case description</p>
+            </div>
+            <div class="case-details-info">
+                <div class="case-details-stat">
+                    <div class="case-details-stat-label">Price</div>
+                    <div class="case-details-stat-value" id="case-details-price">$0.00</div>
+                </div>
+                <div class="case-details-stat">
+                    <div class="case-details-stat-label">Items</div>
+                    <div class="case-details-stat-value" id="case-details-items-count">0</div>
+                </div>
+                <div class="case-details-stat">
+                    <div class="case-details-stat-label">Times Opened</div>
+                    <div class="case-details-stat-value" id="case-details-openings">0</div>
+                </div>
+            </div>
+            <div class="case-details-items" id="case-details-items">
+                <!-- Items will be populated here -->
+            </div>
+        </div>
+    </div>
+
     <!-- Create Battle Modal -->
     <div id="create-battle-modal" class="modal-overlay hidden">
         <div class="modal-content create-battle-content">

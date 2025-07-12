@@ -7,12 +7,15 @@ const User = require('../models/User');
 // Get user's inventory
 router.get('/', auth, async (req, res) => {
     try {
+        console.log('Inventory request for user:', req.user.id); // Debug log
         let userInventory = await UserInventory.findOne({ userId: req.user.id });
         if (!userInventory) {
+            console.log('Creating new inventory for user:', req.user.id); // Debug log
             userInventory = new UserInventory({ userId: req.user.id });
             await userInventory.save();
         }
 
+        console.log('Returning inventory:', userInventory); // Debug log
         res.json({ success: true, inventory: userInventory });
     } catch (error) {
         console.error('Error fetching inventory:', error);
