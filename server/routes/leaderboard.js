@@ -46,7 +46,7 @@ router.get('/', authenticateToken, async (req, res) => {
         console.error('Error fetching leaderboard:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to fetch leaderboard'
+            message: 'Failed to fetch'
         });
     }
 });
