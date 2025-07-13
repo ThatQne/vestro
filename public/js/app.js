@@ -6760,10 +6760,10 @@ function displayBattles(battles) {
                     <i data-lucide="eye"></i>
                     View Details
                 </button>
-                <button class="battle-join-btn" onclick="joinBattle('${battle.battleId}')" 
-                        ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
-                    ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
-                </button>
+            <button class="battle-join-btn" onclick="joinBattle('${battle.battleId}')" 
+                    ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
+                ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
+            </button>
             </div>
         `;
         battlesGrid.appendChild(battleCard);
@@ -6852,8 +6852,11 @@ async function showBattleDetails(battleId) {
 }
 
 function populateBattleDetailsModal(battle) {
+    console.log('Battle data received:', battle); // Debug log
+    
     // Set title and basic info
-    document.getElementById('battle-details-title').textContent = `Battle #${battle.battleId || battle._id}`;
+    const battleId = battle.battleId || battle._id || 'Unknown';
+    document.getElementById('battle-details-title').textContent = `Battle #${battleId}`;
     document.getElementById('battle-mode-display').textContent = battle.mode || 'Unknown';
     
     // Calculate total cost if not provided
@@ -6886,6 +6889,8 @@ function populateBattleDetailsModal(battle) {
     // Populate cases
     const casesList = document.getElementById('battle-cases-list');
     casesList.innerHTML = '';
+    
+    console.log('Battle cases:', battle.cases); // Debug log
     
     if (battle.cases && battle.cases.length > 0) {
         battle.cases.forEach(caseItem => {
@@ -6947,8 +6952,14 @@ function closeBattleDetailsModal() {
 async function callBots() {
     if (!currentBattleDetails) return;
     
+    const battleId = currentBattleDetails.battleId || currentBattleDetails._id;
+    if (!battleId) {
+        showNotification('Invalid battle ID', 'error');
+        return;
+    }
+    
     try {
-        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${currentBattleDetails.battleId}/call-bots`, {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${battleId}/call-bots`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -6979,8 +6990,14 @@ async function callBots() {
 async function startBattle() {
     if (!currentBattleDetails) return;
     
+    const battleId = currentBattleDetails.battleId || currentBattleDetails._id;
+    if (!battleId) {
+        showNotification('Invalid battle ID', 'error');
+        return;
+    }
+    
     try {
-        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${currentBattleDetails.battleId}/start`, {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${battleId}/start`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -7179,8 +7196,8 @@ function displayBattleCases(cases) {
                 <i data-lucide="${caseIcon.icon}" style="color: white"></i>
             </div>
             <div class="case-info">
-                <div class="case-name">${caseItem.name}</div>
-                <div class="case-price">$${caseItem.price.toFixed(2)}</div>
+            <div class="case-name">${caseItem.name}</div>
+            <div class="case-price">$${caseItem.price.toFixed(2)}</div>
             </div>
         `;
         
@@ -7299,8 +7316,21 @@ async function createBattle() {
         // Update balance
         updateBalanceDisplay(data.newBalance);
         
-        // Close modal and refresh battles
+        // Close modal and show battle details
         closeCreateBattleModal();
+        
+        // Show the created battle details
+        if (data.battle) {
+            currentBattleDetails = data.battle;
+            populateBattleDetailsModal(data.battle);
+            
+            const modal = document.getElementById('battle-details-modal');
+            if (modal) {
+                modal.classList.remove('hidden');
+            }
+        }
+        
+        // Refresh battles list
         loadBattles();
         
         showNotification('Battle created successfully!', 'success');
