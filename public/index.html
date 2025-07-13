@@ -1214,6 +1214,10 @@
                     <!-- Items will be populated here -->
                 </div>
                 <div class="case-opening-indicator"></div>
+                <button class="skip-animation-btn" id="skip-animation-btn" onclick="skipCaseAnimation()">
+                    <i data-lucide="skip-forward"></i>
+                    Skip Animation
+                </button>
             </div>
             <div class="case-opening-result hidden" id="case-opening-result">
                 <div class="won-item">
@@ -1360,6 +1364,7 @@
             <div class="sell-item-body">
                 <div class="sell-item-info">
                     <h3 id="sell-item-name">Item Name</h3>
+                    <div id="sell-item-rarity" class="sell-item-rarity" style="display: none;"></div>
                     <p>How many items would you like to sell?</p>
                 </div>
                 <div class="sell-item-controls">

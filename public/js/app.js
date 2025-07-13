@@ -134,8 +134,24 @@ function initializeApp() {
         }
     });
 
+    // Handle browser back/forward buttons
+    window.addEventListener('popstate', (event) => {
+        if (event.state && event.state.page) {
+            showPage(event.state.page);
+        }
+    });
+
     initializeChart('dashboard');
     initializeMobileMenu();
+    
+    // Restore saved page if user is already logged in
+    if (localStorage.getItem('token')) {
+        const savedPage = localStorage.getItem('currentPage');
+        if (savedPage && savedPage !== 'login') {
+            // Set the current page but don't show it yet (will be shown after profile fetch)
+            currentPage = savedPage;
+        }
+    }
 }
 
 function showLoginPage() {
@@ -166,7 +182,10 @@ function hideLoginPage() {
         setTimeout(() => lucide.createIcons(), 50);
     }
     
-    showPage('dashboard');
+    // Restore the last visited page or default to dashboard
+    const savedPage = localStorage.getItem('currentPage');
+    const pageToShow = savedPage && savedPage !== 'login' ? savedPage : 'dashboard';
+    showPage(pageToShow);
 }
 
 async function checkUserExists() {
@@ -535,6 +554,15 @@ async function updateBadges() {
 }
 
 function showPage(pageId) {
+    // Save current page to localStorage
+    localStorage.setItem('currentPage', pageId);
+    currentPage = pageId;
+    
+    // Update browser history
+    const state = { page: pageId };
+    const url = `#${pageId}`;
+    history.pushState(state, '', url);
+    
     // Hide all pages
     document.querySelectorAll('.page-content').forEach(page => {
         page.classList.add('hidden');
@@ -5990,14 +6018,22 @@ function displayCases(cases) {
     
     casesGrid.innerHTML = '';
     
+    // Define unique icons and colors for each case
+    const caseIcons = {
+        'Starter Case': { icon: 'package', color: '#10b981' },
+        'Gambler\'s Delight': { icon: 'dice-6', color: '#f59e0b' },
+        'Mystic Treasures': { icon: 'sparkles', color: '#8b5cf6' },
+        'Neon Dreams': { icon: 'zap', color: '#06b6d4' },
+        'Ocean\'s Bounty': { icon: 'droplets', color: '#3b82f6' }
+    };
+    
     cases.forEach(caseItem => {
         const caseCard = document.createElement('div');
         caseCard.className = 'case-card';
+        const caseIcon = caseIcons[caseItem.name] || { icon: 'package', color: '#10b981' };
         caseCard.innerHTML = `
-            <div class="case-image">
-                <div class="case-image-placeholder">
-                    <div class="case-image-text">${caseItem.name.charAt(0)}</div>
-                </div>
+            <div class="case-icon" style="background: ${caseIcon.color}">
+                <i data-lucide="${caseIcon.icon}" style="color: white"></i>
             </div>
             <div class="case-info">
                 <div class="case-name">${caseItem.name}</div>
@@ -6013,11 +6049,7 @@ function displayCases(cases) {
                         <div class="case-stat-value">${caseItem.totalOpenings}</div>
                     </div>
                 </div>
-                <div class="case-items-preview">
-                    ${caseItem.items.slice(0, 5).map(item => 
-                        `<div class="case-item-preview ${item.rarity}"></div>`
-                    ).join('')}
-                </div>
+
                 <div class="case-actions">
                     <button class="case-action-btn primary" type="button">
                         Open $${caseItem.price.toFixed(2)}
@@ -6053,6 +6085,11 @@ function displayCases(cases) {
         
         casesGrid.appendChild(caseCard);
     });
+    
+    // Initialize Lucide icons for case icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
 async function openCase(caseId) {
@@ -6096,6 +6133,7 @@ function showCaseOpeningModal(caseName, wonItem, caseItems) {
     const title = document.getElementById('case-opening-title');
     const reel = document.getElementById('case-opening-reel');
     const result = document.getElementById('case-opening-result');
+    const animation = document.querySelector('.case-opening-animation');
     
     if (!modal) return;
     
@@ -6105,14 +6143,31 @@ function showCaseOpeningModal(caseName, wonItem, caseItems) {
     title.textContent = `Opening ${caseName}`;
     modal.classList.remove('hidden');
     
-    // Hide result initially
+    // Hide result initially and remove any previous classes
     result.classList.add('hidden');
+    result.classList.remove('show-result');
+    modal.classList.remove('shake');
     
-    // Create animation items with actual case items
-    const items = [];
-    const totalItems = 50; // More items for better animation
-    const wonItemIndex = Math.floor(totalItems * 0.7 + Math.random() * totalItems * 0.2); // Position won item towards the end
+    // Clear reel and reset transform
+    reel.innerHTML = '';
+    reel.style.transition = 'none';
+    reel.style.transform = 'translateX(0)';
     
+    // Get icon based on rarity with user preference [[memory:3053701]]
+    const rarityIcons = {
+        'common': 'package',
+        'uncommon': 'gem', 
+        'rare': 'diamond',
+        'epic': 'star',
+        'legendary': 'crown',
+        'mythical': 'sparkles'
+    };
+    
+    // Create more items for smoother animation
+    const totalItems = 50;
+    const wonItemIndex = 35 + Math.floor(Math.random() * 10); // Position winning item near the end
+    
+    // Generate items
     for (let i = 0; i < totalItems; i++) {
         const item = document.createElement('div');
         item.className = 'case-opening-item';
@@ -6120,55 +6175,143 @@ function showCaseOpeningModal(caseName, wonItem, caseItems) {
         let displayItem;
         if (i === wonItemIndex) {
             displayItem = wonItem;
-            item.classList.add('won');
+            // Don't add winning-item class initially - it will be highlighted dynamically
         } else {
-            // Use random items from the case
+            // Use actual case items for variety
             displayItem = caseItems[Math.floor(Math.random() * caseItems.length)];
         }
         
-        // Get icon based on rarity
-        const rarityIcons = {
-            'common': 'package',
-            'uncommon': 'gem',
-            'rare': 'diamond',
-            'epic': 'star',
-            'legendary': 'crown',
-            'mythical': 'sparkles'
-        };
-        
+        // Create item content with better styling
         item.innerHTML = `
-            <div class="item-icon rarity-${displayItem.rarity}">
+            <div class="item-icon rarity-${displayItem.rarity}" style="--rarity-color: var(--${displayItem.rarity}-color)">
                 <i data-lucide="${rarityIcons[displayItem.rarity] || 'package'}"></i>
             </div>
-            <div class="item-name">${displayItem.name}</div>
-            <div class="item-value">$${displayItem.value.toFixed(2)}</div>
-            <div class="item-rarity ${displayItem.rarity}">${displayItem.rarity}</div>
+            <div class="item-content">
+                <div class="item-name">${displayItem.name}</div>
+                <div class="item-value">$${displayItem.value.toFixed(2)}</div>
+            </div>
+            <div class="item-rarity-glow rarity-${displayItem.rarity}"></div>
         `;
         
-        items.push(item);
         reel.appendChild(item);
     }
     
-    // Initialize icons
+    // Initialize Lucide icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
     
-    // Calculate proper animation distance to land on won item
-    const itemWidth = 150; // Approximate width of each item
-    const reelWidth = reel.offsetWidth;
-    const targetPosition = wonItemIndex * itemWidth;
-    const centerOffset = reelWidth / 2 - itemWidth / 2;
-    const finalTransform = -(targetPosition - centerOffset);
-    
-    // Start animation
+    // Start animation sequence
     setTimeout(() => {
-        reel.style.transition = 'transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99)';
-        reel.style.transform = `translateX(${finalTransform}px)`;
+        // Calculate exact positioning
+        const containerWidth = animation.offsetWidth;
+        const itemWidth = 140; // Fixed item width
+        const itemGap = 20;
+        const totalItemWidth = itemWidth + itemGap;
         
-        // Show result after animation
+        // Calculate winning position
+        const winningPosition = wonItemIndex * totalItemWidth;
+        const centerPosition = containerWidth / 2 - itemWidth / 2;
+        const finalOffset = -(winningPosition - centerPosition);
+        
+        // Store animation state for skipping
+        window.currentCaseAnimation = {
+            animationFrame: null,
+            startTime: Date.now(),
+            duration: 4000,
+            finalOffset: finalOffset,
+            wonItemIndex: wonItemIndex,
+            reel: reel,
+            animation: animation,
+            modal: modal,
+            wonItem: wonItem,
+            rarityIcons: rarityIcons
+        };
+        
+        // Main animation with dynamic highlighting
+        const animationDuration = 4000; // 4 seconds
+        const startTime = Date.now();
+        let animationFrame;
+        
+        // Function to update highlighting based on current position
+        function updateHighlighting(currentOffset) {
+            // Calculate which item is currently under the indicator
+            // The indicator is at the center of the container
+            const indicatorCenter = containerWidth / 2;
+            
+            // The reel starts at left: 50px, and each item is 140px wide with 20px gap
+            // So the first item's center is at: 50 + 70 = 120px
+            const firstItemCenter = 50 + itemWidth / 2;
+            
+            // Calculate which item index is currently under the indicator
+            // currentOffset moves the reel left (negative), so we add it to find the new position
+            const currentItemCenter = firstItemCenter + currentOffset;
+            const distanceFromFirst = indicatorCenter - currentItemCenter;
+            const currentItemIndex = Math.round(distanceFromFirst / totalItemWidth);
+            
+            // Remove highlighting from all items
+            Array.from(reel.children).forEach((item, index) => {
+                item.classList.remove('cursor-highlight');
+            });
+            
+            // Add highlighting to current item if it's within bounds
+            if (currentItemIndex >= 0 && currentItemIndex < reel.children.length) {
+                reel.children[currentItemIndex].classList.add('cursor-highlight');
+            }
+        }
+        
+        // Animation loop
+        function animate() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / animationDuration, 1);
+            
+            // Create acceleration/deceleration curve (ease-in-out)
+            const easeProgress = progress < 0.5 
+                ? 2 * progress * progress 
+                : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+            
+            const currentOffset = finalOffset * easeProgress;
+            reel.style.transform = `translateX(${currentOffset}px)`;
+            
+            // Update highlighting
+            updateHighlighting(currentOffset);
+            
+            if (progress < 1) {
+                animationFrame = requestAnimationFrame(animate);
+                window.currentCaseAnimation.animationFrame = animationFrame;
+            } else {
+                // Animation complete - highlight the winning item
+                Array.from(reel.children).forEach((item, index) => {
+                    item.classList.remove('cursor-highlight');
+                    if (index === wonItemIndex) {
+                        item.classList.add('winner-revealed');
+                    }
+                });
+                
+                // Add impact effects
+                animation.classList.add('impact');
+                modal.classList.add('shake');
+                
+                setTimeout(() => {
+                    modal.classList.remove('shake');
+                    animation.classList.remove('impact');
+                }, 600);
+            }
+        }
+        
+        // Start the animation
+        animate();
+        
+        // Show result with celebration
         setTimeout(() => {
             result.classList.remove('hidden');
+            result.classList.add('show-result');
+            
+            // Play celebration animation
+            setTimeout(() => {
+                animation.classList.add('celebration');
+                setTimeout(() => animation.classList.remove('celebration'), 2000);
+            }, 200);
             
             // Update result display
             document.getElementById('won-item-name').textContent = wonItem.name;
@@ -6183,29 +6326,144 @@ function showCaseOpeningModal(caseName, wonItem, caseItems) {
                 quickSellBtn.textContent = `Quick Sell ($${sellPrice.toFixed(2)})`;
             }
             
+            // Handle item image/icon with robust fallback
             const wonItemImage = document.getElementById('won-item-image');
-            if (wonItem.image && wonItem.image !== 'default-item.png') {
-                wonItemImage.src = wonItem.image;
+            const imagePath = wonItem.image && wonItem.image !== 'default-item.png' ? 
+                (wonItem.image.startsWith('http') ? wonItem.image : `/images/${wonItem.image}`) : null;
+            
+            if (imagePath) {
+                wonItemImage.src = imagePath;
+                wonItemImage.style.display = 'block';
                 wonItemImage.onerror = () => {
                     wonItemImage.style.display = 'none';
-                    // Show icon instead
                     const iconContainer = document.createElement('div');
                     iconContainer.className = `item-icon-large rarity-${wonItem.rarity}`;
                     iconContainer.innerHTML = `<i data-lucide="${rarityIcons[wonItem.rarity] || 'package'}"></i>`;
                     wonItemImage.parentNode.appendChild(iconContainer);
                     lucide.createIcons();
                 };
+                wonItemImage.onload = () => {
+                    // Image loaded successfully, ensure icon is hidden
+                    const existingIcon = wonItemImage.parentNode.querySelector('.item-icon-large');
+                    if (existingIcon) {
+                        existingIcon.remove();
+                    }
+                };
             } else {
                 wonItemImage.style.display = 'none';
-                // Show icon instead
                 const iconContainer = document.createElement('div');
                 iconContainer.className = `item-icon-large rarity-${wonItem.rarity}`;
                 iconContainer.innerHTML = `<i data-lucide="${rarityIcons[wonItem.rarity] || 'package'}"></i>`;
                 wonItemImage.parentNode.appendChild(iconContainer);
                 lucide.createIcons();
             }
-        }, 4200);
-    }, 500);
+            
+        }, 5200);
+        
+    }, 200);
+}
+
+// Skip the case opening animation and show result immediately
+function skipCaseAnimation() {
+    if (!window.currentCaseAnimation) return;
+    
+    // Cancel the current animation
+    if (window.currentCaseAnimation.animationFrame) {
+        cancelAnimationFrame(window.currentCaseAnimation.animationFrame);
+    }
+    
+    const { reel, animation, modal, wonItemIndex, wonItem, rarityIcons } = window.currentCaseAnimation;
+    
+    // Jump to final position
+    const containerWidth = animation.offsetWidth;
+    const itemWidth = 140;
+    const centerPosition = containerWidth / 2 - itemWidth / 2;
+    const winningPosition = wonItemIndex * (itemWidth + 20);
+    const finalOffset = -(winningPosition - centerPosition);
+    
+    reel.style.transform = `translateX(${finalOffset}px)`;
+    
+    // Remove all highlighting and add winner highlight
+    Array.from(reel.children).forEach((item, index) => {
+        item.classList.remove('cursor-highlight');
+        if (index === wonItemIndex) {
+            item.classList.add('winner-revealed');
+        }
+    });
+    
+    // Add impact effects
+    animation.classList.add('impact');
+    modal.classList.add('shake');
+    
+    setTimeout(() => {
+        modal.classList.remove('shake');
+        animation.classList.remove('impact');
+    }, 600);
+    
+    // Show result immediately
+    const result = document.getElementById('case-opening-result');
+    result.classList.remove('hidden');
+    result.classList.add('show-result');
+    
+    // Play celebration animation
+    setTimeout(() => {
+        animation.classList.add('celebration');
+        setTimeout(() => animation.classList.remove('celebration'), 2000);
+    }, 200);
+    
+    // Update result display
+    document.getElementById('won-item-name').textContent = wonItem.name;
+    document.getElementById('won-item-value').textContent = `$${wonItem.value.toFixed(2)}`;
+    document.getElementById('won-item-rarity').textContent = wonItem.rarity;
+    document.getElementById('won-item-rarity').className = `item-rarity ${wonItem.rarity}`;
+    
+    // Update quick sell button
+    const quickSellBtn = document.getElementById('quick-sell-btn');
+    if (quickSellBtn) {
+        const sellPrice = wonItem.isLimited ? wonItem.value : Math.floor(wonItem.value * 0.7);
+        quickSellBtn.textContent = `Quick Sell ($${sellPrice.toFixed(2)})`;
+    }
+    
+    // Handle item image/icon with robust fallback
+    const wonItemImage = document.getElementById('won-item-image');
+    const imagePath = wonItem.image && wonItem.image !== 'default-item.png' ? 
+        (wonItem.image.startsWith('http') ? wonItem.image : `/images/${wonItem.image}`) : null;
+    
+    if (imagePath) {
+        wonItemImage.src = imagePath;
+        wonItemImage.style.display = 'block';
+        wonItemImage.onerror = () => {
+            wonItemImage.style.display = 'none';
+            const iconContainer = document.createElement('div');
+            iconContainer.className = `item-icon-large rarity-${wonItem.rarity}`;
+            iconContainer.innerHTML = `<i data-lucide="${rarityIcons[wonItem.rarity] || 'package'}"></i>`;
+            wonItemImage.parentNode.appendChild(iconContainer);
+            lucide.createIcons();
+        };
+        wonItemImage.onload = () => {
+            // Image loaded successfully, ensure icon is hidden
+            const existingIcon = wonItemImage.parentNode.querySelector('.item-icon-large');
+            if (existingIcon) {
+                existingIcon.remove();
+            }
+        };
+    } else {
+        wonItemImage.style.display = 'none';
+        const iconContainer = document.createElement('div');
+        iconContainer.className = `item-icon-large rarity-${wonItem.rarity}`;
+        iconContainer.innerHTML = `<i data-lucide="${rarityIcons[wonItem.rarity] || 'package'}"></i>`;
+        wonItemImage.parentNode.appendChild(iconContainer);
+        lucide.createIcons();
+    }
+    
+    // Hide skip button
+    const skipBtn = document.getElementById('skip-animation-btn');
+    if (skipBtn) {
+        skipBtn.style.display = 'none';
+    }
+    
+    // Clear animation state
+    window.currentCaseAnimation = null;
 }
 
 // Quick sell the last won item
@@ -6274,12 +6532,35 @@ async function quickSellItem() {
 function closeCaseOpeningModal() {
     const modal = document.getElementById('case-opening-modal');
     const reel = document.getElementById('case-opening-reel');
+    const result = document.getElementById('case-opening-result');
+    const animation = document.querySelector('.case-opening-animation');
     
     if (modal) {
         modal.classList.add('hidden');
         
-        // Reset animation
-        reel.style.transition = '';
+        // Cancel any ongoing animation
+        if (window.currentCaseAnimation && window.currentCaseAnimation.animationFrame) {
+            cancelAnimationFrame(window.currentCaseAnimation.animationFrame);
+            window.currentCaseAnimation = null;
+        }
+        
+        // Reset skip button
+        const skipBtn = document.getElementById('skip-animation-btn');
+        if (skipBtn) {
+            skipBtn.style.display = 'flex';
+        }
+        
+        // Remove all animation classes
+        modal.classList.remove('shake');
+        if (animation) {
+            animation.classList.remove('impact', 'celebration');
+        }
+        if (result) {
+            result.classList.remove('show-result');
+        }
+        
+        // Reset reel
+        reel.style.transition = 'none';
         reel.style.transform = 'translateX(0)';
         reel.innerHTML = '';
         
@@ -6592,37 +6873,45 @@ function displayInventory(inventory) {
         
         const sellPrice = item.isLimited ? item.value : Math.floor(item.value * 0.7);
         
+        // Escape special characters in item name and ID to prevent syntax errors
+        const escapedItemName = item.itemName.replace(/'/g, "\\'").replace(/"/g, '\\"');
+        const escapedItemId = item._id.replace(/'/g, "\\'").replace(/"/g, '\\"');
+        const escapedRarity = item.rarity.replace(/'/g, "\\'").replace(/"/g, '\\"');
+        
+        // Create image path - try multiple possible locations
+        const imagePath = item.image && item.image !== 'default-item.png' ? 
+            (item.image.startsWith('http') ? item.image : `/images/${item.image}`) : null;
+        
         itemCard.innerHTML = `
             <div class="item-image">
-                ${item.image && item.image !== 'default-item.png' ? 
-                    `<img src="${item.image}" alt="${item.itemName}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : 
+                ${imagePath ? 
+                    `<img src="${imagePath}" alt="${item.itemName}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" onload="this.style.display='block'; this.nextElementSibling.style.display='none';">` : 
                     ''
                 }
-                <div class="item-icon rarity-${item.rarity}" style="${item.image && item.image !== 'default-item.png' ? 'display: none;' : ''}">
+                <div class="item-icon rarity-${item.rarity}" style="${imagePath ? 'display: flex;' : 'display: flex;'}">
                     <i data-lucide="${rarityIcons[item.rarity] || 'package'}"></i>
                 </div>
             </div>
             <div class="item-details">
                 <div class="item-header">
-                    <div class="item-name">${item.itemName}</div>
+                <div class="item-name">${item.itemName}</div>
                     ${item.count > 1 ? `<div class="item-count">x${item.count}</div>` : ''}
                 </div>
                 <div class="item-value">$${item.value.toFixed(2)}${item.count > 1 ? ' each' : ''}</div>
                 <div class="item-rarity ${item.rarity}">${item.rarity}</div>
                 <div class="item-source">From ${item.caseSource}</div>
                 <div class="item-actions">
-                    <button class="item-action-btn sell" onclick="showSellModal('${item._id}', '${item.itemName}', ${item.count}, ${sellPrice})">
+                    <button class="item-action-btn sell" onclick="showSellModal('${escapedItemId}', '${escapedItemName}', ${item.count}, ${sellPrice}, '${escapedRarity}')">
                         Sell ($${sellPrice.toFixed(2)})
                     </button>
                     ${item.isLimited ? `
-                        <button class="item-action-btn list" onclick="listItem('${item._id}')">
+                        <button class="item-action-btn list" onclick="listItem('${escapedItemId}')">
                             List
                         </button>
                     ` : ''}
                 </div>
             </div>
         `;
-        itemCard.onclick = () => showItemDetails(item);
         grid.appendChild(itemCard);
     });
     
@@ -6647,11 +6936,12 @@ function updateInventoryStats(inventory) {
 // Global variables for sell modal
 let currentSellItem = null;
 
-function showSellModal(itemId, itemName, maxCount, sellPricePerItem) {
+function showSellModal(itemId, itemName, maxCount, sellPricePerItem, rarity = null) {
     const modal = document.getElementById('sell-item-modal');
     const nameElement = document.getElementById('sell-item-name');
     const quantityInput = document.getElementById('sell-quantity');
     const totalPriceElement = document.getElementById('sell-total-price');
+    const rarityElement = document.getElementById('sell-item-rarity');
     
     if (!modal) return;
     
@@ -6659,13 +6949,23 @@ function showSellModal(itemId, itemName, maxCount, sellPricePerItem) {
         id: itemId,
         name: itemName,
         maxCount: maxCount,
-        pricePerItem: sellPricePerItem
+        pricePerItem: sellPricePerItem,
+        rarity: rarity
     };
     
     nameElement.textContent = itemName;
     quantityInput.value = 1;
     quantityInput.max = maxCount;
     totalPriceElement.textContent = `$${sellPricePerItem.toFixed(2)}`;
+    
+    // Update rarity display
+    if (rarityElement && rarity) {
+        rarityElement.textContent = rarity;
+        rarityElement.className = `sell-item-rarity ${rarity}`;
+        rarityElement.style.display = 'block';
+    } else if (rarityElement) {
+        rarityElement.style.display = 'none';
+    }
     
     modal.classList.remove('hidden');
 }
