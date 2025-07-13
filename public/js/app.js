@@ -6897,7 +6897,7 @@ function startBattleAnimation(battle) {
     const cases = battleData.cases || [];
     
     players.forEach((player, playerIndex) => {
-        cases.forEach(caseItem => {
+    cases.forEach(caseItem => {
             const quantity = caseItem.quantity || 1;
             for (let i = 0; i < quantity; i++) {
                 allOpenings.push({

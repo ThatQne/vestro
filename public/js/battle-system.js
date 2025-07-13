@@ -14,7 +14,7 @@ function initializeBattleSystem() {
 // Setup socket listeners for real-time battle updates
 function setupBattleSocketListeners() {
     if (typeof io !== 'undefined') {
-        const socket = io();
+        const socket = io(API_BASE_URL);
         
         // Battle events
         socket.on('battle-created', (battle) => {
@@ -509,10 +509,16 @@ function updateBattleUI(battle) {
     const battleProgressBar = document.getElementById('battle-progress-bar');
     
     // Check if current user is the creator
-    const currentUserId = localStorage.getItem('userId') || getCurrentUserId();
+    const currentUserId = getCurrentUserId();
     const isCreator = battle.players.some(p => 
         p.userId.toString() === currentUserId && p.isCreator
     );
+    
+    console.log('Battle UI Debug:', {
+        currentUserId,
+        battlePlayers: battle.players.map(p => ({ userId: p.userId, isCreator: p.isCreator })),
+        isCreator
+    });
     
     // Reset display
     battleActions.style.display = 'block';
@@ -791,7 +797,7 @@ function getCurrentUserId() {
     
     try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        return payload.id;
+        return payload.userId;
     } catch (error) {
         console.error('Error parsing token:', error);
         return null;
