@@ -796,4 +796,14 @@ function getCurrentUserId() {
         console.error('Error parsing token:', error);
         return null;
     }
-} 
+}
+
+// Make functions globally accessible for HTML onclick handlers
+window.showCreateBattleModal = showCreateBattleModal;
+window.closeCreateBattleModal = closeCreateBattleModal;
+window.createBattle = createBattle;
+window.showBattleDetails = showBattleDetails;
+window.closeBattleDetailsModal = closeBattleDetailsModal;
+window.joinBattle = joinBattle;
+window.callBots = callBots;
+window.startBattle = startBattle; 

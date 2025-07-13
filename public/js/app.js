@@ -6702,24 +6702,29 @@ function closeCaseOpeningModal() {
     }
 }
 
-async function loadBattles() {
+async function loadInventory() {
     try {
-        const modeFilter = document.getElementById('battle-mode-filter')?.value || '';
-        const response = await fetch(`${API_BASE_URL}/api/cases/battles/active?mode=${modeFilter}`, {
+        const token = localStorage.getItem('token');
+        console.log('Loading inventory with token:', token ? 'Token exists' : 'No token'); // Debug log
+        
+        const response = await fetch(`${API_BASE_URL}/api/inventory`, {
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${token}`
             }
         });
         
         if (!response.ok) {
-            throw new Error('Failed to load battles');
+            throw new Error('Failed to load inventory');
         }
         
         const data = await response.json();
-        displayBattles(data.battles);
+        console.log('Inventory loaded:', data); // Debug log
+        
+        displayInventory(data.inventory);
+        updateInventoryStats(data.inventory);
     } catch (error) {
-        console.error('Error loading battles:', error);
-        showNotification('Error loading battles', 'error');
+        console.error('Error loading inventory:', error);
+        showNotification('Error loading inventory', 'error');
     }
 }
 
@@ -6775,170 +6780,16 @@ function displayBattles(battles) {
     }
 }
 
-async function joinBattle(battleId) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/cases/battle/join/${battleId}`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || 'Failed to join battle');
-        }
-        
-        const data = await response.json();
-        
-        // Update balance
-        updateBalanceDisplay(data.newBalance);
-        
-        // Refresh battles
-        loadBattles();
-        
-        showNotification('Joined battle successfully!', 'success');
-    } catch (error) {
-        console.error('Error joining battle:', error);
-        showNotification(error.message || 'Error joining battle', 'error');
-    }
-}
+// joinBattle removed - now handled by battle-system.js
 
-function showCreateBattleModal() {
-    const modal = document.getElementById('create-battle-modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        loadBattleCases();
-    }
-}
-
-function closeCreateBattleModal() {
-    const modal = document.getElementById('create-battle-modal');
-    if (modal) {
-        modal.classList.add('hidden');
-        selectedCasesForBattle = [];
-        updateBattleCost();
-    }
-}
+// showCreateBattleModal and closeCreateBattleModal removed - now handled by battle-system.js
 
 // Battle details modal functions
 let currentBattleDetails = null;
 
-async function showBattleDetails(battleId) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${battleId}`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to load battle details');
-        }
-        
-        const battle = await response.json();
-        currentBattleDetails = battle;
-        
-        populateBattleDetailsModal(battle);
-        
-        const modal = document.getElementById('battle-details-modal');
-        if (modal) {
-            modal.classList.remove('hidden');
-        }
-    } catch (error) {
-        console.error('Error loading battle details:', error);
-        showNotification('Error loading battle details', 'error');
-    }
-}
+// showBattleDetails removed - now handled by battle-system.js
 
-function populateBattleDetailsModal(battle) {
-    // Handle nested battle data structure
-    const battleData = battle.battle || battle;
-    
-    // Set title and basic info
-    const battleId = battleData.battleId || battleData._id || 'Unknown';
-    document.getElementById('battle-details-title').textContent = `Battle #${battleId}`;
-    document.getElementById('battle-mode-display').textContent = battleData.mode || 'Unknown';
-    
-    // Calculate total cost if not provided
-    const totalCost = battleData.totalCost || (battleData.cases ? 
-        battleData.cases.reduce((sum, caseItem) => sum + (caseItem.casePrice * caseItem.quantity), 0) : 0);
-    document.getElementById('battle-jackpot').textContent = `Jackpot: $${totalCost.toFixed(2)}`;
-    document.getElementById('battle-status').textContent = `Status: ${battleData.status || 'Waiting for players'}`;
-    
-    // Populate players
-    const playersGrid = document.getElementById('battle-players-grid');
-    playersGrid.innerHTML = '';
-    
-    const maxPlayers = battleData.maxPlayers || 4;
-    Array.from({length: maxPlayers}, (_, i) => {
-        const player = battleData.players && battleData.players[i];
-        const playerCard = document.createElement('div');
-        playerCard.className = `battle-player-card ${!player ? 'empty' : ''}`;
-        playerCard.innerHTML = `
-            <div class="player-avatar">
-                ${player ? player.username.charAt(0).toUpperCase() : '?'}
-            </div>
-            <div class="player-info">
-                <div class="player-name">${player ? player.username : 'Empty Slot'}</div>
-                <div class="player-score">${player ? `$${(player.totalValue || 0).toFixed(2)}` : ''}</div>
-            </div>
-        `;
-        playersGrid.appendChild(playerCard);
-    });
-    
-    // Populate cases
-    const casesList = document.getElementById('battle-cases-list');
-    casesList.innerHTML = '';
-    
-    if (battleData.cases && battleData.cases.length > 0) {
-        battleData.cases.forEach(caseItem => {
-            const caseElement = document.createElement('div');
-            caseElement.className = 'battle-case-item';
-            const caseName = caseItem.caseName || caseItem.name || 'Unknown Case';
-            const quantity = caseItem.quantity || 1;
-            const price = caseItem.casePrice || caseItem.price || 0;
-            caseElement.innerHTML = `
-                <div class="case-name">${caseName}</div>
-                <div class="case-quantity">x${quantity}</div>
-                <div class="case-total">$${(price * quantity).toFixed(2)}</div>
-            `;
-            casesList.appendChild(caseElement);
-        });
-    } else {
-        casesList.innerHTML = '<div class="no-cases">No cases found</div>';
-    }
-    
-    // Show/hide appropriate buttons based on battle status
-    const callBotsBtn = document.getElementById('call-bots-btn');
-    const startBattleBtn = document.getElementById('start-battle-btn');
-    const battleProgress = document.getElementById('battle-progress');
-    const battleResults = document.getElementById('battle-results');
-    
-    if (battleData.status === 'completed') {
-        callBotsBtn.style.display = 'none';
-        startBattleBtn.style.display = 'none';
-        battleProgress.style.display = 'none';
-        battleResults.style.display = 'block';
-        showBattleResults(battleData);
-    } else if (battleData.status === 'in_progress') {
-        callBotsBtn.style.display = 'none';
-        startBattleBtn.style.display = 'none';
-        battleProgress.style.display = 'block';
-        battleResults.style.display = 'none';
-        showBattleProgress(battle);
-    } else {
-        callBotsBtn.style.display = 'inline-flex';
-        startBattleBtn.style.display = 'none';
-        battleProgress.style.display = 'none';
-        battleResults.style.display = 'none';
-    }
-    
-    // Initialize Lucide icons
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-}
+// populateBattleDetailsModal removed - now handled by battle-system.js
 
 function closeBattleDetailsModal() {
     const modal = document.getElementById('battle-details-modal');
