@@ -6852,26 +6852,27 @@ async function showBattleDetails(battleId) {
 }
 
 function populateBattleDetailsModal(battle) {
-    console.log('Battle data received:', battle); // Debug log
+    // Handle nested battle data structure
+    const battleData = battle.battle || battle;
     
     // Set title and basic info
-    const battleId = battle.battleId || battle._id || 'Unknown';
+    const battleId = battleData.battleId || battleData._id || 'Unknown';
     document.getElementById('battle-details-title').textContent = `Battle #${battleId}`;
-    document.getElementById('battle-mode-display').textContent = battle.mode || 'Unknown';
+    document.getElementById('battle-mode-display').textContent = battleData.mode || 'Unknown';
     
     // Calculate total cost if not provided
-    const totalCost = battle.totalCost || (battle.cases ? 
-        battle.cases.reduce((sum, caseItem) => sum + (caseItem.price * caseItem.quantity), 0) : 0);
+    const totalCost = battleData.totalCost || (battleData.cases ? 
+        battleData.cases.reduce((sum, caseItem) => sum + (caseItem.casePrice * caseItem.quantity), 0) : 0);
     document.getElementById('battle-jackpot').textContent = `Jackpot: $${totalCost.toFixed(2)}`;
-    document.getElementById('battle-status').textContent = `Status: ${battle.status || 'Waiting for players'}`;
+    document.getElementById('battle-status').textContent = `Status: ${battleData.status || 'Waiting for players'}`;
     
     // Populate players
     const playersGrid = document.getElementById('battle-players-grid');
     playersGrid.innerHTML = '';
     
-    const maxPlayers = battle.maxPlayers || 4;
+    const maxPlayers = battleData.maxPlayers || 4;
     Array.from({length: maxPlayers}, (_, i) => {
-        const player = battle.players && battle.players[i];
+        const player = battleData.players && battleData.players[i];
         const playerCard = document.createElement('div');
         playerCard.className = `battle-player-card ${!player ? 'empty' : ''}`;
         playerCard.innerHTML = `
@@ -6890,15 +6891,13 @@ function populateBattleDetailsModal(battle) {
     const casesList = document.getElementById('battle-cases-list');
     casesList.innerHTML = '';
     
-    console.log('Battle cases:', battle.cases); // Debug log
-    
-    if (battle.cases && battle.cases.length > 0) {
-        battle.cases.forEach(caseItem => {
+    if (battleData.cases && battleData.cases.length > 0) {
+        battleData.cases.forEach(caseItem => {
             const caseElement = document.createElement('div');
             caseElement.className = 'battle-case-item';
             const caseName = caseItem.caseName || caseItem.name || 'Unknown Case';
             const quantity = caseItem.quantity || 1;
-            const price = caseItem.price || 0;
+            const price = caseItem.casePrice || caseItem.price || 0;
             caseElement.innerHTML = `
                 <div class="case-name">${caseName}</div>
                 <div class="case-quantity">x${quantity}</div>
@@ -6916,13 +6915,13 @@ function populateBattleDetailsModal(battle) {
     const battleProgress = document.getElementById('battle-progress');
     const battleResults = document.getElementById('battle-results');
     
-    if (battle.status === 'completed') {
+    if (battleData.status === 'completed') {
         callBotsBtn.style.display = 'none';
         startBattleBtn.style.display = 'none';
         battleProgress.style.display = 'none';
         battleResults.style.display = 'block';
-        showBattleResults(battle);
-    } else if (battle.status === 'in_progress') {
+        showBattleResults(battleData);
+    } else if (battleData.status === 'in_progress') {
         callBotsBtn.style.display = 'none';
         startBattleBtn.style.display = 'none';
         battleProgress.style.display = 'block';
@@ -6952,7 +6951,9 @@ function closeBattleDetailsModal() {
 async function callBots() {
     if (!currentBattleDetails) return;
     
-    const battleId = currentBattleDetails.battleId || currentBattleDetails._id;
+    // Handle nested battle data structure
+    const battleData = currentBattleDetails.battle || currentBattleDetails;
+    const battleId = battleData.battleId || battleData._id;
     if (!battleId) {
         showNotification('Invalid battle ID', 'error');
         return;
@@ -6990,7 +6991,9 @@ async function callBots() {
 async function startBattle() {
     if (!currentBattleDetails) return;
     
-    const battleId = currentBattleDetails.battleId || currentBattleDetails._id;
+    // Handle nested battle data structure
+    const battleData = currentBattleDetails.battle || currentBattleDetails;
+    const battleId = battleData.battleId || battleData._id;
     if (!battleId) {
         showNotification('Invalid battle ID', 'error');
         return;
@@ -7029,12 +7032,15 @@ function startBattleAnimation(battle) {
     const timeline = document.getElementById('battle-timeline');
     timeline.innerHTML = '';
     
+    // Handle nested battle data structure
+    const battleData = battle.battle || battle;
+    
     // Create a sequence of case openings for each player
     let currentIndex = 0;
     const allOpenings = [];
     
-    const players = battle.players || [];
-    const cases = battle.cases || [];
+    const players = battleData.players || [];
+    const cases = battleData.cases || [];
     
     players.forEach((player, playerIndex) => {
         cases.forEach(caseItem => {
@@ -7058,10 +7064,10 @@ function startBattleAnimation(battle) {
     
     function processNextOpening() {
         if (currentIndex >= allOpenings.length) {
-            // Battle finished
-            setTimeout(() => {
-                showBattleResults(battle);
-            }, 1000);
+                    // Battle finished
+        setTimeout(() => {
+            showBattleResults(battleData);
+        }, 1000);
             return;
         }
         
@@ -7103,8 +7109,11 @@ function showBattleResults(battle) {
     const battleWinner = document.getElementById('battle-winner');
     const battleFinalScores = document.getElementById('battle-final-scores');
     
-    const players = battle.players || [];
-    const totalCost = battle.totalCost || 0;
+    // Handle nested battle data structure
+    const battleData = battle.battle || battle;
+    
+    const players = battleData.players || [];
+    const totalCost = battleData.totalCost || 0;
     
     if (players.length === 0) {
         battleWinner.innerHTML = `
@@ -7321,8 +7330,9 @@ async function createBattle() {
         
         // Show the created battle details
         if (data.battle) {
-            currentBattleDetails = data.battle;
-            populateBattleDetailsModal(data.battle);
+            // Store the full response for consistency
+            currentBattleDetails = data;
+            populateBattleDetailsModal(data);
             
             const modal = document.getElementById('battle-details-modal');
             if (modal) {

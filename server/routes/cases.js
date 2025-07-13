@@ -339,6 +339,135 @@ router.get('/battles/active', async (req, res) => {
     }
 });
 
+// Call bots to join battle
+router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
+    try {
+        const battle = await CaseBattle.findOne({ battleId: req.params.battleId });
+        if (!battle) {
+            return res.status(404).json({ success: false, message: 'Battle not found' });
+        }
+
+        if (battle.status !== 'waiting') {
+            return res.status(400).json({ success: false, message: 'Battle is not available to join' });
+        }
+
+        if (battle.isExpired()) {
+            battle.status = 'cancelled';
+            await battle.save();
+            return res.status(400).json({ success: false, message: 'Battle has expired' });
+        }
+
+        // Add bots to fill remaining slots
+        const remainingSlots = battle.maxPlayers - battle.players.length;
+        const botNames = ['BotAlpha', 'BotBeta', 'BotGamma', 'BotDelta', 'BotEpsilon'];
+        
+        for (let i = 0; i < remainingSlots; i++) {
+            const botName = botNames[i] || `Bot${i + 1}`;
+            await battle.addPlayer(`bot-${Date.now()}-${i}`, botName, true); // Set isBot to true
+        }
+
+        await battle.save();
+
+        res.json({
+            success: true,
+            message: 'Bots have joined the battle!',
+            battle: battle.getSummary()
+        });
+
+    } catch (error) {
+        console.error('Error calling bots:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Start a battle manually
+router.post('/battle/:battleId/start', auth, async (req, res) => {
+    try {
+        const battle = await CaseBattle.findOne({ battleId: req.params.battleId });
+        if (!battle) {
+            return res.status(404).json({ success: false, message: 'Battle not found' });
+        }
+
+        if (battle.status !== 'waiting') {
+            return res.status(400).json({ success: false, message: 'Battle cannot be started' });
+        }
+
+        if (battle.players.length < battle.maxPlayers) {
+            return res.status(400).json({ success: false, message: 'Not enough players to start battle' });
+        }
+
+        // Start the battle
+        await battle.start();
+        
+        // Process all case openings for all players
+        for (const player of battle.players) {
+            for (const caseData of battle.cases) {
+                const caseItem = await Case.findById(caseData.caseId);
+                
+                for (let i = 0; i < caseData.quantity; i++) {
+                    const wonItem = caseItem.getRandomItem();
+                    
+                    // Find player in battle and add item
+                    const battlePlayer = battle.players.find(p => p.userId.toString() === player.userId.toString());
+                    battlePlayer.items.push({
+                        itemName: wonItem.name,
+                        itemValue: wonItem.value,
+                        itemImage: wonItem.image,
+                        itemRarity: wonItem.rarity,
+                        caseSource: caseItem.name,
+                        isLimited: wonItem.isLimited
+                    });
+
+                    // Add to user inventory if not a bot
+                    if (!player.isBot) {
+                        let userInventory = await UserInventory.findOne({ userId: player.userId });
+                        if (!userInventory) {
+                            userInventory = new UserInventory({ userId: player.userId });
+                        }
+
+                        await userInventory.addItem({
+                            name: wonItem.name,
+                            caseSource: caseItem.name,
+                            value: wonItem.value,
+                            isLimited: wonItem.isLimited,
+                            image: wonItem.image,
+                            rarity: wonItem.rarity
+                        });
+                    }
+                }
+            }
+        }
+
+        await battle.complete();
+        
+        // Emit battle completed event
+        const io = req.app.get('io');
+        io.emit('battle-completed', battle);
+        
+        // Notify all players
+        battle.players.forEach(player => {
+            if (!player.isBot) {
+                io.to(player.userId.toString()).emit('battle-result', {
+                    battleId: battle.battleId,
+                    won: player.isWinner,
+                    items: player.items,
+                    totalValue: player.totalValue
+                });
+            }
+        });
+
+        res.json({
+            success: true,
+            message: 'Battle started and completed!',
+            battle: battle.getSummary()
+        });
+
+    } catch (error) {
+        console.error('Error starting battle:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 // Get battle details
 router.get('/battle/:battleId', async (req, res) => {
     try {
