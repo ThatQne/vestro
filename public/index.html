@@ -1292,15 +1292,9 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Select Cases</label>
+                    <label>Select Cases (Max 25)</label>
                     <div class="battle-cases-grid" id="battle-cases-grid">
                         <!-- Available cases will be loaded here -->
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Selected Cases</label>
-                    <div class="selected-cases" id="selected-cases">
-                        <!-- Selected cases will appear here -->
                     </div>
                 </div>
                 <div class="form-group">
@@ -1308,15 +1302,67 @@
                         <span>Total Cost: $<span id="battle-total-cost">0.00</span></span>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="battle-private-checkbox">
-                        Private Battle
-                    </label>
-                </div>
+
                 <div class="form-actions">
                     <button class="btn-secondary" onclick="closeCreateBattleModal()">Cancel</button>
                     <button class="btn-primary" onclick="createBattle()">Create Battle</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Battle Details Modal -->
+    <div id="battle-details-modal" class="modal-overlay hidden">
+        <div class="modal-content battle-details-content">
+            <div class="modal-header">
+                <h2 id="battle-details-title">Battle Details</h2>
+                <button class="modal-close" onclick="closeBattleDetailsModal()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="battle-details-body">
+                <div class="battle-info">
+                    <div class="battle-mode-display" id="battle-mode-display"></div>
+                    <div class="battle-jackpot" id="battle-jackpot"></div>
+                    <div class="battle-status" id="battle-status"></div>
+                </div>
+                
+                <div class="battle-players-section">
+                    <h3>Players</h3>
+                    <div class="battle-players-grid" id="battle-players-grid">
+                        <!-- Players will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="battle-cases-section">
+                    <h3>Cases</h3>
+                    <div class="battle-cases-list" id="battle-cases-list">
+                        <!-- Cases will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="battle-actions" id="battle-actions">
+                    <button class="btn-primary" id="call-bots-btn" onclick="callBots()">
+                        <i data-lucide="users"></i>
+                        Call Bots
+                    </button>
+                    <button class="btn-secondary" id="start-battle-btn" onclick="startBattle()" style="display: none;">
+                        <i data-lucide="play"></i>
+                        Start Battle
+                    </button>
+                </div>
+                
+                <div class="battle-progress" id="battle-progress" style="display: none;">
+                    <h3>Battle Progress</h3>
+                    <div class="battle-timeline" id="battle-timeline">
+                        <!-- Battle progress will be shown here -->
+                    </div>
+                </div>
+                
+                <div class="battle-results" id="battle-results" style="display: none;">
+                    <h3>Final Results</h3>
+                    <div class="battle-winner" id="battle-winner"></div>
+                    <div class="battle-final-scores" id="battle-final-scores"></div>
                 </div>
             </div>
         </div>

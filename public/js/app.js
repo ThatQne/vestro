@@ -141,7 +141,44 @@ function initializeApp() {
         }
     });
 
-    initializeChart('dashboard');
+    // Handle window resize to redraw charts
+    window.addEventListener('resize', () => {
+        if (currentUser && currentUser.balanceHistory) {
+            setTimeout(() => {
+                drawBalanceChart();
+            }, 100);
+        }
+    });
+
+    // Handle chart container resize
+    const chartContainer = document.querySelector('.chart-container');
+    if (chartContainer) {
+        const resizeObserver = new ResizeObserver(() => {
+            if (currentUser && currentUser.balanceHistory) {
+                setTimeout(() => {
+                    drawBalanceChart();
+                }, 100);
+            }
+        });
+        resizeObserver.observe(chartContainer);
+    }
+
+    // Handle case opening animation resize
+    window.addEventListener('resize', () => {
+        if (window.currentCaseAnimation && window.currentCaseAnimation.reel) {
+            // Recalculate animation dimensions on resize
+            const animation = window.currentCaseAnimation.animation;
+            const containerWidth = animation.offsetWidth;
+            const isMobile = window.innerWidth <= 768;
+            const itemWidth = isMobile ? 100 : 140;
+            const itemGap = isMobile ? 15 : 20;
+            
+            // Update stored dimensions
+            window.currentCaseAnimation.itemWidth = itemWidth;
+            window.currentCaseAnimation.itemGap = itemGap;
+        }
+    });
+
     initializeMobileMenu();
     
     // Restore saved page if user is already logged in
@@ -185,6 +222,14 @@ function hideLoginPage() {
     // Restore the last visited page or default to dashboard
     const savedPage = localStorage.getItem('currentPage');
     const pageToShow = savedPage && savedPage !== 'login' ? savedPage : 'dashboard';
+    
+    // If showing dashboard, ensure chart is initialized
+    if (pageToShow === 'dashboard') {
+        setTimeout(() => {
+            initializeChart('dashboard');
+        }, 50);
+    }
+    
     showPage(pageToShow);
 }
 
@@ -585,12 +630,15 @@ function showPage(pageId) {
     
     // Page-specific handling
     if (pageId === 'dashboard' && currentUser) {
+        // Initialize dashboard chart first
+        initializeChart('dashboard');
+        
         // Fetch fresh profile data to get updated balance history
         fetchUserProfile(true).then(() => {
             setTimeout(() => {
                 drawBalanceChart();
                 updateBadges(); // Update badges display
-            }, 100);
+            }, 200); // Increased delay to ensure canvas is ready
         });
     }
     
@@ -5405,33 +5453,56 @@ function drawChart(instanceKey, balanceHistory) {
     const instance = chartInstances[instanceKey];
     const canvas = document.getElementById(instance.canvasId);
     
-    if (!canvas || !balanceHistory || balanceHistory.length === 0) {
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
+    if (!canvas) {
+        return;
+    }
+    
+    // Ensure canvas has proper dimensions
             const rect = canvas.getBoundingClientRect();
-            canvas.width = rect.width * window.devicePixelRatio;
-            canvas.height = rect.height * window.devicePixelRatio;
+    
+    // If canvas has no dimensions, set it to fill the container
+    if (rect.width === 0 || rect.height === 0) {
+        const container = canvas.parentElement;
+        if (container) {
+            const containerRect = container.getBoundingClientRect();
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            canvas.width = containerRect.width;
+            canvas.height = containerRect.height;
+        } else {
+            // Fallback to default size
+            canvas.style.width = '400px';
+            canvas.style.height = '200px';
+            canvas.width = 400;
+            canvas.height = 200;
+        }
+    }
+    
+    if (!balanceHistory || balanceHistory.length === 0) {
+        const ctx = canvas.getContext('2d');
+        const newRect = canvas.getBoundingClientRect();
+        canvas.width = newRect.width * window.devicePixelRatio;
+        canvas.height = newRect.height * window.devicePixelRatio;
             ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
             
-            ctx.clearRect(0, 0, rect.width, rect.height);
+        ctx.clearRect(0, 0, newRect.width, newRect.height);
             ctx.fillStyle = '#9ca3af';
             ctx.font = '14px Outfit';
             ctx.textAlign = 'center';
-            ctx.fillText('No balance history available', rect.width / 2, rect.height / 2);
-        }
+        ctx.fillText('No balance history available', newRect.width / 2, newRect.height / 2);
         return;
     }
 
     const ctx = canvas.getContext('2d');
-    const rect = canvas.getBoundingClientRect();
+    const newRect = canvas.getBoundingClientRect();
     
     // Set canvas size
-    canvas.width = rect.width * window.devicePixelRatio;
-    canvas.height = rect.height * window.devicePixelRatio;
+    canvas.width = newRect.width * window.devicePixelRatio;
+    canvas.height = newRect.height * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
     
-    const width = rect.width;
-    const height = rect.height;
+    const width = newRect.width;
+    const height = newRect.height;
     
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
@@ -5844,7 +5915,9 @@ function handleChartTouchEnd(event, instanceKey) {
 function initializeChart(instanceKey) {
     const instance = chartInstances[instanceKey];
     const canvas = document.getElementById(instance.canvasId);
-    if (!canvas) return;
+    if (!canvas) {
+        return;
+    }
     
     canvas.style.cursor = 'grab';
     
@@ -6203,11 +6276,19 @@ function showCaseOpeningModal(caseName, wonItem, caseItems) {
     
     // Start animation sequence
     setTimeout(() => {
-        // Calculate exact positioning
+        // Calculate exact positioning with responsive sizing
         const containerWidth = animation.offsetWidth;
-        const itemWidth = 140; // Fixed item width
-        const itemGap = 20;
+        const isMobile = window.innerWidth <= 768;
+        const itemWidth = isMobile ? 100 : 140; // Responsive item width
+        const itemHeight = isMobile ? 100 : 140; // Ensure square aspect ratio
+        const itemGap = isMobile ? 12 : 16; // Responsive gap (proportional to item size)
         const totalItemWidth = itemWidth + itemGap;
+        
+        // Ensure all items maintain square aspect ratio
+        Array.from(reel.children).forEach(item => {
+            item.style.width = `${itemWidth}px`;
+            item.style.height = `${itemHeight}px`;
+        });
         
         // Calculate winning position
         const winningPosition = wonItemIndex * totalItemWidth;
@@ -6225,8 +6306,34 @@ function showCaseOpeningModal(caseName, wonItem, caseItems) {
             animation: animation,
             modal: modal,
             wonItem: wonItem,
-            rarityIcons: rarityIcons
+            rarityIcons: rarityIcons,
+            itemWidth: itemWidth,
+            itemHeight: itemHeight,
+            itemGap: itemGap
         };
+        
+        // Add window resize listener to maintain square aspect ratio
+        const resizeHandler = () => {
+            const newIsMobile = window.innerWidth <= 768;
+            const newItemWidth = newIsMobile ? 100 : 140;
+            const newItemHeight = newIsMobile ? 100 : 140;
+            const newItemGap = newIsMobile ? 12 : 16;
+            
+            Array.from(reel.children).forEach(item => {
+                item.style.width = `${newItemWidth}px`;
+                item.style.height = `${newItemHeight}px`;
+            });
+            
+            // Update the stored gap value for calculations
+            if (window.currentCaseAnimation) {
+                window.currentCaseAnimation.itemGap = newItemGap;
+            }
+        };
+        
+        window.addEventListener('resize', resizeHandler);
+        
+        // Store the resize handler for cleanup
+        window.currentCaseAnimation.resizeHandler = resizeHandler;
         
         // Main animation with dynamic highlighting
         const animationDuration = 4000; // 4 seconds
@@ -6307,6 +6414,12 @@ function showCaseOpeningModal(caseName, wonItem, caseItems) {
             result.classList.remove('hidden');
             result.classList.add('show-result');
             
+            // Hide skip button after animation completes
+            const skipBtn = document.getElementById('skip-animation-btn');
+            if (skipBtn) {
+                skipBtn.style.display = 'none';
+            }
+            
             // Play celebration animation
             setTimeout(() => {
                 animation.classList.add('celebration');
@@ -6374,12 +6487,20 @@ function skipCaseAnimation() {
     
     const { reel, animation, modal, wonItemIndex, wonItem, rarityIcons } = window.currentCaseAnimation;
     
-    // Jump to final position
+    // Jump to final position with responsive sizing
     const containerWidth = animation.offsetWidth;
-    const itemWidth = 140;
+    const itemWidth = window.currentCaseAnimation.itemWidth || 140;
+    const itemHeight = window.currentCaseAnimation.itemHeight || 140;
+    const itemGap = window.currentCaseAnimation.itemGap || 16;
     const centerPosition = containerWidth / 2 - itemWidth / 2;
-    const winningPosition = wonItemIndex * (itemWidth + 20);
+    const winningPosition = wonItemIndex * (itemWidth + itemGap);
     const finalOffset = -(winningPosition - centerPosition);
+    
+    // Ensure items maintain square aspect ratio
+    Array.from(reel.children).forEach(item => {
+        item.style.width = `${itemWidth}px`;
+        item.style.height = `${itemHeight}px`;
+    });
     
     reel.style.transform = `translateX(${finalOffset}px)`;
     
@@ -6538,9 +6659,17 @@ function closeCaseOpeningModal() {
     if (modal) {
         modal.classList.add('hidden');
         
-        // Cancel any ongoing animation
-        if (window.currentCaseAnimation && window.currentCaseAnimation.animationFrame) {
-            cancelAnimationFrame(window.currentCaseAnimation.animationFrame);
+        // Cancel any ongoing animation and cleanup
+        if (window.currentCaseAnimation) {
+            if (window.currentCaseAnimation.animationFrame) {
+                cancelAnimationFrame(window.currentCaseAnimation.animationFrame);
+            }
+            
+            // Remove resize listener
+            if (window.currentCaseAnimation.resizeHandler) {
+                window.removeEventListener('resize', window.currentCaseAnimation.resizeHandler);
+            }
+            
             window.currentCaseAnimation = null;
         }
         
@@ -6626,13 +6755,24 @@ function displayBattles(battles) {
                     `<div class="battle-case">${caseItem.caseName} x${caseItem.quantity}</div>`
                 ).join('') : ''}
             </div>
-            <button class="battle-join-btn" onclick="joinBattle('${battle.battleId}')" 
-                    ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
-                ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
-            </button>
+            <div class="battle-actions">
+                <button class="battle-view-btn" onclick="showBattleDetails('${battle.battleId}')">
+                    <i data-lucide="eye"></i>
+                    View Details
+                </button>
+                <button class="battle-join-btn" onclick="joinBattle('${battle.battleId}')" 
+                        ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
+                    ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
+                </button>
+            </div>
         `;
         battlesGrid.appendChild(battleCard);
     });
+    
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
 async function joinBattle(battleId) {
@@ -6677,8 +6817,318 @@ function closeCreateBattleModal() {
     if (modal) {
         modal.classList.add('hidden');
         selectedCasesForBattle = [];
-        updateSelectedCasesDisplay();
+        updateBattleCost();
     }
+}
+
+// Battle details modal functions
+let currentBattleDetails = null;
+
+async function showBattleDetails(battleId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${battleId}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to load battle details');
+        }
+        
+        const battle = await response.json();
+        currentBattleDetails = battle;
+        
+        populateBattleDetailsModal(battle);
+        
+        const modal = document.getElementById('battle-details-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error loading battle details:', error);
+        showNotification('Error loading battle details', 'error');
+    }
+}
+
+function populateBattleDetailsModal(battle) {
+    // Set title and basic info
+    document.getElementById('battle-details-title').textContent = `Battle #${battle.battleId || battle._id}`;
+    document.getElementById('battle-mode-display').textContent = battle.mode || 'Unknown';
+    
+    // Calculate total cost if not provided
+    const totalCost = battle.totalCost || (battle.cases ? 
+        battle.cases.reduce((sum, caseItem) => sum + (caseItem.price * caseItem.quantity), 0) : 0);
+    document.getElementById('battle-jackpot').textContent = `Jackpot: $${totalCost.toFixed(2)}`;
+    document.getElementById('battle-status').textContent = `Status: ${battle.status || 'Waiting for players'}`;
+    
+    // Populate players
+    const playersGrid = document.getElementById('battle-players-grid');
+    playersGrid.innerHTML = '';
+    
+    const maxPlayers = battle.maxPlayers || 4;
+    Array.from({length: maxPlayers}, (_, i) => {
+        const player = battle.players && battle.players[i];
+        const playerCard = document.createElement('div');
+        playerCard.className = `battle-player-card ${!player ? 'empty' : ''}`;
+        playerCard.innerHTML = `
+            <div class="player-avatar">
+                ${player ? player.username.charAt(0).toUpperCase() : '?'}
+            </div>
+            <div class="player-info">
+                <div class="player-name">${player ? player.username : 'Empty Slot'}</div>
+                <div class="player-score">${player ? `$${(player.totalValue || 0).toFixed(2)}` : ''}</div>
+            </div>
+        `;
+        playersGrid.appendChild(playerCard);
+    });
+    
+    // Populate cases
+    const casesList = document.getElementById('battle-cases-list');
+    casesList.innerHTML = '';
+    
+    if (battle.cases && battle.cases.length > 0) {
+        battle.cases.forEach(caseItem => {
+            const caseElement = document.createElement('div');
+            caseElement.className = 'battle-case-item';
+            const caseName = caseItem.caseName || caseItem.name || 'Unknown Case';
+            const quantity = caseItem.quantity || 1;
+            const price = caseItem.price || 0;
+            caseElement.innerHTML = `
+                <div class="case-name">${caseName}</div>
+                <div class="case-quantity">x${quantity}</div>
+                <div class="case-total">$${(price * quantity).toFixed(2)}</div>
+            `;
+            casesList.appendChild(caseElement);
+        });
+    } else {
+        casesList.innerHTML = '<div class="no-cases">No cases found</div>';
+    }
+    
+    // Show/hide appropriate buttons based on battle status
+    const callBotsBtn = document.getElementById('call-bots-btn');
+    const startBattleBtn = document.getElementById('start-battle-btn');
+    const battleProgress = document.getElementById('battle-progress');
+    const battleResults = document.getElementById('battle-results');
+    
+    if (battle.status === 'completed') {
+        callBotsBtn.style.display = 'none';
+        startBattleBtn.style.display = 'none';
+        battleProgress.style.display = 'none';
+        battleResults.style.display = 'block';
+        showBattleResults(battle);
+    } else if (battle.status === 'in_progress') {
+        callBotsBtn.style.display = 'none';
+        startBattleBtn.style.display = 'none';
+        battleProgress.style.display = 'block';
+        battleResults.style.display = 'none';
+        showBattleProgress(battle);
+    } else {
+        callBotsBtn.style.display = 'inline-flex';
+        startBattleBtn.style.display = 'none';
+        battleProgress.style.display = 'none';
+        battleResults.style.display = 'none';
+    }
+    
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+function closeBattleDetailsModal() {
+    const modal = document.getElementById('battle-details-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+    currentBattleDetails = null;
+}
+
+async function callBots() {
+    if (!currentBattleDetails) return;
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${currentBattleDetails.battleId}/call-bots`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to call bots');
+        }
+        
+        const data = await response.json();
+        currentBattleDetails = data.battle;
+        
+        // Update the modal with new player data
+        populateBattleDetailsModal(data.battle);
+        
+        // Show start battle button
+        document.getElementById('call-bots-btn').style.display = 'none';
+        document.getElementById('start-battle-btn').style.display = 'inline-flex';
+        
+        showNotification('Bots have joined the battle!', 'success');
+    } catch (error) {
+        console.error('Error calling bots:', error);
+        showNotification('Error calling bots', 'error');
+    }
+}
+
+async function startBattle() {
+    if (!currentBattleDetails) return;
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${currentBattleDetails.battleId}/start`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to start battle');
+        }
+        
+        const data = await response.json();
+        currentBattleDetails = data.battle;
+        
+        // Hide action buttons and show progress
+        document.getElementById('battle-actions').style.display = 'none';
+        document.getElementById('battle-progress').style.display = 'block';
+        
+        // Start the battle animation
+        startBattleAnimation(data.battle);
+        
+        showNotification('Battle started!', 'success');
+    } catch (error) {
+        console.error('Error starting battle:', error);
+        showNotification('Error starting battle', 'error');
+    }
+}
+
+function startBattleAnimation(battle) {
+    const timeline = document.getElementById('battle-timeline');
+    timeline.innerHTML = '';
+    
+    // Create a sequence of case openings for each player
+    let currentIndex = 0;
+    const allOpenings = [];
+    
+    const players = battle.players || [];
+    const cases = battle.cases || [];
+    
+    players.forEach((player, playerIndex) => {
+        cases.forEach(caseItem => {
+            const quantity = caseItem.quantity || 1;
+            for (let i = 0; i < quantity; i++) {
+                allOpenings.push({
+                    player: player,
+                    playerIndex: playerIndex,
+                    caseItem: caseItem,
+                    openingIndex: i
+                });
+            }
+        });
+    });
+    
+    // Shuffle the openings for more realistic battle flow
+    for (let i = allOpenings.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allOpenings[i], allOpenings[j]] = [allOpenings[j], allOpenings[i]];
+    }
+    
+    function processNextOpening() {
+        if (currentIndex >= allOpenings.length) {
+            // Battle finished
+            setTimeout(() => {
+                showBattleResults(battle);
+            }, 1000);
+            return;
+        }
+        
+        const opening = allOpenings[currentIndex];
+        addTimelineEntry(opening);
+        currentIndex++;
+        
+        // Process next opening after a delay
+        setTimeout(processNextOpening, 2000);
+    }
+    
+    processNextOpening();
+}
+
+function addTimelineEntry(opening) {
+    const timeline = document.getElementById('battle-timeline');
+    const entry = document.createElement('div');
+    entry.className = 'timeline-entry';
+    
+    // Simulate a random item being won
+    const itemValue = Math.random() * 100 + 1; // Random value between $1-$100
+    const itemName = `Item ${Math.floor(Math.random() * 1000)}`;
+    
+    const playerName = opening.player ? opening.player.username : 'Unknown Player';
+    const caseName = opening.caseItem ? (opening.caseItem.caseName || opening.caseItem.name || 'Unknown Case') : 'Unknown Case';
+    
+    entry.innerHTML = `
+        <div class="timeline-player">${playerName}</div>
+        <div class="timeline-action">opened ${caseName}</div>
+        <div class="timeline-item">${itemName} ($${itemValue.toFixed(2)})</div>
+    `;
+    
+    timeline.appendChild(entry);
+    entry.scrollIntoView({ behavior: 'smooth' });
+}
+
+function showBattleResults(battle) {
+    const battleResults = document.getElementById('battle-results');
+    const battleWinner = document.getElementById('battle-winner');
+    const battleFinalScores = document.getElementById('battle-final-scores');
+    
+    const players = battle.players || [];
+    const totalCost = battle.totalCost || 0;
+    
+    if (players.length === 0) {
+        battleWinner.innerHTML = `
+            <div class="winner-announcement">
+                <div class="winner-crown">👑</div>
+                <div class="winner-name">No Players</div>
+                <div class="winner-prize">No battle results available</div>
+            </div>
+        `;
+        battleResults.style.display = 'block';
+        document.getElementById('battle-progress').style.display = 'none';
+        return;
+    }
+    
+    // Find the winner (player with highest total value)
+    const winner = players.reduce((prev, current) => 
+        ((prev.totalValue || 0) > (current.totalValue || 0)) ? prev : current
+    );
+    
+    battleWinner.innerHTML = `
+        <div class="winner-announcement">
+            <div class="winner-crown">👑</div>
+            <div class="winner-name">${winner.username || 'Unknown Player'}</div>
+            <div class="winner-prize">Wins $${totalCost.toFixed(2)}!</div>
+        </div>
+    `;
+    
+    // Show final scores
+    battleFinalScores.innerHTML = '';
+    players.forEach(player => {
+        const playerScore = document.createElement('div');
+        playerScore.className = `final-score ${player.username === winner.username ? 'winner' : ''}`;
+        playerScore.innerHTML = `
+            <div class="score-player">${player.username || 'Unknown Player'}</div>
+            <div class="score-value">$${(player.totalValue || 0).toFixed(2)}</div>
+        `;
+        battleFinalScores.appendChild(playerScore);
+    });
+    
+    battleResults.style.display = 'block';
+    document.getElementById('battle-progress').style.display = 'none';
 }
 
 async function loadBattleCases() {
@@ -6707,63 +7157,105 @@ function displayBattleCases(cases) {
     
     grid.innerHTML = '';
     
+    // Define unique icons and colors for each case (same as main cases page)
+    const caseIcons = {
+        'Starter Case': { icon: 'package', color: '#10b981' },
+        'Gambler\'s Delight': { icon: 'dice-6', color: '#f59e0b' },
+        'Mystic Treasures': { icon: 'sparkles', color: '#8b5cf6' },
+        'Neon Dreams': { icon: 'zap', color: '#06b6d4' },
+        'Ocean\'s Bounty': { icon: 'droplets', color: '#3b82f6' }
+    };
+    
     cases.forEach(caseItem => {
         const caseOption = document.createElement('div');
         caseOption.className = 'battle-case-option';
+        const caseIcon = caseIcons[caseItem.name] || { icon: 'package', color: '#10b981' };
         caseOption.innerHTML = `
-            <div class="case-name">${caseItem.name}</div>
-            <div class="case-price">$${caseItem.price.toFixed(2)}</div>
+            <div class="case-counter" style="display: none;">0</div>
+            <div class="case-clear-btn" style="display: none;">
+                <i data-lucide="x"></i>
+            </div>
+            <div class="case-icon" style="background: ${caseIcon.color}">
+                <i data-lucide="${caseIcon.icon}" style="color: white"></i>
+            </div>
+            <div class="case-info">
+                <div class="case-name">${caseItem.name}</div>
+                <div class="case-price">$${caseItem.price.toFixed(2)}</div>
+            </div>
         `;
-        caseOption.onclick = () => toggleCaseSelection(caseItem);
+        
+        // Add click handlers
+        const caseOptionElement = caseOption;
+        caseOption.onclick = () => addCaseToSelection(caseItem, caseOptionElement);
+        
+        // Add clear button handler
+        const clearBtn = caseOption.querySelector('.case-clear-btn');
+        clearBtn.onclick = (e) => {
+            e.stopPropagation();
+            clearCaseSelection(caseItem, caseOptionElement);
+        };
+        
         grid.appendChild(caseOption);
     });
+    
+    // Initialize Lucide icons for case icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
-function toggleCaseSelection(caseItem) {
-    const existingIndex = selectedCasesForBattle.findIndex(c => c._id === caseItem._id);
-    
-    if (existingIndex > -1) {
-        selectedCasesForBattle.splice(existingIndex, 1);
-    } else {
-        selectedCasesForBattle.push(caseItem);
+function addCaseToSelection(caseItem, caseOptionElement) {
+    const totalSelected = getTotalSelectedCases();
+    if (totalSelected >= 25) {
+        showNotification('Maximum 25 cases allowed in a battle', 'error');
+        return;
     }
     
-    updateSelectedCasesDisplay();
+    // Find existing case in selection
+    let existingCase = selectedCasesForBattle.find(c => c._id === caseItem._id);
+    
+    if (existingCase) {
+        existingCase.quantity++;
+    } else {
+        selectedCasesForBattle.push({
+            ...caseItem,
+            quantity: 1
+        });
+        existingCase = selectedCasesForBattle[selectedCasesForBattle.length - 1];
+    }
+    
+    updateCaseOptionDisplay(caseOptionElement, existingCase.quantity);
     updateBattleCost();
 }
 
-function updateSelectedCasesDisplay() {
-    const container = document.getElementById('selected-cases');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    selectedCasesForBattle.forEach(caseItem => {
-        const selectedCase = document.createElement('div');
-        selectedCase.className = 'selected-case';
-        selectedCase.innerHTML = `
-            ${caseItem.name}
-            <button class="remove-btn" onclick="removeCaseFromSelection('${caseItem._id}')">×</button>
-        `;
-        container.appendChild(selectedCase);
-    });
-    
-    // Update case selection visual state
-    document.querySelectorAll('.battle-case-option').forEach(option => {
-        const caseName = option.querySelector('.case-name').textContent;
-        const isSelected = selectedCasesForBattle.some(c => c.name === caseName);
-        option.classList.toggle('selected', isSelected);
-    });
+function clearCaseSelection(caseItem, caseOptionElement) {
+    selectedCasesForBattle = selectedCasesForBattle.filter(c => c._id !== caseItem._id);
+    updateCaseOptionDisplay(caseOptionElement, 0);
+    updateBattleCost();
 }
 
-function removeCaseFromSelection(caseId) {
-    selectedCasesForBattle = selectedCasesForBattle.filter(c => c._id !== caseId);
-    updateSelectedCasesDisplay();
-    updateBattleCost();
+function updateCaseOptionDisplay(caseOptionElement, quantity) {
+    const counter = caseOptionElement.querySelector('.case-counter');
+    const clearBtn = caseOptionElement.querySelector('.case-clear-btn');
+    
+    if (quantity > 0) {
+        counter.textContent = quantity;
+        counter.style.display = 'flex';
+        clearBtn.style.display = 'flex';
+        caseOptionElement.classList.add('selected');
+    } else {
+        counter.style.display = 'none';
+        clearBtn.style.display = 'none';
+        caseOptionElement.classList.remove('selected');
+    }
+}
+
+function getTotalSelectedCases() {
+    return selectedCasesForBattle.reduce((total, caseItem) => total + caseItem.quantity, 0);
 }
 
 function updateBattleCost() {
-    const totalCost = selectedCasesForBattle.reduce((sum, c) => sum + c.price, 0);
+    const totalCost = selectedCasesForBattle.reduce((sum, c) => sum + (c.price * c.quantity), 0);
     const costDisplay = document.getElementById('battle-total-cost');
     if (costDisplay) {
         costDisplay.textContent = totalCost.toFixed(2);
@@ -6777,15 +7269,14 @@ async function createBattle() {
     }
     
     const mode = document.getElementById('battle-mode-select').value;
-    const isPrivate = document.getElementById('battle-private-checkbox').checked;
     
     const battleData = {
         cases: selectedCasesForBattle.map(c => ({
             caseId: c._id,
-            quantity: 1
+            quantity: c.quantity
         })),
         mode: mode,
-        isPrivate: isPrivate
+        isPrivate: false
     };
     
     try {
