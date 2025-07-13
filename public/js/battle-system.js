@@ -799,6 +799,7 @@ function getCurrentUserId() {
 }
 
 // Make functions globally accessible for HTML onclick handlers
+window.loadBattles = loadBattles;
 window.showCreateBattleModal = showCreateBattleModal;
 window.closeCreateBattleModal = closeCreateBattleModal;
 window.createBattle = createBattle;
@@ -806,4 +807,8 @@ window.showBattleDetails = showBattleDetails;
 window.closeBattleDetailsModal = closeBattleDetailsModal;
 window.joinBattle = joinBattle;
 window.callBots = callBots;
-window.startBattle = startBattle; 
+window.startBattle = startBattle;
+
+// Also make case selection functions available
+window.addCaseToBattle = addCaseToBattle;
+window.clearCaseFromBattle = clearCaseFromBattle; 

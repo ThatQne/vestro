@@ -5980,7 +5980,7 @@ function closePlayerDetailModal() {
 
 // Case System Functions
 let currentCaseTab = 'cases';
-let selectedCasesForBattle = [];
+// selectedCasesForBattle moved to battle-system.js
 
 // Initialize case system when page loads
 function initializeCaseSystem() {
@@ -7084,35 +7084,9 @@ function displayBattleCases(cases) {
     }
 }
 
-function addCaseToSelection(caseItem, caseOptionElement) {
-    const totalSelected = getTotalSelectedCases();
-    if (totalSelected >= 25) {
-        showNotification('Maximum 25 cases allowed in a battle', 'error');
-        return;
-    }
-    
-    // Find existing case in selection
-    let existingCase = selectedCasesForBattle.find(c => c._id === caseItem._id);
-    
-    if (existingCase) {
-        existingCase.quantity++;
-    } else {
-        selectedCasesForBattle.push({
-            ...caseItem,
-            quantity: 1
-        });
-        existingCase = selectedCasesForBattle[selectedCasesForBattle.length - 1];
-    }
-    
-    updateCaseOptionDisplay(caseOptionElement, existingCase.quantity);
-    updateBattleCost();
-}
+// addCaseToSelection removed - now handled by battle-system.js
 
-function clearCaseSelection(caseItem, caseOptionElement) {
-    selectedCasesForBattle = selectedCasesForBattle.filter(c => c._id !== caseItem._id);
-    updateCaseOptionDisplay(caseOptionElement, 0);
-    updateBattleCost();
-}
+// clearCaseSelection removed - now handled by battle-system.js
 
 function updateCaseOptionDisplay(caseOptionElement, quantity) {
     const counter = caseOptionElement.querySelector('.case-counter');
@@ -7130,99 +7104,9 @@ function updateCaseOptionDisplay(caseOptionElement, quantity) {
     }
 }
 
-function getTotalSelectedCases() {
-    return selectedCasesForBattle.reduce((total, caseItem) => total + caseItem.quantity, 0);
-}
+// getTotalSelectedCases and updateBattleCost removed - now handled by battle-system.js
 
-function updateBattleCost() {
-    const totalCost = selectedCasesForBattle.reduce((sum, c) => sum + (c.price * c.quantity), 0);
-    const costDisplay = document.getElementById('battle-total-cost');
-    if (costDisplay) {
-        costDisplay.textContent = totalCost.toFixed(2);
-    }
-}
-
-async function createBattle() {
-    if (selectedCasesForBattle.length === 0) {
-        showNotification('Please select at least one case', 'error');
-        return;
-    }
-    
-    const mode = document.getElementById('battle-mode-select').value;
-    
-    const battleData = {
-        cases: selectedCasesForBattle.map(c => ({
-            caseId: c._id,
-            quantity: c.quantity
-        })),
-        mode: mode,
-        isPrivate: false
-    };
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/cases/battle/create`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify(battleData)
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || 'Failed to create battle');
-        }
-        
-        const data = await response.json();
-        
-        // Update balance
-        updateBalanceDisplay(data.newBalance);
-        
-        // Close modal and show battle details
-        closeCreateBattleModal();
-        
-        // Show the created battle details
-        if (data.battle) {
-            // Fetch the full battle details to ensure we have complete data
-            try {
-                const battleResponse = await fetch(`${API_BASE_URL}/api/cases/battle/${data.battle.battleId || data.battle._id}`, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    }
-                });
-                
-                if (battleResponse.ok) {
-                    const battleData = await battleResponse.json();
-                    currentBattleDetails = battleData;
-                    populateBattleDetailsModal(battleData);
-                } else {
-                    // Fallback to the creation response data
-                    currentBattleDetails = data;
-                    populateBattleDetailsModal(data);
-                }
-            } catch (error) {
-                console.error('Error fetching battle details:', error);
-                // Fallback to the creation response data
-                currentBattleDetails = data;
-                populateBattleDetailsModal(data);
-            }
-            
-            const modal = document.getElementById('battle-details-modal');
-            if (modal) {
-                modal.classList.remove('hidden');
-            }
-        }
-        
-        // Refresh battles list
-        loadBattles();
-        
-        showNotification('Battle created successfully!', 'success');
-    } catch (error) {
-        console.error('Error creating battle:', error);
-        showNotification(error.message || 'Error creating battle', 'error');
-    }
-}
+// createBattle removed - now handled by battle-system.js
 
 async function loadInventory() {
     try {
