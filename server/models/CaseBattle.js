@@ -45,8 +45,7 @@ const caseBattleSchema = new mongoose.Schema({
     },
     players: [{
         userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
+            type: mongoose.Schema.Types.Mixed, // Allow both ObjectId and String for bots
             required: true
         },
         username: {
@@ -103,8 +102,7 @@ const caseBattleSchema = new mongoose.Schema({
         default: 'waiting'
     },
     winnerId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        type: mongoose.Schema.Types.Mixed, // Allow both ObjectId and String for bot winners
         default: null
     },
     winnerUsername: {

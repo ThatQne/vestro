@@ -6954,6 +6954,7 @@ async function callBots() {
     // Handle nested battle data structure
     const battleData = currentBattleDetails.battle || currentBattleDetails;
     const battleId = battleData.battleId || battleData._id;
+    
     if (!battleId) {
         showNotification('Invalid battle ID', 'error');
         return;
@@ -6968,7 +6969,9 @@ async function callBots() {
         });
         
         if (!response.ok) {
-            throw new Error('Failed to call bots');
+            const errorData = await response.text();
+            console.error('Call bots error response:', errorData);
+            throw new Error(`Failed to call bots: ${response.status} ${response.statusText}`);
         }
         
         const data = await response.json();
@@ -7330,9 +7333,29 @@ async function createBattle() {
         
         // Show the created battle details
         if (data.battle) {
-            // Store the full response for consistency
-            currentBattleDetails = data;
-            populateBattleDetailsModal(data);
+            // Fetch the full battle details to ensure we have complete data
+            try {
+                const battleResponse = await fetch(`${API_BASE_URL}/api/cases/battle/${data.battle.battleId || data.battle._id}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (battleResponse.ok) {
+                    const battleData = await battleResponse.json();
+                    currentBattleDetails = battleData;
+                    populateBattleDetailsModal(battleData);
+                } else {
+                    // Fallback to the creation response data
+                    currentBattleDetails = data;
+                    populateBattleDetailsModal(data);
+                }
+            } catch (error) {
+                console.error('Error fetching battle details:', error);
+                // Fallback to the creation response data
+                currentBattleDetails = data;
+                populateBattleDetailsModal(data);
+            }
             
             const modal = document.getElementById('battle-details-modal');
             if (modal) {

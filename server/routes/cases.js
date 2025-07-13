@@ -357,13 +357,13 @@ router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Battle has expired' });
         }
 
-        // Add bots to fill remaining slots
-        const remainingSlots = battle.maxPlayers - battle.players.length;
-        const botNames = ['BotAlpha', 'BotBeta', 'BotGamma', 'BotDelta', 'BotEpsilon'];
+        // Add bot players to fill the battle
+        const botsNeeded = battle.maxPlayers - battle.players.length;
+        const botNames = ['BotAlpha', 'BotBeta', 'BotGamma', 'BotDelta', 'BotEcho', 'BotFoxtrot'];
         
-        for (let i = 0; i < remainingSlots; i++) {
+        for (let i = 0; i < botsNeeded; i++) {
             const botName = botNames[i] || `Bot${i + 1}`;
-            await battle.addPlayer(`bot-${Date.now()}-${i}`, botName, true); // Set isBot to true
+            await battle.addPlayer(`bot_${Date.now()}_${i}`, botName, true);
         }
 
         await battle.save();
@@ -376,11 +376,11 @@ router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
 
     } catch (error) {
         console.error('Error calling bots:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({ success: false, message: error.message || 'Server error' });
     }
 });
 
-// Start a battle manually
+// Start battle
 router.post('/battle/:battleId/start', auth, async (req, res) => {
     try {
         const battle = await CaseBattle.findOne({ battleId: req.params.battleId });
@@ -393,12 +393,12 @@ router.post('/battle/:battleId/start', auth, async (req, res) => {
         }
 
         if (battle.players.length < battle.maxPlayers) {
-            return res.status(400).json({ success: false, message: 'Not enough players to start battle' });
+            return res.status(400).json({ success: false, message: 'Battle is not full' });
         }
 
         // Start the battle
         await battle.start();
-        
+
         // Process all case openings for all players
         for (const player of battle.players) {
             for (const caseData of battle.cases) {
@@ -418,8 +418,8 @@ router.post('/battle/:battleId/start', auth, async (req, res) => {
                         isLimited: wonItem.isLimited
                     });
 
-                    // Add to user inventory if not a bot
-                    if (!player.isBot) {
+                    // Add to user inventory if it's a real user (not a bot)
+                    if (!player.userId.toString().startsWith('bot_')) {
                         let userInventory = await UserInventory.findOne({ userId: player.userId });
                         if (!userInventory) {
                             userInventory = new UserInventory({ userId: player.userId });
@@ -446,7 +446,7 @@ router.post('/battle/:battleId/start', auth, async (req, res) => {
         
         // Notify all players
         battle.players.forEach(player => {
-            if (!player.isBot) {
+            if (!player.userId.toString().startsWith('bot_')) {
                 io.to(player.userId.toString()).emit('battle-result', {
                     battleId: battle.battleId,
                     won: player.isWinner,
@@ -458,13 +458,13 @@ router.post('/battle/:battleId/start', auth, async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Battle started and completed!',
+            message: 'Battle started successfully!',
             battle: battle.getSummary()
         });
 
     } catch (error) {
         console.error('Error starting battle:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({ success: false, message: error.message || 'Server error' });
     }
 });
 
