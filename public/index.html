@@ -1321,10 +1321,18 @@
                 </button>
             </div>
             <div class="battle-details-body">
-                <div class="battle-info">
-                    <div class="battle-mode-display" id="battle-mode-display"></div>
-                    <div class="battle-jackpot" id="battle-jackpot"></div>
-                    <div class="battle-status" id="battle-status"></div>
+                <div class="battle-header">
+                    <div class="battle-info">
+                        <div class="battle-mode-display" id="battle-mode-display"></div>
+                        <div class="battle-jackpot" id="battle-jackpot"></div>
+                        <div class="battle-status" id="battle-status"></div>
+                    </div>
+                    <div class="battle-progress-bar" id="battle-progress-bar" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <div class="progress-text" id="progress-text">0 / 0</div>
+                    </div>
                 </div>
                 
                 <div class="battle-players-section">
@@ -1352,10 +1360,10 @@
                     </button>
                 </div>
                 
-                <div class="battle-progress" id="battle-progress" style="display: none;">
-                    <h3>Battle Progress</h3>
-                    <div class="battle-timeline" id="battle-timeline">
-                        <!-- Battle progress will be shown here -->
+                <div class="battle-live-section" id="battle-live-section" style="display: none;">
+                    <h3>Live Battle</h3>
+                    <div class="battle-openings" id="battle-openings">
+                        <!-- Live openings will be shown here -->
                     </div>
                 </div>
                 
@@ -1439,9 +1447,17 @@
     <script src="js/utils.js"></script>
     <script src="js/notifications.js"></script>
     <script src="js/app.js"></script>
+    <script src="js/battle-system.js"></script>
     <script>
         // Initialize Lucide icons
         lucide.createIcons();
+        
+        // Initialize battle system when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof initializeBattleSystem === 'function') {
+                initializeBattleSystem();
+            }
+        });
     </script>
 </body>
 </html> 
