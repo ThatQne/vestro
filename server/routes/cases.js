@@ -296,7 +296,7 @@ router.post('/battle/:battleId/join', auth, async (req, res) => {
 
         // Emit battle updated event
         const io = req.app.get('io');
-        io.emit('battle-updated', battle.getSummary());
+        io.emit('battle-updated', battle.getFullDetails());
         
         // Emit to battle participants
         battle.players.forEach(player => {
@@ -354,7 +354,7 @@ router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
 
         // Emit battle updated event
         const io = req.app.get('io');
-        io.emit('battle-updated', battle.getSummary());
+        io.emit('battle-updated', battle.getFullDetails());
         
         // Emit to battle participants
         battle.players.forEach(player => {
@@ -370,7 +370,7 @@ router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
         if (battle.players.length === battle.maxPlayers) {
             // Start the battle
             await battle.start();
-            io.emit('battle-started', battle.getSummary());
+            io.emit('battle-started', battle.getFullDetails());
             battle.players.forEach(player => {
                 if (!player.isBot) {
                     io.to(player.userId.toString()).emit('battle-started', {

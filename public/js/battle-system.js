@@ -431,6 +431,10 @@ async function showBattleDetails(battleId) {
 
 // Populate battle details modal
 function populateBattleDetailsModal(battle) {
+    if (!battle || !Array.isArray(battle.players)) {
+        console.error('populateBattleDetailsModal: battle.players is missing or not an array', battle);
+        return;
+    }
     // Set title and basic info
     document.getElementById('battle-details-title').textContent = `Battle #${battle.battleId}`;
     document.getElementById('battle-mode-display').textContent = `Mode: ${battle.mode}`;
@@ -500,6 +504,10 @@ function populateBattleDetailsModal(battle) {
 
 // Update battle UI based on status
 function updateBattleUI(battle) {
+    if (!battle || !Array.isArray(battle.players)) {
+        console.error('updateBattleUI: battle.players is missing or not an array', battle);
+        return;
+    }
     const callBotsBtn = document.getElementById('call-bots-btn');
     const startBattleBtn = document.getElementById('start-battle-btn');
     const battleActions = document.getElementById('battle-actions');
