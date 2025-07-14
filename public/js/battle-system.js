@@ -132,8 +132,8 @@ function displayBattles(battles) {
     
     const now = Date.now();
     battles.forEach(battle => {
-        const battleCard = document.createElement('div');
-        battleCard.className = 'battle-card';
+        // Only show waiting, in_progress, or completed (for 2 min) battles
+        if (battle.status !== 'waiting' && battle.status !== 'in_progress' && battle.status !== 'completed') return;
         
         let statusClass = 'waiting';
         let statusText = 'Waiting';
@@ -150,16 +150,16 @@ function displayBattles(battles) {
             const completedAt = new Date(battle.completedAt).getTime();
             const timeSinceCompleted = now - completedAt;
             if (timeSinceCompleted < 2 * 60 * 1000) {
-                // Mark as done, and set a timer to reload battles after 2 minutes
                 setTimeout(() => {
                     loadBattles();
                 }, 2 * 60 * 1000 - timeSinceCompleted);
             } else {
-                // Skip rendering this battle, it's expired
                 return;
             }
         }
         
+        const battleCard = document.createElement('div');
+        battleCard.className = 'battle-card';
         battleCard.innerHTML = `
             <div class="battle-header">
                 <div class="battle-mode">${battle.mode}</div>
@@ -195,11 +195,9 @@ function displayBattles(battles) {
                 }
             </div>
         `;
-        
         battlesGrid.appendChild(battleCard);
     });
     
-    // Initialize Lucide icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
@@ -516,6 +514,13 @@ function populateBattleDetailsModal(battle) {
         casesList.innerHTML = '<div class="no-cases">No cases found</div>';
     }
     
+    // Show case openings in real time
+    if (battle.openings && battle.openings.length > 0) {
+        displayBattleOpenings(battle.openings);
+    } else {
+        displayBattleOpenings([]);
+    }
+    
     // Show/hide appropriate elements based on battle status
     updateBattleUI(battle);
     
@@ -532,7 +537,6 @@ function updateBattleUI(battle) {
         return;
     }
     const callBotsBtn = document.getElementById('call-bots-btn');
-    const startBattleBtn = document.getElementById('start-battle-btn');
     const battleActions = document.getElementById('battle-actions');
     const battleLiveSection = document.getElementById('battle-live-section');
     const battleResults = document.getElementById('battle-results');
@@ -555,11 +559,9 @@ function updateBattleUI(battle) {
     if (battle.status === 'waiting') {
         if (battle.players.length === battle.maxPlayers) {
             callBotsBtn.style.display = 'none';
-            startBattleBtn.style.display = isCreator ? 'inline-flex' : 'none';
             statusText.textContent = 'Status: Full - Starting...';
         } else {
             callBotsBtn.style.display = isCreator ? 'inline-flex' : 'none';
-            startBattleBtn.style.display = 'none';
             statusText.textContent = 'Status: Waiting for players';
         }
     } else if (battle.status === 'starting' || battle.status === 'in_progress') {
