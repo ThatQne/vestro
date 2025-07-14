@@ -226,10 +226,14 @@ router.post('/battle/create', auth, async (req, res) => {
 // Get active battles
 router.get('/battles/active', async (req, res) => {
     try {
-        const battles = await CaseBattle.find({ 
-            status: 'waiting',
-            isPrivate: false,
-            expiresAt: { $gt: new Date() }
+        const now = new Date();
+        // Include waiting and recently completed battles (within 2 minutes)
+        const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
+        const battles = await CaseBattle.find({
+            $or: [
+                { status: 'waiting', isPrivate: false, expiresAt: { $gt: now } },
+                { status: 'completed', completedAt: { $gte: twoMinutesAgo }, isPrivate: false }
+            ]
         }).sort({ createdAt: -1 }).limit(20);
 
         res.json({ success: true, battles: battles.map(b => b.getSummary()) });
@@ -361,6 +365,23 @@ router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
                 });
             }
         });
+
+        // If the battle is now full, autostart it
+        if (battle.players.length === battle.maxPlayers) {
+            // Start the battle
+            await battle.start();
+            io.emit('battle-started', battle.getSummary());
+            battle.players.forEach(player => {
+                if (!player.isBot) {
+                    io.to(player.userId.toString()).emit('battle-started', {
+                        battleId: battle.battleId,
+                        battle: battle.getFullDetails()
+                    });
+                }
+            });
+            // Start processing case openings
+            processNextBattleOpening(battle.battleId, io);
+        }
 
         res.json({
             success: true,

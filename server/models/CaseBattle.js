@@ -401,7 +401,9 @@ caseBattleSchema.methods.getSummary = function() {
         cases: this.cases.map(c => ({
             caseName: c.caseName,
             quantity: c.quantity,
-            price: c.casePrice
+            price: c.casePrice, // always include casePrice for frontend
+            casePrice: c.casePrice, // for compatibility
+            caseId: c.caseId
         })),
         players: this.players.map(p => ({
             username: p.username,
@@ -426,7 +428,13 @@ caseBattleSchema.methods.getFullDetails = function() {
         currentPlayers: this.players.length,
         totalCost: this.totalCost,
         status: this.status,
-        cases: this.cases,
+        cases: this.cases.map(c => ({
+            caseId: c.caseId,
+            caseName: c.caseName,
+            casePrice: c.casePrice,
+            price: c.casePrice, // for compatibility
+            quantity: c.quantity
+        })),
         players: this.players,
         openings: this.openings.sort((a, b) => a.order - b.order),
         winnerId: this.winnerId,

@@ -449,13 +449,12 @@ function populateBattleDetailsModal(battle) {
         if (player) {
             playerCard.innerHTML = `
                 <div class="player-avatar ${player.isBot ? 'bot' : ''} ${player.isCreator ? 'creator' : ''}">
-                    ${player.username.charAt(0).toUpperCase()}
+                    <span class="avatar-circle">${player.username.charAt(0).toUpperCase()}</span>
                     ${player.isCreator ? '<i data-lucide="crown"></i>' : ''}
                 </div>
                 <div class="player-info">
-                    <div class="player-name">${player.username}</div>
+                    <div class="player-name">${player.username} ${player.isBot ? '<span class="player-bot-badge">BOT</span>' : ''}</div>
                     <div class="player-score">$${player.totalValue.toFixed(2)}</div>
-                    ${player.isBot ? '<div class="player-bot-badge">BOT</div>' : ''}
                 </div>
             `;
         } else {
@@ -467,7 +466,6 @@ function populateBattleDetailsModal(battle) {
                 </div>
             `;
         }
-        
         playersGrid.appendChild(playerCard);
     });
     
@@ -477,12 +475,13 @@ function populateBattleDetailsModal(battle) {
     
     if (battle.cases && battle.cases.length > 0) {
         battle.cases.forEach(caseItem => {
+            const price = caseItem.casePrice || caseItem.price || 0;
             const caseElement = document.createElement('div');
             caseElement.className = 'battle-case-item';
             caseElement.innerHTML = `
                 <div class="case-name">${caseItem.caseName}</div>
                 <div class="case-quantity">x${caseItem.quantity}</div>
-                <div class="case-total">$${(caseItem.casePrice * caseItem.quantity).toFixed(2)}</div>
+                <div class="case-total">$${(price * caseItem.quantity).toFixed(2)}</div>
             `;
             casesList.appendChild(caseElement);
         });
@@ -507,6 +506,7 @@ function updateBattleUI(battle) {
     const battleLiveSection = document.getElementById('battle-live-section');
     const battleResults = document.getElementById('battle-results');
     const battleProgressBar = document.getElementById('battle-progress-bar');
+    const statusText = document.getElementById('battle-status');
     
     // Check if current user is the creator
     const currentUserId = getCurrentUserId();
@@ -514,27 +514,28 @@ function updateBattleUI(battle) {
         p.userId.toString() === currentUserId && p.isCreator
     );
     
-    console.log('Battle UI Debug:', {
-        currentUserId,
-        battlePlayers: battle.players.map(p => ({ userId: p.userId, isCreator: p.isCreator })),
-        isCreator
-    });
-    
     // Reset display
     battleActions.style.display = 'block';
     battleLiveSection.style.display = 'none';
     battleResults.style.display = 'none';
     battleProgressBar.style.display = 'none';
     
+    // Hide call bots if full, show 'Starting...' if autostarting
     if (battle.status === 'waiting') {
-        callBotsBtn.style.display = isCreator ? 'inline-flex' : 'none';
-        startBattleBtn.style.display = 
-            isCreator && battle.players.length === battle.maxPlayers ? 'inline-flex' : 'none';
+        if (battle.players.length === battle.maxPlayers) {
+            callBotsBtn.style.display = 'none';
+            startBattleBtn.style.display = isCreator ? 'inline-flex' : 'none';
+            statusText.textContent = 'Status: Full - Starting...';
+        } else {
+            callBotsBtn.style.display = isCreator ? 'inline-flex' : 'none';
+            startBattleBtn.style.display = 'none';
+            statusText.textContent = 'Status: Waiting for players';
+        }
     } else if (battle.status === 'starting' || battle.status === 'in_progress') {
         battleActions.style.display = 'none';
         battleLiveSection.style.display = 'block';
         battleProgressBar.style.display = 'block';
-        
+        statusText.textContent = 'Status: In Progress';
         // Show existing openings if any
         if (battle.openings && battle.openings.length > 0) {
             displayBattleOpenings(battle.openings);
@@ -543,6 +544,7 @@ function updateBattleUI(battle) {
         battleActions.style.display = 'none';
         battleLiveSection.style.display = 'none';
         battleResults.style.display = 'block';
+        statusText.textContent = 'Status: Completed';
         showBattleResults(battle);
     }
 }
