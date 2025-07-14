@@ -130,32 +130,55 @@ function displayBattles(battles) {
         return;
     }
     
+    const now = Date.now();
     battles.forEach(battle => {
         const battleCard = document.createElement('div');
         battleCard.className = 'battle-card';
         
-        const statusClass = battle.status === 'waiting' ? 'waiting' : 
-                           battle.status === 'in_progress' ? 'in-progress' : 'completed';
+        let statusClass = 'waiting';
+        let statusText = 'Waiting';
+        if (battle.status === 'in_progress') {
+            statusClass = 'in-progress';
+            statusText = 'In Progress';
+        } else if (battle.status === 'completed') {
+            statusClass = 'completed';
+            statusText = 'Done';
+        }
+        
+        // If completed, show as done and set a timer to remove after 2 minutes
+        if (battle.status === 'completed' && battle.completedAt) {
+            const completedAt = new Date(battle.completedAt).getTime();
+            const timeSinceCompleted = now - completedAt;
+            if (timeSinceCompleted < 2 * 60 * 1000) {
+                // Mark as done, and set a timer to reload battles after 2 minutes
+                setTimeout(() => {
+                    loadBattles();
+                }, 2 * 60 * 1000 - timeSinceCompleted);
+            } else {
+                // Skip rendering this battle, it's expired
+                return;
+            }
+        }
         
         battleCard.innerHTML = `
             <div class="battle-header">
                 <div class="battle-mode">${battle.mode}</div>
                 <div class="battle-cost">$${battle.totalCost.toFixed(2)}</div>
-                <div class="battle-status ${statusClass}">${battle.status}</div>
+                <div class="battle-status ${statusClass}">${statusText}</div>
             </div>
             <div class="battle-players">
-                ${battle.players.map(player => `
+                ${(battle.players || []).map(player => `
                     <div class="battle-player ${player.isBot ? 'bot' : ''} ${player.isCreator ? 'creator' : ''}">
-                        ${player.username.charAt(0).toUpperCase()}
+                        ${(player.username || '?').charAt(0).toUpperCase()}
                         ${player.isCreator ? '<i data-lucide="crown"></i>' : ''}
                     </div>
                 `).join('')}
-                ${Array.from({length: battle.maxPlayers - battle.currentPlayers}, () => 
+                ${Array.from({length: battle.maxPlayers - (battle.currentPlayers || 0)}, () => 
                     '<div class="battle-player empty">?</div>'
                 ).join('')}
             </div>
             <div class="battle-cases">
-                ${battle.cases.map(caseItem => 
+                ${(battle.cases || []).map(caseItem => 
                     `<div class="battle-case">${caseItem.caseName} x${caseItem.quantity}</div>`
                 ).join('')}
             </div>
@@ -164,7 +187,7 @@ function displayBattles(battles) {
                     <i data-lucide="eye"></i>
                     View Details
                 </button>
-                ${battle.status === 'waiting' && battle.currentPlayers < battle.maxPlayers ? 
+                ${battle.status === 'waiting' && (battle.currentPlayers || 0) < battle.maxPlayers ? 
                     `<button class="battle-join-btn" onclick="joinBattle('${battle.battleId}')">
                         <i data-lucide="user-plus"></i>
                         Join Battle
@@ -652,13 +675,19 @@ function updatePlayerScores() {
 
 // Handle battle completed
 function handleBattleCompleted(data) {
+    if (!data || !data.battle) {
+        console.error('handleBattleCompleted: missing battle data', data);
+        return;
+    }
     currentBattle = data.battle;
     updateBattleUI(data.battle);
     
+    // Defensive: check winner
+    let winnerName = (data.battle.players || []).find(p => p.isWinner)?.username || data.battle.winnerUsername || 'Unknown';
     if (data.won) {
         showNotification('🎉 Congratulations! You won the battle!', 'success');
     } else {
-        showNotification(`Battle completed. Winner: ${data.winner.username}`, 'info');
+        showNotification(`Battle completed. Winner: ${winnerName}`, 'info');
     }
 }
 
@@ -667,29 +696,31 @@ function showBattleResults(battle) {
     const battleWinner = document.getElementById('battle-winner');
     const battleFinalScores = document.getElementById('battle-final-scores');
     
-    const winner = battle.players.find(p => p.isWinner);
+    const winner = (battle.players || []).find(p => p.isWinner);
     
     if (winner) {
         battleWinner.innerHTML = `
             <div class="winner-announcement">
                 <div class="winner-crown">👑</div>
-                <div class="winner-name">${winner.username}</div>
-                <div class="winner-prize">Wins $${battle.totalPrizeValue.toFixed(2)}!</div>
+                <div class="winner-name">${winner.username || 'Unknown'}</div>
+                <div class="winner-prize">Wins $${(battle.totalPrizeValue || 0).toFixed(2)}!</div>
             </div>
         `;
+    } else {
+        battleWinner.innerHTML = '<div class="winner-announcement">No winner</div>';
     }
     
     // Show final scores
     battleFinalScores.innerHTML = '';
-    battle.players.forEach(player => {
+    (battle.players || []).forEach(player => {
         const playerScore = document.createElement('div');
         playerScore.className = `final-score ${player.isWinner ? 'winner' : ''}`;
         playerScore.innerHTML = `
             <div class="score-player">
-                ${player.username}
+                ${(player.username || 'Unknown')}
                 ${player.isBot ? '<span class="bot-badge">BOT</span>' : ''}
             </div>
-            <div class="score-value">$${player.totalValue.toFixed(2)}</div>
+            <div class="score-value">$${(player.totalValue || 0).toFixed(2)}</div>
         `;
         battleFinalScores.appendChild(playerScore);
     });

@@ -208,7 +208,7 @@ router.post('/battle/create', auth, async (req, res) => {
 
         // Emit battle created event
         const io = req.app.get('io');
-        io.emit('battle-created', battle.getSummary());
+            io.emit('battle-created', battle.getSummary());
 
         res.json({
             success: true,
@@ -295,11 +295,11 @@ router.post('/battle/:battleId/join', auth, async (req, res) => {
         await user.save();
 
         // Emit battle updated event
-        const io = req.app.get('io');
+            const io = req.app.get('io');
         io.emit('battle-updated', battle.getFullDetails());
-        
+            
         // Emit to battle participants
-        battle.players.forEach(player => {
+            battle.players.forEach(player => {
             if (!player.isBot) {
                 io.to(player.userId.toString()).emit('battle-player-joined', {
                     battleId: battle.battleId,
