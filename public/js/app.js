@@ -5980,7 +5980,7 @@ function closePlayerDetailModal() {
 
 // Case System Functions
 let currentCaseTab = 'cases';
-let selectedCasesForBattle = [];
+let selectedCasesForBattle = {};
 
 // Initialize case system when page loads
 function initializeCaseSystem() {
@@ -6836,7 +6836,7 @@ function closeCreateBattleModal() {
     const modal = document.getElementById('create-battle-modal');
     if (modal) {
         modal.classList.add('hidden');
-        selectedCasesForBattle = [];
+        selectedCasesForBattle = {};
         updateSelectedCasesDisplay();
     }
 }
@@ -6854,6 +6854,7 @@ async function loadBattleCases() {
         }
         
         const data = await response.json();
+        window.availableCases = data.cases;
         displayBattleCases(data.cases);
     } catch (error) {
         console.error('Error loading battle cases:', error);
@@ -6867,35 +6868,77 @@ function displayBattleCases(cases) {
     
     grid.innerHTML = '';
     
+    const caseIcons = {
+        'Starter Case': { icon: 'package', color: '#10b981' },
+        'Gambler\'s Delight': { icon: 'dice-6', color: '#f59e0b' },
+        'Mystic Treasures': { icon: 'sparkles', color: '#8b5cf6' },
+        'Neon Dreams': { icon: 'zap', color: '#06b6d4' },
+        'Ocean\'s Bounty': { icon: 'droplets', color: '#3b82f6' }
+    };
+    
     cases.forEach(caseItem => {
         const caseOption = document.createElement('div');
         caseOption.className = 'battle-case-option';
+        const caseIcon = caseIcons[caseItem.name] || { icon: 'package', color: '#10b981' };
+        const currentQuantity = selectedCasesForBattle[caseItem._id] || 0;
+        
         caseOption.innerHTML = `
-            <div class="case-name">${caseItem.name}</div>
-            <div class="case-price">$${caseItem.price.toFixed(2)}</div>
+            <div class="case-icon" style="background: ${caseIcon.color}; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="${caseIcon.icon}" style="color: white; width: 20px; height: 20px;"></i>
+            </div>
+            <div class="case-info">
+                <div class="case-name">${caseItem.name}</div>
+                <div class="case-price">$${caseItem.price.toFixed(2)}</div>
+                <div class="case-quantity-controls">
+                    <button class="quantity-btn minus" onclick="adjustCaseQuantity('${caseItem._id}', -1)" ${currentQuantity === 0 ? 'disabled' : ''}>-</button>
+                    <span class="quantity-display">${currentQuantity}</span>
+                    <button class="quantity-btn plus" onclick="adjustCaseQuantity('${caseItem._id}', 1)">+</button>
+                </div>
+            </div>
         `;
-        caseOption.onclick = () => toggleCaseSelection(caseItem);
         grid.appendChild(caseOption);
     });
+    
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
-function toggleCaseSelection(caseItem) {
-    const existingIndex = selectedCasesForBattle.findIndex(c => c._id === caseItem._id);
+function adjustCaseQuantity(caseId, change) {
+    const currentQuantity = selectedCasesForBattle[caseId] || 0;
+    const newQuantity = Math.max(0, currentQuantity + change);
     
-    // Check if we've reached the 25 case limit
-    const totalSelectedCases = selectedCasesForBattle.reduce((sum, c) => sum + 1, 0);
+    const totalCases = Object.values(selectedCasesForBattle).reduce((sum, qty) => sum + qty, 0);
+    const totalAfterChange = totalCases - currentQuantity + newQuantity;
     
-    if (existingIndex > -1) {
-        selectedCasesForBattle.splice(existingIndex, 1);
-    } else if (totalSelectedCases >= 25) {
+    if (totalAfterChange > 25) {
         showNotification('Maximum of 25 cases allowed per battle', 'error');
         return;
+    }
+    
+    if (newQuantity === 0) {
+        delete selectedCasesForBattle[caseId];
     } else {
-        selectedCasesForBattle.push(caseItem);
+        selectedCasesForBattle[caseId] = newQuantity;
     }
     
     updateSelectedCasesDisplay();
     updateBattleCost();
+    refreshBattleCasesDisplay();
+}
+
+function refreshBattleCasesDisplay() {
+    document.querySelectorAll('.battle-case-option').forEach(option => {
+        const caseId = option.querySelector('.quantity-btn').getAttribute('onclick').match(/'([^']+)'/)[1];
+        const currentQuantity = selectedCasesForBattle[caseId] || 0;
+        const quantityDisplay = option.querySelector('.quantity-display');
+        const minusBtn = option.querySelector('.quantity-btn.minus');
+        
+        if (quantityDisplay) quantityDisplay.textContent = currentQuantity;
+        if (minusBtn) minusBtn.disabled = currentQuantity === 0;
+        
+        option.classList.toggle('selected', currentQuantity > 0);
+    });
 }
 
 function updateSelectedCasesDisplay() {
@@ -6904,32 +6947,54 @@ function updateSelectedCasesDisplay() {
     
     container.innerHTML = '';
     
-    selectedCasesForBattle.forEach(caseItem => {
+    const totalCases = Object.values(selectedCasesForBattle).reduce((sum, qty) => sum + qty, 0);
+    if (totalCases > 0) {
+        const clearBtn = document.createElement('button');
+        clearBtn.className = 'clear-selection-btn';
+        clearBtn.textContent = 'Clear All';
+        clearBtn.onclick = clearCaseSelection;
+        container.appendChild(clearBtn);
+    }
+    
+    Object.entries(selectedCasesForBattle).forEach(([caseId, quantity]) => {
+        const caseData = window.availableCases?.find(c => c._id === caseId);
+        if (!caseData) return;
+        
         const selectedCase = document.createElement('div');
         selectedCase.className = 'selected-case';
         selectedCase.innerHTML = `
-            ${caseItem.name}
-            <button class="remove-btn" onclick="removeCaseFromSelection('${caseItem._id}')">×</button>
+            <span class="case-name">${caseData.name}</span>
+            <span class="case-quantity">x${quantity}</span>
+            <span class="case-total">$${(caseData.price * quantity).toFixed(2)}</span>
+            <button class="remove-btn" onclick="removeCaseFromSelection('${caseId}')">×</button>
         `;
         container.appendChild(selectedCase);
     });
-    
-    // Update case selection visual state
-    document.querySelectorAll('.battle-case-option').forEach(option => {
-        const caseName = option.querySelector('.case-name').textContent;
-        const isSelected = selectedCasesForBattle.some(c => c.name === caseName);
-        option.classList.toggle('selected', isSelected);
-    });
+}
+
+function clearCaseSelection() {
+    selectedCasesForBattle = {};
+    updateSelectedCasesDisplay();
+    updateBattleCost();
+    refreshBattleCasesDisplay();
 }
 
 function removeCaseFromSelection(caseId) {
-    selectedCasesForBattle = selectedCasesForBattle.filter(c => c._id !== caseId);
+    delete selectedCasesForBattle[caseId];
     updateSelectedCasesDisplay();
     updateBattleCost();
+    refreshBattleCasesDisplay();
 }
 
 function updateBattleCost() {
-    const totalCost = selectedCasesForBattle.reduce((sum, c) => sum + c.price, 0);
+    let totalCost = 0;
+    Object.entries(selectedCasesForBattle).forEach(([caseId, quantity]) => {
+        const caseData = window.availableCases?.find(c => c._id === caseId);
+        if (caseData) {
+            totalCost += caseData.price * quantity;
+        }
+    });
+    
     const costDisplay = document.getElementById('battle-total-cost');
     if (costDisplay) {
         costDisplay.textContent = totalCost.toFixed(2);
@@ -6937,7 +7002,8 @@ function updateBattleCost() {
 }
 
 async function createBattle() {
-    if (selectedCasesForBattle.length === 0) {
+    const totalCases = Object.values(selectedCasesForBattle).reduce((sum, qty) => sum + qty, 0);
+    if (totalCases === 0) {
         showNotification('Please select at least one case', 'error');
         return;
     }
@@ -6946,9 +7012,9 @@ async function createBattle() {
     const isPrivate = document.getElementById('battle-private-checkbox').checked;
     
     const battleData = {
-        cases: selectedCasesForBattle.map(c => ({
-            caseId: c._id,
-            quantity: 1
+        cases: Object.entries(selectedCasesForBattle).map(([caseId, quantity]) => ({
+            caseId: caseId,
+            quantity: quantity
         })),
         mode: mode,
         isPrivate: isPrivate
