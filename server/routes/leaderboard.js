@@ -63,43 +63,47 @@ router.get('/search', authenticateToken, async (req, res) => {
             });
         }
 
-        // Find players matching the search query
-        const players = await User.find({
-            username: { $regex: username, $options: 'i' }
-        }, {
-            username: 1,
-            balance: 1,
-            level: 1,
-            gamesPlayed: 1,
-            wins: 1,
-            losses: 1,
-            totalWon: 1,
-            bestWin: 1,
-            bestWinStreak: 1,
-            createdAt: 1
-        })
-        .sort({ balance: -1 })
-        .lean();
+        // Find players matching the search query with rank calculation in single aggregation
+        const players = await User.aggregate([
+            {
+                $match: {
+                    username: { $regex: username, $options: 'i' }
+                }
+            },
+            {
+                $setWindowFields: {
+                    sortBy: { balance: -1 },
+                    output: {
+                        rank: { $rank: {} }
+                    }
+                }
+            },
+            {
+                $project: {
+                    username: 1,
+                    balance: 1,
+                    level: 1,
+                    gamesPlayed: 1,
+                    wins: 1,
+                    losses: 1,
+                    totalWon: 1,
+                    bestWin: 1,
+                    bestWinStreak: 1,
+                    createdAt: 1,
+                    rank: 1
+                }
+            },
+            {
+                $sort: { balance: -1 }
+            }
+        ]);
 
-        // Get all players sorted by balance to calculate ranks
-        const allPlayers = await User.find({}, { _id: 1, balance: 1 })
-            .sort({ balance: -1 })
-            .lean();
-
-        // Create a map of user ID to rank
-        const rankMap = new Map();
-        allPlayers.forEach((player, index) => {
-            rankMap.set(player._id.toString(), index + 1);
-        });
-
-        // Calculate win rates and add ranks
+        // Calculate win rates and format response
         const playersWithStats = players.map(player => {
             const winRate = player.gamesPlayed > 0 ? (player.wins / player.gamesPlayed) * 100 : 0;
-            const rank = rankMap.get(player._id.toString()) || 'N/A';
             
             return {
                 ...player,
-                rank: rank,
                 winRate: winRate,
                 gamesPlayed: player.gamesPlayed || 0,
                 totalWon: player.totalWon || 0,
@@ -126,26 +130,30 @@ router.get('/profile/:username', authenticateToken, async (req, res) => {
     try {
         const { username } = req.params;
         
-        // Find the player
-        const player = await User.findOne({ username: username })
-            .lean();
+        // Find the player with rank calculation in single aggregation
+        const playerWithRank = await User.aggregate([
+            {
+                $match: { username: username }
+            },
+            {
+                $setWindowFields: {
+                    sortBy: { balance: -1 },
+                    output: {
+                        rank: { $rank: {} }
+                    }
+                }
+            }
+        ]);
 
-        if (!player) {
+        if (!playerWithRank || playerWithRank.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Player not found'
             });
         }
 
-        // Player's balance history is already available in the user document
-
-        // Get all players sorted by balance to calculate rank
-        const allPlayers = await User.find({}, { _id: 1, balance: 1 })
-            .sort({ balance: -1 })
-            .lean();
-
-        // Find the player's rank
-        const rank = allPlayers.findIndex(p => p._id.toString() === player._id.toString()) + 1;
+        const player = playerWithRank[0];
+        const rank = player.rank;
 
         // Calculate win rate
         const winRate = player.gamesPlayed > 0 ? (player.wins / player.gamesPlayed) * 100 : 0;
@@ -204,4 +212,4 @@ router.get('/profile/:username', authenticateToken, async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;  
