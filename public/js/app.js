@@ -5993,8 +5993,11 @@ function initializeCaseSystem() {
     if (socket) {
         socket.on('case-opened', handleCaseOpened);
         socket.on('battle-created', handleBattleCreated);
+        socket.on('battle-starting', handleBattleStarting);
+        socket.on('case-opening-progress', handleCaseOpeningProgress);
         socket.on('battle-completed', handleBattleCompleted);
         socket.on('battle-result', handleBattleResult);
+        socket.on('battle-cleanup', handleBattleCleanup);
         socket.on('item-sold', handleItemSold);
         socket.on('marketplace-purchase', handleMarketplacePurchase);
         socket.on('marketplace-sale', handleMarketplaceSale);
@@ -6854,6 +6857,11 @@ function toggleCaseSelection(caseItem) {
     if (existingIndex > -1) {
         selectedCasesForBattle.splice(existingIndex, 1);
     } else {
+        const totalCases = selectedCasesForBattle.reduce((sum, c) => sum + (c.quantity || 1), 0);
+        if (totalCases >= 25) {
+            showNotification('Maximum 25 cases allowed per battle', 'error');
+            return;
+        }
         selectedCasesForBattle.push(caseItem);
     }
     
@@ -6876,6 +6884,19 @@ function updateSelectedCasesDisplay() {
         `;
         container.appendChild(selectedCase);
     });
+    
+    // Update case count display
+    const totalCases = selectedCasesForBattle.reduce((sum, c) => sum + (c.quantity || 1), 0);
+    const countDisplay = document.getElementById('total-cases-count');
+    if (countDisplay) {
+        countDisplay.textContent = totalCases;
+    }
+    
+    // Show/hide warning
+    const warning = document.getElementById('quantity-warning');
+    if (warning) {
+        warning.classList.toggle('hidden', totalCases < 25);
+    }
     
     // Update case selection visual state
     document.querySelectorAll('.battle-case-option').forEach(option => {
@@ -7279,6 +7300,20 @@ function handleBattleCompleted(data) {
     showNotification(`Battle completed! Winner: ${data.winnerUsername}`, 'success');
 }
 
+function handleBattleStarting(data) {
+    showNotification(`Battle ${data.battleId} is starting!`, 'info');
+    showBattleProgressModal(data.battleId);
+}
+
+function handleCaseOpeningProgress(data) {
+    updateBattleProgress(data);
+}
+
+function handleBattleCleanup(data) {
+    closeBattleProgressModal();
+    loadBattles();
+}
+
 function handleBattleResult(data) {
     if (data.won) {
         showNotification(`You won the battle! Total value: $${data.totalValue.toFixed(2)}`, 'success');
@@ -7286,6 +7321,72 @@ function handleBattleResult(data) {
         showNotification(`Battle completed. Total value: $${data.totalValue.toFixed(2)}`, 'info');
     }
     loadInventory();
+}
+
+function showBattleProgressModal(battleId) {
+    const modal = document.createElement('div');
+    modal.id = 'battle-progress-modal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content battle-progress-content">
+            <div class="modal-header">
+                <h2>Battle in Progress</h2>
+            </div>
+            <div class="battle-progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="battle-progress-fill"></div>
+                </div>
+                <div class="case-opening-animation" id="case-opening-animation">
+                    <!-- Case opening animations will appear here -->
+                </div>
+                <div class="player-results" id="player-results">
+                    <!-- Player results will appear here -->
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+function updateBattleProgress(data) {
+    const progressFill = document.getElementById('battle-progress-fill');
+    const animationContainer = document.getElementById('case-opening-animation');
+    
+    if (progressFill) {
+        const progress = ((data.caseIndex + 1) / data.totalCases) * 100;
+        progressFill.style.width = `${progress}%`;
+    }
+    
+    if (animationContainer) {
+        animationContainer.innerHTML = `
+            <div class="case-opening-round">
+                <h3>Opening Case ${data.caseIndex + 1} of ${data.totalCases}</h3>
+                <div class="case-results">
+                    ${data.results.map(result => `
+                        <div class="player-case-result">
+                            <div class="player-name">${getPlayerName(result.playerId)}</div>
+                            <div class="item-won rarity-${result.item.itemRarity}">
+                                <img src="/images/items/${result.item.itemImage}" alt="${result.item.itemName}">
+                                <div class="item-name">${result.item.itemName}</div>
+                                <div class="item-value">$${result.item.itemValue.toFixed(2)}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+}
+
+function getPlayerName(playerId) {
+    return 'Player';
+}
+
+function closeBattleProgressModal() {
+    const modal = document.getElementById('battle-progress-modal');
+    if (modal) {
+        modal.remove();
+    }
 }
 
 function handleItemSold(data) {

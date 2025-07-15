@@ -5580,6 +5580,106 @@ input, textarea {
     margin-bottom: 2rem;
 }
 
+/* Battle Progress Modal Styles */
+.battle-progress-content {
+    max-width: 800px;
+    width: 90vw;
+}
+
+.battle-progress-container {
+    padding: 2rem;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    margin-bottom: 2rem;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #06b6d4);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    width: 0%;
+}
+
+.case-opening-animation {
+    margin-bottom: 2rem;
+}
+
+.case-opening-round h3 {
+    text-align: center;
+    margin-bottom: 1rem;
+    color: #f1f1f1;
+}
+
+.case-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.player-case-result {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.player-name {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #f1f1f1;
+}
+
+.item-won {
+    border-radius: 8px;
+    padding: 1rem;
+    border: 2px solid;
+}
+
+.item-won.rarity-common { border-color: #9ca3af; }
+.item-won.rarity-uncommon { border-color: #10b981; }
+.item-won.rarity-rare { border-color: #3b82f6; }
+.item-won.rarity-epic { border-color: #8b5cf6; }
+.item-won.rarity-legendary { border-color: #f59e0b; }
+.item-won.rarity-mythical { border-color: #ef4444; }
+
+.item-won img {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+
+.item-name {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.item-value {
+    font-weight: 600;
+    color: #10b981;
+}
+
+.case-quantity-controls {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.quantity-warning {
+    color: #ef4444;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
 .battle-filters {
     display: flex;
     gap: 1rem;
