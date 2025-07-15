@@ -7,6 +7,7 @@ const User = require('../models/User');
 const UserInventory = require('../models/UserInventory');
 const CaseBattle = require('../models/CaseBattle');
 const { v4: uuidv4 } = require('uuid');
+const { updateUserBalance } = require('../utils/gameUtils');
 
 console.log('Cases routes loaded, User model:', User ? 'Loaded' : 'Not loaded'); // Debug log
 
@@ -83,8 +84,7 @@ router.post('/open/:id', auth, async (req, res) => {
         const wonItem = caseItem.getRandomItem();
         
         // Deduct case price from user balance
-        user.balance -= caseItem.price;
-        user.balanceHistory.push(user.balance);
+        updateUserBalance(user, -caseItem.price);
         await user.save();
 
         // Add item to user inventory
@@ -193,8 +193,7 @@ router.post('/battle/create', auth, async (req, res) => {
         await battle.addPlayer(req.user.id, user.username);
 
         // Deduct cost from user balance
-        user.balance -= totalCost;
-        user.balanceHistory.push(user.balance);
+        updateUserBalance(user, -totalCost);
         await user.save();
 
         // Emit battle created event
@@ -248,8 +247,7 @@ router.post('/battle/join/:battleId', auth, async (req, res) => {
         await battle.addPlayer(req.user.id, user.username);
 
         // Deduct cost from user balance
-        user.balance -= battle.totalCost;
-        user.balanceHistory.push(user.balance);
+        updateUserBalance(user, -battle.totalCost);
         await user.save();
 
         // Check if battle is full and start it
@@ -354,4 +352,4 @@ router.get('/battle/:battleId', async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;  

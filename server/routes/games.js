@@ -1,7 +1,7 @@
 const express = require('express');
 const User = require('../models/User');
 const GameHistory = require('../models/GameHistory');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, fetchUserWithSession } = require('../middleware/auth');
 const mongoose = require('mongoose');
 
 // Import game handlers
@@ -19,7 +19,10 @@ const {
     addExperienceToUser,
     cleanupOldGameHistory,
     validateGameParams,
-    validateUserBalance
+    validateUserBalance,
+    updateUserBalance,
+    completeGameProcessing,
+    emitLiveGameEvent
 } = require('../utils/gameUtils');
 
 const router = express.Router();
@@ -33,7 +36,7 @@ const GAME_HANDLERS = {
 };
 
 // Play a game
-router.post('/play', authenticateToken, async (req, res) => {
+router.post('/play', authenticateToken, fetchUserWithSession, async (req, res) => {
     try {
         const result = await withTransaction(async (session) => {
             const { gameType, betAmount, playerChoice, targetNumber } = req.body;
@@ -46,11 +49,8 @@ router.post('/play', authenticateToken, async (req, res) => {
                 throw new Error('Invalid game type');
         }
 
-        // Get user with session
-        const user = await User.findById(req.user.userId).session(session);
-        if (!user) {
-                throw new Error('User not found');
-            }
+        // Get user with session using middleware helper
+        const user = await req.fetchUserWithSession(session);
             
             // Validate balance and get rounded amounts
             const { userBalance, betAmountRounded } = validateUserBalance(user, betAmount);
@@ -118,16 +118,13 @@ router.post('/play', authenticateToken, async (req, res) => {
                     won = winAmount > 0;
                 }
                 
-                finalBalance = roundToTwoDecimals(balanceAfter + winAmount);
-                user.balance = finalBalance;
+                finalBalance = updateUserBalance(user, winAmount);
             }
             
             // Update user stats and check for badges
             const earnedBadges = await user.updateGameStats(won, betAmountRounded, winAmount);
             const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
             
-            // Update balance history
-            user.balanceHistory.push(finalBalance);
             await user.save({ session });
             
             // Clean up old game history
@@ -158,21 +155,10 @@ router.post('/play', authenticateToken, async (req, res) => {
             };
         });
         
-        // Emit live game event to all connected clients
+        // Emit live game event using utility function
         const io = req.app.get('io');
-        if (io) {
-            // Get user for username
-            const user = await User.findById(req.user.userId, { username: 1 });
-            if (user) {
-                io.emit('live-game', {
-                    username: user.username,
-                    game: req.body.gameType,
-                    amount: result.won ? result.winAmount : req.body.betAmount,
-                    won: result.won,
-                    timestamp: Date.now()
-                });
-            }
-        }
+        const socketUser = await User.findById(req.user.userId, { username: 1 });
+        emitLiveGameEvent(io, socketUser, req.body.gameType, result.won ? result.winAmount : req.body.betAmount, result.won);
         
         // Send response
         res.json({
@@ -235,10 +221,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
                 throw new Error('Game not found');
             }
             
-            const user = await User.findById(req.user.userId).session(session);
-            if (!user) {
-                throw new Error('User not found');
-            }
+            const user = await req.fetchUserWithSession(session);
             
             // Parse and validate game state
         const gameResult = JSON.parse(gameHistory.gameResult);
@@ -331,10 +314,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
                 throw new Error('Game not found');
             }
             
-        const user = await User.findById(req.user.userId).session(session);
-        if (!user) {
-                throw new Error('User not found');
-            }
+        const user = await req.fetchUserWithSession(session);
             
             // Parse and validate game state
         const gameResult = JSON.parse(gameHistory.gameResult);
@@ -359,9 +339,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
             
             // Calculate win amount and update balance
             const winAmount = roundToTwoDecimals(betAmount * expectedMultiplier);
-            const newBalance = roundToTwoDecimals(user.balance + winAmount);
-        user.balance = newBalance;
-        user.balanceHistory.push(newBalance);
+            const newBalance = updateUserBalance(user, winAmount);
         
             // Update user stats and check for badges
             const earnedBadges = await user.updateGameStats(true, betAmount, winAmount);
@@ -391,20 +369,10 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
             };
         });
 
-        // Emit live game event for mines cashout
+        // Emit live game event using utility function
         const io = req.app.get('io');
-        if (io) {
-            const user = await User.findById(req.user.userId, { username: 1 });
-            if (user) {
-                io.emit('live-game', {
-                    username: user.username,
-                    game: 'mines',
-                    amount: result.winAmount,
-                    won: true,
-                    timestamp: Date.now()
-                });
-            }
-        }
+        const socketUser = await User.findById(req.user.userId, { username: 1 });
+        emitLiveGameEvent(io, socketUser, 'mines', result.winAmount, true);
 
         res.json({ success: true, result });
 
@@ -469,7 +437,7 @@ router.get('/badges', authenticateToken, async (req, res) => {
 });
 
 // Blackjack game routes
-router.post('/blackjack/deal', authenticateToken, async (req, res) => {
+router.post('/blackjack/deal', authenticateToken, fetchUserWithSession, async (req, res) => {
     try {
         const result = await withTransaction(async (session) => {
             const { betAmount } = req.body;
@@ -479,11 +447,8 @@ router.post('/blackjack/deal', authenticateToken, async (req, res) => {
                 throw new Error('Invalid bet amount');
             }
             
-            // Get user with session
-            const user = await User.findById(req.user.userId).session(session);
-            if (!user) {
-                throw new Error('User not found');
-            }
+            // Get user with session using middleware helper
+            const user = await req.fetchUserWithSession(session);
             
             // Validate balance
             const { userBalance, betAmountRounded } = validateUserBalance(user, betAmount);
@@ -517,8 +482,7 @@ router.post('/blackjack/deal', authenticateToken, async (req, res) => {
                 let finalBalance = balanceAfter;
                 
                 if (gameState.winAmount > 0) {
-                    finalBalance = roundToTwoDecimals(balanceAfter + gameState.winAmount);
-                    user.balance = finalBalance;
+                    finalBalance = updateUserBalance(user, gameState.winAmount);
                 }
                 
                 // Update user stats and check for badges
@@ -526,8 +490,6 @@ router.post('/blackjack/deal', authenticateToken, async (req, res) => {
                 const earnedBadges = await user.updateGameStats(won, betAmountRounded, gameState.winAmount);
                 const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
                 
-                // Update balance history
-                user.balanceHistory.push(finalBalance);
                 await user.save({ session });
                 
                 // Update game history
@@ -561,7 +523,7 @@ router.post('/blackjack/deal', authenticateToken, async (req, res) => {
     }
 });
 
-router.post('/blackjack/hit', authenticateToken, async (req, res) => {
+router.post('/blackjack/hit', authenticateToken, fetchUserWithSession, async (req, res) => {
     try {
         const result = await withTransaction(async (session) => {
             const { gameId } = req.body;
@@ -581,10 +543,7 @@ router.post('/blackjack/hit', authenticateToken, async (req, res) => {
                 throw new Error('Game not found');
             }
             
-            const user = await User.findById(req.user.userId).session(session);
-            if (!user) {
-                throw new Error('User not found');
-            }
+            const user = await req.fetchUserWithSession(session);
             
             // Parse game state
             const gameState = JSON.parse(gameHistory.gameResult);
@@ -633,7 +592,7 @@ router.post('/blackjack/hit', authenticateToken, async (req, res) => {
     }
 });
 
-router.post('/blackjack/stand', authenticateToken, async (req, res) => {
+router.post('/blackjack/stand', authenticateToken, fetchUserWithSession, async (req, res) => {
     try {
         const result = await withTransaction(async (session) => {
             const { gameId } = req.body;
@@ -653,10 +612,7 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
                 throw new Error('Game not found');
             }
             
-            const user = await User.findById(req.user.userId).session(session);
-            if (!user) {
-                throw new Error('User not found');
-            }
+            const user = await req.fetchUserWithSession(session);
             
             // Parse game state
             const gameState = JSON.parse(gameHistory.gameResult);
@@ -671,8 +627,7 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
             // Update balance if player won
             let finalBalance = user.balance;
             if (newGameState.winAmount > 0) {
-                finalBalance = roundToTwoDecimals(user.balance + newGameState.winAmount);
-                user.balance = finalBalance;
+                finalBalance = updateUserBalance(user, newGameState.winAmount);
             }
             
             // Update user stats and check for badges
@@ -680,8 +635,6 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
             const earnedBadges = await user.updateGameStats(won, newGameState.betAmount, newGameState.winAmount);
             const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
             
-            // Update balance history
-            user.balanceHistory.push(finalBalance);
             await user.save({ session });
             
             // Update game history
@@ -702,20 +655,10 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
             };
         });
         
-        // Emit live game event for blackjack stand
+        // Emit live game event using utility function
         const io = req.app.get('io');
-        if (io) {
-            const user = await User.findById(req.user.userId, { username: 1 });
-            if (user) {
-                io.emit('live-game', {
-                    username: user.username,
-                    game: 'blackjack',
-                    amount: result.gameState.won ? result.gameState.winAmount : result.gameState.betAmount,
-                    won: result.gameState.winAmount > 0,
-                    timestamp: Date.now()
-                });
-            }
-        }
+        const socketUser = await User.findById(req.user.userId, { username: 1 });
+        emitLiveGameEvent(io, socketUser, 'blackjack', result.gameState.winAmount > 0 ? result.gameState.winAmount : result.gameState.betAmount, result.gameState.winAmount > 0);
         
         res.json({ success: true, result });
         
@@ -728,7 +671,7 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
     }
 });
 
-router.post('/blackjack/double', authenticateToken, async (req, res) => {
+router.post('/blackjack/double', authenticateToken, fetchUserWithSession, async (req, res) => {
     try {
         const result = await withTransaction(async (session) => {
             const { gameId } = req.body;
@@ -748,10 +691,7 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
                 throw new Error('Game not found');
             }
             
-            const user = await User.findById(req.user.userId).session(session);
-            if (!user) {
-                throw new Error('User not found');
-            }
+            const user = await req.fetchUserWithSession(session);
             
             // Parse game state
             const gameState = JSON.parse(gameHistory.gameResult);
@@ -780,8 +720,7 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
             // Update balance if player won
             let finalBalance = user.balance;
             if (newGameState.winAmount > 0) {
-                finalBalance = roundToTwoDecimals(user.balance + newGameState.winAmount);
-                user.balance = finalBalance;
+                finalBalance = updateUserBalance(user, newGameState.winAmount);
             }
             
             // Update user stats and check for badges
@@ -789,8 +728,6 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
             const earnedBadges = await user.updateGameStats(won, newGameState.betAmount, newGameState.winAmount);
             const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
             
-            // Update balance history
-            user.balanceHistory.push(finalBalance);
             await user.save({ session });
             
             // Update game history
@@ -812,20 +749,10 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
             };
         });
         
-        // Emit live game event for blackjack double
+        // Emit live game event using utility function
         const io = req.app.get('io');
-        if (io) {
-            const user = await User.findById(req.user.userId, { username: 1 });
-            if (user) {
-                io.emit('live-game', {
-                    username: user.username,
-                    game: 'blackjack',
-                    amount: result.gameState.winAmount > 0 ? result.gameState.winAmount : result.gameState.betAmount,
-                    won: result.gameState.winAmount > 0,
-                    timestamp: Date.now()
-                });
-            }
-        }
+        const socketUser = await User.findById(req.user.userId, { username: 1 });
+        emitLiveGameEvent(io, socketUser, 'blackjack', result.gameState.winAmount > 0 ? result.gameState.winAmount : result.gameState.betAmount, result.gameState.winAmount > 0);
         
         res.json({ success: true, result });
         
@@ -838,4 +765,4 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;                
