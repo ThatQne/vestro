@@ -29,10 +29,9 @@ router.get('/test-user/:userId', async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const cases = await Case.find({ isActive: true }).sort({ price: 1 });
-        res.json({ success: true, cases });
+        res.json(createSuccessResponse({ cases }));
     } catch (error) {
-        console.error('Error fetching cases:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        handleRouteError(error, res);
     }
 });
 
@@ -125,8 +124,7 @@ router.post('/open/:id', auth, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error opening case:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        handleRouteError(error, res);
     }
 });
 
@@ -171,7 +169,7 @@ router.post('/battle/create', auth, async (req, res) => {
 
         // Check if user has enough balance
         if (user.balance < totalCost) {
-            return res.status(400).json({ success: false, message: 'Insufficient balance' });
+            return res.status(400).json(createErrorResponse('Insufficient balance'));
         }
 
         // Determine max players based on mode
@@ -241,7 +239,7 @@ router.post('/battle/join/:battleId', auth, async (req, res) => {
 
         // Check if user has enough balance
         if (user.balance < battle.totalCost) {
-            return res.status(400).json({ success: false, message: 'Insufficient balance' });
+            return res.status(400).json(createErrorResponse('Insufficient balance'));
         }
 
         // Add player to battle
@@ -354,4 +352,4 @@ router.get('/battle/:battleId', async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;  

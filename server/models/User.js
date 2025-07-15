@@ -179,32 +179,7 @@ userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
         // Skip if user already has this badge
         if (this.badges.some(b => b.code === badge.code)) continue;
 
-        let earned = false;
-        switch (badge.criteria.type) {
-            case 'level':
-                earned = this.level >= badge.criteria.value;
-                break;
-            case 'wins':
-                earned = this.wins >= badge.criteria.value;
-                break;
-            case 'balance':
-                earned = this.balance >= badge.criteria.value;
-                break;
-            case 'games':
-                earned = this.gamesPlayed >= badge.criteria.value;
-                break;
-            case 'bet':
-                earned = betAmount >= badge.criteria.value;
-                break;
-            case 'winstreak':
-                earned = this.currentWinStreak >= badge.criteria.value;
-                break;
-            case 'specific':
-                earned = betAmount === badge.criteria.value;
-                break;
-        }
-
-        if (earned) {
+        if (checkBadgeEarned(badge, this, betAmount)) {
             this.badges.push({ code: badge.code });
             earnedBadges.push(badge);
         }
@@ -212,6 +187,27 @@ userSchema.methods.updateGameStats = async function(won, betAmount, winAmount) {
 
     return earnedBadges;
 };
+
+function checkBadgeEarned(badge, user, betAmount = null) {
+    switch (badge.criteria.type) {
+        case 'level':
+            return user.level >= badge.criteria.value;
+        case 'wins':
+            return user.wins >= badge.criteria.value;
+        case 'balance':
+            return user.balance >= badge.criteria.value;
+        case 'games':
+            return user.gamesPlayed >= badge.criteria.value;
+        case 'bet':
+            return betAmount !== null && betAmount >= badge.criteria.value;
+        case 'winstreak':
+            return user.currentWinStreak >= badge.criteria.value;
+        case 'specific':
+            return betAmount !== null && betAmount === badge.criteria.value;
+        default:
+            return false;
+    }
+}
 
 // Check all badges (useful for level badges and when user logs in)
 userSchema.methods.checkAllBadges = async function() {
@@ -223,27 +219,10 @@ userSchema.methods.checkAllBadges = async function() {
         // Skip if user already has this badge
         if (this.badges.some(b => b.code === badge.code)) continue;
 
-        let earned = false;
-        switch (badge.criteria.type) {
-            case 'level':
-                earned = this.level >= badge.criteria.value;
-                break;
-            case 'wins':
-                earned = this.wins >= badge.criteria.value;
-                break;
-            case 'balance':
-                earned = this.balance >= badge.criteria.value;
-                break;
-            case 'games':
-                earned = this.gamesPlayed >= badge.criteria.value;
-                break;
-            case 'winstreak':
-                earned = this.currentWinStreak >= badge.criteria.value;
-                break;
-            // Note: bet and specific badges are only checked during games
-        }
+        // Skip bet and specific badges as they are only checked during games
+        if (badge.criteria.type === 'bet' || badge.criteria.type === 'specific') continue;
 
-        if (earned) {
+        if (checkBadgeEarned(badge, this)) {
             this.badges.push({ code: badge.code });
             earnedBadges.push(badge);
         }
@@ -263,4 +242,4 @@ userSchema.methods.toJSON = function() {
     return user;
 };
 
-module.exports = mongoose.model('User', userSchema); 
+module.exports = mongoose.model('User', userSchema);  

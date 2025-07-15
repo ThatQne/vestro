@@ -8,9 +8,9 @@ const CLIENT_BADGES = require('../constants/badges');
 router.get('/', authenticateToken, async (req, res) => {
     try {
         // Get user's earned badges
-        const user = await User.findById(req.user.userId);
+        const user = await getUserById(req.user.id);
         if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
+            return res.status(404).json(createErrorResponse('User not found'));
         }
         
         const earnedBadges = user.badges || [];
@@ -48,10 +48,10 @@ router.post('/sync', authenticateToken, async (req, res) => {
         const { clientBadges } = req.body;
         
         if (!clientBadges || !Array.isArray(clientBadges)) {
-            return res.status(400).json({ success: false, message: 'Invalid client badges data' });
+            return res.status(400).json(createErrorResponse('Invalid client badges data'));
         }
 
-        const user = await User.findById(req.user.userId);
+        const user = await User.findById(req.user.id);
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
@@ -97,4 +97,4 @@ router.post('/sync', authenticateToken, async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;    

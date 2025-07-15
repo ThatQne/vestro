@@ -47,7 +47,7 @@ router.post('/play', authenticateToken, async (req, res) => {
         }
 
         // Get user with session
-        const user = await User.findById(req.user.userId).session(session);
+        const user = await User.findById(req.user.id).session(session);
         if (!user) {
                 throw new Error('User not found');
             }
@@ -63,7 +63,7 @@ router.post('/play', authenticateToken, async (req, res) => {
 
             // Create initial game history
         const gameHistory = new GameHistory({
-            userId: req.user.userId,
+            userId: req.user.id,
             gameType,
             betAmount: betAmountRounded,
             playerChoice,
@@ -162,7 +162,7 @@ router.post('/play', authenticateToken, async (req, res) => {
         const io = req.app.get('io');
         if (io) {
             // Get user for username
-            const user = await User.findById(req.user.userId, { username: 1 });
+            const user = await User.findById(req.user.id, { username: 1 });
             if (user) {
                 io.emit('live-game', {
                     username: user.username,
@@ -226,7 +226,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
         
             // Get game and user
         const gameHistory = await GameHistory.findOne({
-            userId: req.user.userId,
+            userId: req.user.id,
             gameType: 'mines',
             _id: gameId
         }).session(session);
@@ -235,7 +235,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
                 throw new Error('Game not found');
             }
             
-            const user = await User.findById(req.user.userId).session(session);
+            const user = await User.findById(req.user.id).session(session);
             if (!user) {
                 throw new Error('User not found');
             }
@@ -322,7 +322,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
             
             // Get game and user
         const gameHistory = await GameHistory.findOne({
-            userId: req.user.userId,
+            userId: req.user.id,
             gameType: 'mines',
             _id: gameId
         }).session(session);
@@ -394,7 +394,7 @@ router.post('/mines/cashout', authenticateToken, async (req, res) => {
         // Emit live game event for mines cashout
         const io = req.app.get('io');
         if (io) {
-            const user = await User.findById(req.user.userId, { username: 1 });
+            const user = await User.findById(req.user.id, { username: 1 });
             if (user) {
                 io.emit('live-game', {
                     username: user.username,
@@ -424,13 +424,13 @@ router.get('/history', authenticateToken, async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
 
-        const history = await GameHistory.find({ userId: req.user.userId })
+        const history = await GameHistory.find({ userId: req.user.id })
             .sort({ timestamp: -1 })
             .skip(skip)
             .limit(limit)
             .lean();
 
-        const total = await GameHistory.countDocuments({ userId: req.user.userId });
+        const total = await GameHistory.countDocuments({ userId: req.user.id });
 
         res.json({
             success: true,
@@ -480,7 +480,7 @@ router.post('/blackjack/deal', authenticateToken, async (req, res) => {
             }
             
             // Get user with session
-            const user = await User.findById(req.user.userId).session(session);
+            const user = await User.findById(req.user.id).session(session);
             if (!user) {
                 throw new Error('User not found');
             }
@@ -499,7 +499,7 @@ router.post('/blackjack/deal', authenticateToken, async (req, res) => {
             
             // Create game history
             const gameHistory = new GameHistory({
-                userId: req.user.userId,
+                userId: req.user.id,
                 gameType: 'blackjack',
                 betAmount: betAmountRounded,
                 playerChoice: 'deal',
@@ -581,7 +581,7 @@ router.post('/blackjack/hit', authenticateToken, async (req, res) => {
                 throw new Error('Game not found');
             }
             
-            const user = await User.findById(req.user.userId).session(session);
+            const user = await User.findById(req.user.id).session(session);
             if (!user) {
                 throw new Error('User not found');
             }
@@ -653,7 +653,7 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
                 throw new Error('Game not found');
             }
             
-            const user = await User.findById(req.user.userId).session(session);
+            const user = await User.findById(req.user.id).session(session);
             if (!user) {
                 throw new Error('User not found');
             }
@@ -705,7 +705,7 @@ router.post('/blackjack/stand', authenticateToken, async (req, res) => {
         // Emit live game event for blackjack stand
         const io = req.app.get('io');
         if (io) {
-            const user = await User.findById(req.user.userId, { username: 1 });
+            const user = await User.findById(req.user.id, { username: 1 });
             if (user) {
                 io.emit('live-game', {
                     username: user.username,
@@ -748,7 +748,7 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
                 throw new Error('Game not found');
             }
             
-            const user = await User.findById(req.user.userId).session(session);
+            const user = await User.findById(req.user.id).session(session);
             if (!user) {
                 throw new Error('User not found');
             }
@@ -815,7 +815,7 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
         // Emit live game event for blackjack double
         const io = req.app.get('io');
         if (io) {
-            const user = await User.findById(req.user.userId, { username: 1 });
+            const user = await User.findById(req.user.id, { username: 1 });
             if (user) {
                 io.emit('live-game', {
                     username: user.username,
@@ -838,4 +838,4 @@ router.post('/blackjack/double', authenticateToken, async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;    

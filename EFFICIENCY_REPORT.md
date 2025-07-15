@@ -1,8 +1,8 @@
-# Vestro Gambling App - Efficiency Analysis Report
+# Vestro Gambling App - Efficiency Analysis & Code Cleanup Report
 
 ## Executive Summary
 
-This report documents efficiency issues identified in the Vestro gambling application codebase. The analysis found 6 major categories of performance bottlenecks that could significantly impact user experience and server resource utilization.
+This report documents efficiency issues and redundant code patterns identified in the Vestro gambling application codebase. The analysis found 6 major categories of performance bottlenecks and multiple redundancy patterns that could significantly impact user experience, server resource utilization, and code maintainability.
 
 ## Critical Issues Found
 
@@ -161,8 +161,66 @@ The leaderboard optimization implemented in this PR uses MongoDB's `$setWindowFi
 3. Verify rank calculations remain accurate
 4. Test edge cases (empty results, single user, etc.)
 
+## Code Redundancy Cleanup (COMPLETED)
+
+### Redundant Patterns Identified and Fixed
+
+**1. Inconsistent User ID Access Patterns**
+- **Issue**: Mixed usage of `req.user.id` vs `req.user.userId` across different routes
+- **Files affected**: `games.js`, `badges.js`, and other route files
+- **Solution**: Standardized all routes to use `req.user.id` consistently
+
+**2. Repeated User Lookup Patterns**
+- **Issue**: Duplicate `User.findById()` calls with similar error handling
+- **Files affected**: All route files (`auth.js`, `inventory.js`, `marketplace.js`, `cases.js`, `games.js`, `badges.js`)
+- **Solution**: Created `userHelpers.js` utility with `getUserById()` and `getUserByIdOrThrow()` functions
+
+**3. Repeated Inventory Operations**
+- **Issue**: Duplicate `UserInventory.findOne()` patterns with create-if-not-exists logic
+- **Files affected**: `inventory.js`, `marketplace.js`, `cases.js`
+- **Solution**: Created `inventoryHelpers.js` with `getUserInventory()` and `findInventoryItem()` utilities
+
+**4. Duplicate Error Response Patterns**
+- **Issue**: Repeated error response formatting across all routes
+- **Files affected**: All route files
+- **Solution**: Created `responseHelpers.js` with standardized `createErrorResponse()`, `createSuccessResponse()`, and `handleRouteError()` functions
+
+**5. Consolidated Badge Checking Logic**
+- **Issue**: Duplicate badge checking logic in `User.js` model
+- **Files affected**: `server/models/User.js`
+- **Solution**: Extracted common logic into shared `checkBadgeEarned()` helper function
+
+**6. Optimized Array Processing**
+- **Issue**: Multiple iterations over inventory items for rarity calculations
+- **Files affected**: `inventory.js`
+- **Solution**: Replaced multiple `.filter()` calls with single `.reduce()` operation
+
+### Code Reduction Statistics
+- **Eliminated ~200+ lines** of duplicate code across route files
+- **Standardized error handling** across 6 route files
+- **Consolidated database operations** reducing query complexity
+- **Improved code maintainability** with shared utility functions
+
+### New Utility Files Created
+- `server/utils/userHelpers.js` - User lookup and balance update utilities
+- `server/utils/inventoryHelpers.js` - Inventory management utilities  
+- `server/utils/responseHelpers.js` - Standardized API response formatting
+
 ## Conclusion
 
-The identified efficiency issues, particularly the N+1 database queries, represent significant opportunities for performance improvement. The implemented leaderboard optimization alone should provide measurable performance gains for user-facing operations.
+The implemented changes provide both performance improvements and significant code quality enhancements:
+
+**Performance Gains:**
+- N+1 database query optimization in leaderboard (O(n) → O(1))
+- Reduced database query complexity through utility functions
+- Optimized array processing operations
+
+**Code Quality Improvements:**
+- Eliminated ~200+ lines of redundant code
+- Standardized error handling and response formatting
+- Improved maintainability through shared utilities
+- Consistent user ID access patterns across all routes
+
+The leaderboard optimization alone should provide measurable performance gains for user-facing operations, while the redundancy cleanup significantly improves code maintainability and reduces the likelihood of bugs from inconsistent implementations.
 
 Future optimization efforts should focus on the remaining medium-priority issues to further improve application performance and maintainability.

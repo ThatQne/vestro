@@ -3,6 +3,9 @@ const router = express.Router();
 const { authenticateToken: auth } = require('../middleware/auth');
 const UserInventory = require('../models/UserInventory');
 const User = require('../models/User');
+const { getUserById, updateUserBalance } = require('../utils/userHelpers');
+const { getUserInventory, findInventoryItem } = require('../utils/inventoryHelpers');
+const { createErrorResponse, createSuccessResponse, handleRouteError } = require('../utils/responseHelpers');
 
 console.log('Inventory routes loaded, User model:', User ? 'Loaded' : 'Not loaded'); // Debug log
 
@@ -13,34 +16,27 @@ router.get('/', auth, async (req, res) => {
         console.log('User object from token:', req.user); // Debug log
         
         // First check if user exists
-        const user = await User.findById(req.user.id);
+        const user = await getUserById(req.user.id);
         if (!user) {
-            console.log('User not found in database for inventory request:', req.user.id); // Debug log
-            return res.status(404).json({ success: false, message: 'User not found' });
+            console.log('User not found in database for inventory request:', req.user.id);
+            return res.status(404).json(createErrorResponse('User not found'));
         }
         
-        let userInventory = await UserInventory.findOne({ userId: req.user.id });
-        if (!userInventory) {
-            console.log('Creating new inventory for user:', req.user.id); // Debug log
-            userInventory = new UserInventory({ userId: req.user.id });
-            await userInventory.save();
-        }
+        const userInventory = await getUserInventory(req.user.id);
 
-        console.log('Returning inventory:', userInventory); // Debug log
-        res.json({ success: true, inventory: userInventory });
+        console.log('Returning inventory:', userInventory);
+        res.json(createSuccessResponse({ inventory: userInventory }));
     } catch (error) {
-        console.error('Error fetching inventory:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        handleRouteError(error, res);
     }
 });
 
 // Get inventory statistics
 router.get('/stats', auth, async (req, res) => {
     try {
-        const userInventory = await UserInventory.findOne({ userId: req.user.id });
+        const userInventory = await getUserInventory(req.user.id, false);
         if (!userInventory) {
-            return res.json({ 
-                success: true, 
+            return res.json(createSuccessResponse({
                 stats: {
                     totalItems: 0,
                     totalValue: 0,
@@ -54,28 +50,32 @@ router.get('/stats', auth, async (req, res) => {
                         mythical: 0
                     }
                 }
-            });
+            }));
         }
 
-        // Calculate stats
+        // Calculate stats with single pass through items
+        const itemsByRarity = userInventory.items.reduce((acc, item) => {
+            acc[item.rarity] = (acc[item.rarity] || 0) + 1;
+            return acc;
+        }, {});
+
         const stats = {
             totalItems: userInventory.totalItems,
             totalValue: userInventory.totalValue,
             limitedItems: userInventory.limitedItems,
             itemsByRarity: {
-                common: userInventory.items.filter(item => item.rarity === 'common').length,
-                uncommon: userInventory.items.filter(item => item.rarity === 'uncommon').length,
-                rare: userInventory.items.filter(item => item.rarity === 'rare').length,
-                epic: userInventory.items.filter(item => item.rarity === 'epic').length,
-                legendary: userInventory.items.filter(item => item.rarity === 'legendary').length,
-                mythical: userInventory.items.filter(item => item.rarity === 'mythical').length
+                common: itemsByRarity.common || 0,
+                uncommon: itemsByRarity.uncommon || 0,
+                rare: itemsByRarity.rare || 0,
+                epic: itemsByRarity.epic || 0,
+                legendary: itemsByRarity.legendary || 0,
+                mythical: itemsByRarity.mythical || 0
             }
         };
 
-        res.json({ success: true, stats });
+        res.json(createSuccessResponse({ stats }));
     } catch (error) {
-        console.error('Error fetching inventory stats:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        handleRouteError(error, res);
     }
 });
 
@@ -84,23 +84,15 @@ router.post('/sell/:itemId', auth, async (req, res) => {
     try {
         const { count = 1 } = req.body; // Allow selling multiple items at once
         
-        const userInventory = await UserInventory.findOne({ userId: req.user.id });
-        if (!userInventory) {
-            return res.status(404).json({ success: false, message: 'Inventory not found' });
-        }
-
-        const item = userInventory.items.find(item => item._id.toString() === req.params.itemId);
-        if (!item) {
-            return res.status(404).json({ success: false, message: 'Item not found' });
-        }
+        const { userInventory, item } = await findInventoryItem(req.user.id, req.params.itemId);
 
         if (item.isListed || item.isTrading) {
-            return res.status(400).json({ success: false, message: 'Item is currently listed or being traded' });
+            return res.status(400).json(createErrorResponse('Item is currently listed or being traded'));
         }
 
         // Validate count
         if (count > item.count) {
-            return res.status(400).json({ success: false, message: 'Not enough items to sell' });
+            return res.status(400).json(createErrorResponse('Not enough items to sell'));
         }
 
         // Calculate sell price (70% of value for non-limited items)
@@ -111,10 +103,7 @@ router.post('/sell/:itemId', auth, async (req, res) => {
         await userInventory.removeItem(req.params.itemId, count);
 
         // Add money to user balance
-        const user = await User.findById(req.user.id);
-        user.balance += totalSellPrice;
-        user.balanceHistory.push(user.balance);
-        await user.save();
+        const user = await updateUserBalance(req.user.id, totalSellPrice);
 
         // Emit real-time update
         const io = req.app.get('io');
@@ -126,18 +115,15 @@ router.post('/sell/:itemId', auth, async (req, res) => {
             newBalance: user.balance
         });
 
-        res.json({
-            success: true,
-            message: count === 1 ? 'Item sold successfully!' : `${count} items sold successfully!`,
+        res.json(createSuccessResponse({
             sellPrice: totalSellPrice,
             sellPricePerItem: sellPricePerItem,
             count: count,
             newBalance: user.balance
-        });
+        }, count === 1 ? 'Item sold successfully!' : `${count} items sold successfully!`));
 
     } catch (error) {
-        console.error('Error selling item:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        handleRouteError(error, res);
     }
 });
 
@@ -148,96 +134,73 @@ router.get('/rarity/:rarity', auth, async (req, res) => {
         const validRarities = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythical'];
         
         if (!validRarities.includes(rarity)) {
-            return res.status(400).json({ success: false, message: 'Invalid rarity' });
+            return res.status(400).json(createErrorResponse('Invalid rarity'));
         }
 
-        const userInventory = await UserInventory.findOne({ userId: req.user.id });
+        const userInventory = await getUserInventory(req.user.id, false);
         if (!userInventory) {
-            return res.json({ success: true, items: [] });
+            return res.json(createSuccessResponse({ items: [] }));
         }
 
         const items = userInventory.items.filter(item => item.rarity === rarity);
-        res.json({ success: true, items });
+        res.json(createSuccessResponse({ items }));
 
     } catch (error) {
-        console.error('Error fetching items by rarity:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        handleRouteError(error, res);
     }
 });
 
 // Get limited items only
 router.get('/limited', auth, async (req, res) => {
     try {
-        const userInventory = await UserInventory.findOne({ userId: req.user.id });
+        const userInventory = await getUserInventory(req.user.id, false);
         if (!userInventory) {
-            return res.json({ success: true, items: [] });
+            return res.json(createSuccessResponse({ items: [] }));
         }
 
         const limitedItems = userInventory.getLimitedItems();
-        res.json({ success: true, items: limitedItems });
+        res.json(createSuccessResponse({ items: limitedItems }));
 
     } catch (error) {
-        console.error('Error fetching limited items:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        handleRouteError(error, res);
     }
 });
 
 // Toggle item listing status (for marketplace)
 router.post('/toggle-listing/:itemId', auth, async (req, res) => {
     try {
-        const userInventory = await UserInventory.findOne({ userId: req.user.id });
-        if (!userInventory) {
-            return res.status(404).json({ success: false, message: 'Inventory not found' });
-        }
-
-        const item = userInventory.items.find(item => item._id.toString() === req.params.itemId);
-        if (!item) {
-            return res.status(404).json({ success: false, message: 'Item not found' });
-        }
+        const { userInventory, item } = await findInventoryItem(req.user.id, req.params.itemId);
 
         if (!item.isLimited) {
-            return res.status(400).json({ success: false, message: 'Only limited items can be listed on marketplace' });
+            return res.status(400).json(createErrorResponse('Only limited items can be listed on marketplace'));
         }
 
         if (item.isTrading) {
-            return res.status(400).json({ success: false, message: 'Item is currently being traded' });
+            return res.status(400).json(createErrorResponse('Item is currently being traded'));
         }
 
         // Toggle listing status
         item.isListed = !item.isListed;
         await userInventory.save();
 
-        res.json({
-            success: true,
-            message: item.isListed ? 'Item listed for marketplace' : 'Item removed from marketplace',
+        res.json(createSuccessResponse({
             isListed: item.isListed
-        });
+        }, item.isListed ? 'Item listed for marketplace' : 'Item removed from marketplace'));
 
     } catch (error) {
-        console.error('Error toggling listing status:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        handleRouteError(error, res);
     }
 });
 
 // Get item details
 router.get('/item/:itemId', auth, async (req, res) => {
     try {
-        const userInventory = await UserInventory.findOne({ userId: req.user.id });
-        if (!userInventory) {
-            return res.status(404).json({ success: false, message: 'Inventory not found' });
-        }
-
-        const item = userInventory.items.find(item => item._id.toString() === req.params.itemId);
-        if (!item) {
-            return res.status(404).json({ success: false, message: 'Item not found' });
-        }
-
-        res.json({ success: true, item });
+        const { item } = await findInventoryItem(req.user.id, req.params.itemId);
+        res.json(createSuccessResponse({ item }));
 
     } catch (error) {
-        console.error('Error fetching item details:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        handleRouteError(error, res);
     }
 });
 
-module.exports = router; 
+module.exports = router;    

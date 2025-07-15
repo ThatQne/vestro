@@ -2,6 +2,8 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
+const { getUserById } = require('../utils/userHelpers');
+const { createErrorResponse, createSuccessResponse, handleRouteError } = require('../utils/responseHelpers');
 
 const router = express.Router();
 
@@ -11,24 +13,14 @@ router.post('/check-user', async (req, res) => {
         const { username } = req.body;
         
         if (!username || username.length < 3) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Username must be at least 3 characters' 
-            });
+            return res.status(400).json(createErrorResponse('Username must be at least 3 characters'));
         }
 
         const user = await User.findOne({ username: username.toLowerCase() });
         
-        res.json({ 
-            success: true, 
-            exists: !!user 
-        });
+        res.json(createSuccessResponse({ exists: !!user }));
     } catch (error) {
-        console.error('Check user error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error' 
-        });
+        handleRouteError(error, res);
     }
 });
 
@@ -39,24 +31,15 @@ router.post('/login', async (req, res) => {
 
         // Validation
         if (!username || !password) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Username and password are required' 
-            });
+            return res.status(400).json(createErrorResponse('Username and password are required'));
         }
 
         if (username.length < 3) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Username must be at least 3 characters' 
-            });
+            return res.status(400).json(createErrorResponse('Username must be at least 3 characters'));
         }
 
         if (password.length < 6) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Password must be at least 6 characters' 
-            });
+            return res.status(400).json(createErrorResponse('Password must be at least 6 characters'));
         }
 
         // Check if user exists
@@ -66,10 +49,7 @@ router.post('/login', async (req, res) => {
             // User exists - verify password
             const isValidPassword = await user.comparePassword(password);
             if (!isValidPassword) {
-                return res.status(401).json({ 
-                    success: false, 
-                    message: 'Invalid credentials' 
-                });
+                return res.status(401).json(createErrorResponse('Invalid credentials'));
             }
 
             // Update last login
@@ -107,47 +87,33 @@ router.post('/login', async (req, res) => {
         
         // Handle duplicate username error
         if (error.code === 11000) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Username already exists' 
-            });
+            return res.status(400).json(createErrorResponse('Username already exists'));
         }
 
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error' 
-        });
+        handleRouteError(error, res);
     }
 });
 
 // Get user profile
 router.get('/profile', authenticateToken, async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId);
+        const user = await getUserById(req.user.id);
         
         if (!user) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'User not found' 
-            });
+            return res.status(404).json(createErrorResponse('User not found'));
         }
 
         // Check for any badges that should have been earned (especially level badges)
         const earnedBadges = await user.checkAllBadges();
 
-        res.json({
-            success: true,
+        res.json(createSuccessResponse({
             user: user.toJSON(),
-            earnedBadges: earnedBadges // Include any newly earned badges
-        });
+            earnedBadges: earnedBadges
+        }));
 
     } catch (error) {
-        console.error('Profile error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error' 
-        });
+        handleRouteError(error, res);
     }
 });
 
-module.exports = router; 
+module.exports = router;  
