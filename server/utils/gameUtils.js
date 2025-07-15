@@ -87,6 +87,41 @@ function validateUserBalance(user, betAmount) {
     return { userBalance, betAmountRounded };
 }
 
+// Utility function to update user balance and history
+function updateUserBalance(user, amount) {
+    const newBalance = roundToTwoDecimals(user.balance + amount);
+    user.balance = newBalance;
+    user.balanceHistory.push(newBalance);
+    return newBalance;
+}
+
+// Utility function to complete game processing (stats, experience, badges)
+async function completeGameProcessing(user, won, betAmount, winAmount, session = null) {
+    const earnedBadges = await user.updateGameStats(won, betAmount, winAmount);
+    const { experienceGained, levelUpResult } = addExperienceToUser(user, won);
+    
+    if (session) {
+        await user.save({ session });
+    } else {
+        await user.save();
+    }
+    
+    return { earnedBadges, experienceGained, levelUpResult };
+}
+
+// Utility function to emit live game events
+function emitLiveGameEvent(io, user, gameType, amount, won) {
+    if (io && user) {
+        io.emit('live-game', {
+            username: user.username,
+            game: gameType,
+            amount: amount,
+            won: won,
+            timestamp: Date.now()
+        });
+    }
+}
+
 module.exports = {
     withTransaction,
     roundToTwoDecimals,
@@ -94,5 +129,8 @@ module.exports = {
     addExperienceToUser,
     cleanupOldGameHistory,
     validateGameParams,
-    validateUserBalance
-}; 
+    validateUserBalance,
+    updateUserBalance,
+    completeGameProcessing,
+    emitLiveGameEvent
+};   

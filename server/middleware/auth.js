@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
@@ -37,6 +38,29 @@ function authenticateToken(req, res, next) {
     });
 }
 
+function fetchUserWithSession(req, res, next) {
+    req.fetchUserWithSession = async (session) => {
+        const user = await User.findById(req.user.userId).session(session);
+        if (!user) {
+            throw new Error('User not found');
+        }
+        return user;
+    };
+    next();
+}
+
+async function fetchUserForSocket(req, res, next) {
+    try {
+        const user = await User.findById(req.user.userId, { username: 1 });
+        req.socketUser = user;
+        next();
+    } catch (error) {
+        next(error);
+    }
+}
+
 module.exports = {
-    authenticateToken
-}; 
+    authenticateToken,
+    fetchUserWithSession,
+    fetchUserForSocket
+};   

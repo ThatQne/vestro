@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticateToken: auth } = require('../middleware/auth');
 const UserInventory = require('../models/UserInventory');
 const User = require('../models/User');
+const { updateUserBalance } = require('../utils/gameUtils');
 
 console.log('Inventory routes loaded, User model:', User ? 'Loaded' : 'Not loaded'); // Debug log
 
@@ -112,8 +113,7 @@ router.post('/sell/:itemId', auth, async (req, res) => {
 
         // Add money to user balance
         const user = await User.findById(req.user.id);
-        user.balance += totalSellPrice;
-        user.balanceHistory.push(user.balance);
+        updateUserBalance(user, totalSellPrice);
         await user.save();
 
         // Emit real-time update
@@ -240,4 +240,4 @@ router.get('/item/:itemId', auth, async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;  
