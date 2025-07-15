@@ -91,6 +91,10 @@ if (process.env.USE_PROXY === 'true' && process.env.BACKEND_URL) {
     // Make io available to routes
     app.set('io', io);
     
+    exports.getIO = function() {
+        return io;
+    };
+    
     // Routes
     console.log('Registering API routes...'); // Debug log
     app.use('/api/auth', authRoutes);
@@ -135,7 +139,11 @@ app.use((req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+const { cleanupBattles } = require('./utils/battleCleanup');
+setInterval(cleanupBattles, 60 * 1000); // Run every minute
+
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-}); 
+});   

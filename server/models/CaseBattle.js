@@ -35,7 +35,7 @@ const caseBattleSchema = new mongoose.Schema({
             type: Number,
             default: 1,
             min: 1,
-            max: 10
+            max: 1 // Changed from 10 to 1 since we'll allow up to 25 total cases
         }
     }],
     totalCost: {
@@ -136,11 +136,21 @@ const caseBattleSchema = new mongoose.Schema({
         default: function() {
             return new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
         }
+    },
+    viewingPeriodEndsAt: {
+        type: Date,
+        default: null
     }
 });
 
 // Calculate total cost before saving
 caseBattleSchema.pre('save', function(next) {
+    const totalCases = this.cases.reduce((sum, caseItem) => sum + caseItem.quantity, 0);
+    if (totalCases > 25) {
+        const error = new Error('Maximum of 25 cases allowed per battle');
+        return next(error);
+    }
+    
     this.totalCost = this.cases.reduce((sum, caseItem) => sum + (caseItem.casePrice * caseItem.quantity), 0);
     
     // Calculate total values for each player
@@ -209,6 +219,28 @@ caseBattleSchema.methods.cancel = function() {
     return this.save();
 };
 
+// Method to add bot players
+caseBattleSchema.methods.addBots = async function() {
+    const remainingSlots = this.maxPlayers - this.players.length;
+    if (remainingSlots <= 0) return;
+    
+    const botNames = ['Bot_Alpha', 'Bot_Beta', 'Bot_Gamma', 'Bot_Delta'];
+    
+    for (let i = 0; i < remainingSlots; i++) {
+        const botName = `${botNames[i % botNames.length]}_${Math.floor(Math.random() * 1000)}`;
+        
+        this.players.push({
+            userId: mongoose.Types.ObjectId(), // Generate a random ID for the bot
+            username: botName,
+            isBot: true,
+            items: [],
+            totalValue: 0
+        });
+    }
+    
+    return this.save();
+};
+
 // Method to check if battle is expired
 caseBattleSchema.methods.isExpired = function() {
     return new Date() > this.expiresAt;
@@ -238,4 +270,4 @@ caseBattleSchema.index({ 'players.userId': 1 });
 caseBattleSchema.index({ createdAt: -1 });
 caseBattleSchema.index({ expiresAt: 1 });
 
-module.exports = mongoose.model('CaseBattle', caseBattleSchema); 
+module.exports = mongoose.model('CaseBattle', caseBattleSchema);  

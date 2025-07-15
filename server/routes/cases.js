@@ -148,6 +148,12 @@ router.post('/battle/create', auth, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        // Validate total case count
+        const totalCases = cases.reduce((sum, c) => sum + (c.quantity || 1), 0);
+        if (totalCases > 25) {
+            return res.status(400).json({ success: false, message: 'Maximum of 25 cases allowed per battle' });
+        }
+
         // Validate and calculate total cost
         let totalCost = 0;
         const battleCases = [];
@@ -253,59 +259,7 @@ router.post('/battle/join/:battleId', auth, async (req, res) => {
         // Check if battle is full and start it
         if (battle.players.length >= battle.maxPlayers) {
             await battle.start();
-            
-            // Process all case openings for all players
-            for (const player of battle.players) {
-                for (const caseData of battle.cases) {
-                    const caseItem = await Case.findById(caseData.caseId);
-                    
-                    for (let i = 0; i < caseData.quantity; i++) {
-                        const wonItem = caseItem.getRandomItem();
-                        
-                        // Find player in battle and add item
-                        const battlePlayer = battle.players.find(p => p.userId.toString() === player.userId.toString());
-                        battlePlayer.items.push({
-                            itemName: wonItem.name,
-                            itemValue: wonItem.value,
-                            itemImage: wonItem.image,
-                            itemRarity: wonItem.rarity,
-                            caseSource: caseItem.name,
-                            isLimited: wonItem.isLimited
-                        });
-
-                        // Add to user inventory
-                        let userInventory = await UserInventory.findOne({ userId: player.userId });
-                        if (!userInventory) {
-                            userInventory = new UserInventory({ userId: player.userId });
-                        }
-
-                        await userInventory.addItem({
-                            name: wonItem.name,
-                            caseSource: caseItem.name,
-                            value: wonItem.value,
-                            isLimited: wonItem.isLimited,
-                            image: wonItem.image,
-                            rarity: wonItem.rarity
-                        });
-                    }
-                }
-            }
-
-            await battle.complete();
-            
-            // Emit battle completed event
-            const io = req.app.get('io');
-            io.emit('battle-completed', battle);
-            
-            // Notify all players
-            battle.players.forEach(player => {
-                io.to(player.userId.toString()).emit('battle-result', {
-                    battleId: battle.battleId,
-                    won: player.isWinner,
-                    items: player.items,
-                    totalValue: player.totalValue
-                });
-            });
+            processCompleteBattle(battle, req.app.get('io'));
         }
 
         res.json({
@@ -342,6 +296,136 @@ router.get('/battle/:battleId', async (req, res) => {
     try {
         const battle = await CaseBattle.findOne({ battleId: req.params.battleId });
         if (!battle) {
+router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
+    try {
+        const battle = await CaseBattle.findOne({ battleId: req.params.battleId });
+        if (!battle) {
+            return res.status(404).json({ message: 'Battle not found' });
+        }
+        
+        const isCreator = battle.players.length > 0 && 
+                          battle.players[0].userId.toString() === req.user.id;
+        if (!isCreator) {
+            return res.status(403).json({ message: 'Only the battle creator can call bots' });
+        }
+        
+        await battle.addBots();
+        
+        if (battle.players.length >= battle.maxPlayers) {
+            await battle.start();
+            processCompleteBattle(battle, req.app.get('io'));
+        }
+        
+        res.json({ message: 'Bots added successfully', battle: battle.getSummary() });
+    } catch (error) {
+        console.error('Error calling bots:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Process a complete battle (separate function for reuse)
+async function processCompleteBattle(battle, io) {
+    try {
+        // Process all case openings
+        for (const player of battle.players) {
+            if (player.isBot) {
+                const botUtils = require('../utils/botUtils');
+                const { items, totalValue } = await botUtils.simulateBotCaseOpening(battle.cases);
+                player.items = items;
+                player.totalValue = totalValue;
+            } else {
+                const caseItems = [];
+                
+                for (const battleCase of battle.cases) {
+                    const caseItem = await Case.findById(battleCase.caseId);
+                    if (!caseItem) continue;
+                    
+                    for (let i = 0; i < battleCase.quantity; i++) {
+                        const wonItem = caseItem.getRandomItem();
+                        caseItems.push(wonItem);
+                        player.items.push({
+                            itemName: wonItem.name,
+                            itemValue: wonItem.value,
+                            itemImage: wonItem.image || 'default-item.png',
+                            itemRarity: wonItem.rarity,
+                            caseSource: caseItem.name,
+                            isLimited: wonItem.isLimited || false
+                        });
+                    }
+                }
+                
+                player.totalValue = player.items.reduce((sum, item) => sum + item.itemValue, 0);
+            }
+        }
+        
+        await battle.complete();
+        
+        battle.viewingPeriodEndsAt = new Date(Date.now() + 2 * 60 * 1000);
+        await battle.save();
+        
+        // Add items to winner's inventory
+        if (battle.winnerId && !battle.players.find(p => p.userId.toString() === battle.winnerId.toString())?.isBot) {
+            const allItems = battle.players.reduce((items, player) => [...items, ...player.items], []);
+            await addItemsToWinnerInventory(battle.winnerId, allItems, battle.battleId);
+        }
+        
+        // Emit battle completed event
+        if (!io) {
+            io = require('../server').getIO();
+        }
+        io.emit('battle-completed', battle);
+        
+        // Notify all players
+        battle.players.forEach(player => {
+            if (!player.isBot) {
+                io.to(player.userId.toString()).emit('battle-result', {
+                    battleId: battle.battleId,
+                    won: player.isWinner,
+                    items: player.items,
+                    totalValue: player.totalValue
+                });
+            }
+        });
+    } catch (error) {
+        console.error('Error processing battle completion:', error);
+    }
+}
+
+// Helper function to add items to winner's inventory
+async function addItemsToWinnerInventory(userId, items, battleId) {
+    try {
+        let userInventory = await UserInventory.findOne({ userId });
+        
+        // Create inventory if it doesn't exist
+        if (!userInventory) {
+            userInventory = new UserInventory({
+                userId,
+                items: []
+            });
+        }
+        
+        // Add all items to inventory
+        for (const item of items) {
+            userInventory.items.push({
+                name: item.itemName,
+                value: item.itemValue,
+                image: item.itemImage,
+                rarity: item.itemRarity,
+                source: `Battle: ${battleId}`,
+                isListed: false,
+                isLimited: item.isLimited || false,
+                acquiredAt: new Date()
+            });
+        }
+        
+        await userInventory.save();
+    } catch (error) {
+        console.error('Error adding items to winner inventory:', error);
+    }
+}
+
+
+
             return res.status(404).json({ success: false, message: 'Battle not found' });
         }
 
@@ -352,4 +436,4 @@ router.get('/battle/:battleId', async (req, res) => {
     }
 });
 
-module.exports = router;  
+module.exports = router;          
