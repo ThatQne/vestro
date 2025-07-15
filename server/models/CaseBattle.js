@@ -35,7 +35,7 @@ const caseBattleSchema = new mongoose.Schema({
             type: Number,
             default: 1,
             min: 1,
-            max: 10
+            max: 25
         }
     }],
     totalCost: {
@@ -136,21 +136,58 @@ const caseBattleSchema = new mongoose.Schema({
         default: function() {
             return new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
         }
+    },
+    battleProgress: {
+        type: String,
+        enum: ['waiting', 'starting', 'opening_cases', 'completed', 'cleanup'],
+        default: 'waiting'
+    },
+    currentCaseIndex: {
+        type: Number,
+        default: 0
+    },
+    caseOpeningResults: [{
+        playerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        caseIndex: Number,
+        item: {
+            itemName: String,
+            itemValue: Number,
+            itemImage: String,
+            itemRarity: String
+        },
+        timestamp: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    cleanupAt: {
+        type: Date,
+        default: null
     }
 });
 
-// Calculate total cost before saving
+// Calculate total cost before saving and validate case limits
 caseBattleSchema.pre('save', function(next) {
+    if (this.cases && this.cases.length > 0) {
+        const totalCases = this.cases.reduce((sum, caseItem) => sum + caseItem.quantity, 0);
+        if (totalCases > 25) {
+            return next(new Error('Maximum 25 cases allowed per battle'));
+        }
+    }
+
     this.totalCost = this.cases.reduce((sum, caseItem) => sum + (caseItem.casePrice * caseItem.quantity), 0);
-    
+
     // Calculate total values for each player
     this.players.forEach(player => {
         player.totalValue = player.items.reduce((sum, item) => sum + item.itemValue, 0);
     });
-    
+
     // Calculate total prize value
     this.totalPrizeValue = this.players.reduce((sum, player) => sum + player.totalValue, 0);
-    
+
     next();
 });
 
@@ -159,12 +196,12 @@ caseBattleSchema.methods.addPlayer = function(userId, username, isBot = false) {
     if (this.players.length >= this.maxPlayers) {
         throw new Error('Battle is full');
     }
-    
+
     // Check if player already joined
     if (this.players.some(p => p.userId.toString() === userId.toString())) {
         throw new Error('Player already joined this battle');
     }
-    
+
     this.players.push({
         userId: userId,
         username: username,
@@ -172,7 +209,7 @@ caseBattleSchema.methods.addPlayer = function(userId, username, isBot = false) {
         items: [],
         totalValue: 0
     });
-    
+
     return this.save();
 };
 
@@ -181,7 +218,7 @@ caseBattleSchema.methods.start = function() {
     if (this.players.length < this.maxPlayers) {
         throw new Error('Not enough players to start battle');
     }
-    
+
     this.status = 'in_progress';
     this.startedAt = new Date();
     return this.save();
@@ -190,16 +227,16 @@ caseBattleSchema.methods.start = function() {
 // Method to complete battle
 caseBattleSchema.methods.complete = function() {
     // Find winner (player with highest total value)
-    let winner = this.players.reduce((prev, current) => 
+    let winner = this.players.reduce((prev, current) =>
         (prev.totalValue > current.totalValue) ? prev : current
     );
-    
+
     winner.isWinner = true;
     this.winnerId = winner.userId;
     this.winnerUsername = winner.username;
     this.status = 'completed';
     this.completedAt = new Date();
-    
+
     return this.save();
 };
 
@@ -212,6 +249,38 @@ caseBattleSchema.methods.cancel = function() {
 // Method to check if battle is expired
 caseBattleSchema.methods.isExpired = function() {
     return new Date() > this.expiresAt;
+};
+
+// Method to generate bot players
+caseBattleSchema.methods.addBots = function() {
+    const botNames = ['CyberBot', 'LuckyAI', 'GambleBot', 'RiskTaker', 'CaseHunter', 'PrizeSeeker'];
+    const botsNeeded = this.maxPlayers - this.players.length;
+
+    for (let i = 0; i < botsNeeded; i++) {
+        const botName = botNames[Math.floor(Math.random() * botNames.length)] + Math.floor(Math.random() * 1000);
+        this.players.push({
+            userId: new mongoose.Types.ObjectId(),
+            username: botName,
+            isBot: true,
+            items: [],
+            totalValue: 0
+        });
+    }
+
+    return this.save();
+};
+
+// Method to start case opening sequence
+caseBattleSchema.methods.startCaseOpening = function() {
+    this.battleProgress = 'opening_cases';
+    this.currentCaseIndex = 0;
+    return this.save();
+};
+
+// Method to schedule cleanup
+caseBattleSchema.methods.scheduleCleanup = function() {
+    this.cleanupAt = new Date(Date.now() + 2 * 60 * 1000);
+    return this.save();
 };
 
 // Method to get battle summary
@@ -227,7 +296,16 @@ caseBattleSchema.methods.getSummary = function() {
         winnerUsername: this.winnerUsername,
         totalPrizeValue: this.totalPrizeValue,
         createdAt: this.createdAt,
-        expiresAt: this.expiresAt
+        expiresAt: this.expiresAt,
+        battleProgress: this.battleProgress,
+        currentCaseIndex: this.currentCaseIndex,
+        cases: this.cases,
+        players: this.players.map(p => ({
+            username: p.username,
+            isBot: p.isBot,
+            totalValue: p.totalValue
+        })),
+        isPrivate: this.isPrivate
     };
 };
 
@@ -238,4 +316,4 @@ caseBattleSchema.index({ 'players.userId': 1 });
 caseBattleSchema.index({ createdAt: -1 });
 caseBattleSchema.index({ expiresAt: 1 });
 
-module.exports = mongoose.model('CaseBattle', caseBattleSchema); 
+module.exports = mongoose.model('CaseBattle', caseBattleSchema);  
