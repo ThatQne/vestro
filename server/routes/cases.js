@@ -146,8 +146,9 @@ router.post('/battle/create', auth, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // Validate and calculate total cost
+        // Validate and calculate total cost with 25-case limit
         let totalCost = 0;
+        let totalCases = 0;
         const battleCases = [];
 
         for (const caseData of cases) {
@@ -157,6 +158,12 @@ router.post('/battle/create', auth, async (req, res) => {
             }
 
             const quantity = caseData.quantity || 1;
+            totalCases += quantity;
+            
+            if (totalCases > 25) {
+                return res.status(400).json({ success: false, message: 'Maximum 25 cases allowed per battle' });
+            }
+            
             totalCost += caseItem.price * quantity;
 
             battleCases.push({
@@ -252,60 +259,35 @@ router.post('/battle/join/:battleId', auth, async (req, res) => {
 
         // Check if battle is full and start it
         if (battle.players.length >= battle.maxPlayers) {
-            await battle.start();
+            await battle.startCaseOpening();
             
-            // Process all case openings for all players
-            for (const player of battle.players) {
-                for (const caseData of battle.cases) {
-                    const caseItem = await Case.findById(caseData.caseId);
+            // Emit battle starting event
+            const io = req.app.get('io');
+            if (io) {
+                io.emit('battle-starting', { battleId: battle.battleId });
+            }
+            
+            setTimeout(() => {
+                processBattleCaseOpening(battle.battleId, io);
+            }, 2000);
+        } else {
+            // Check if battle should be filled with bots after 30 seconds
+            setTimeout(async () => {
+                const updatedBattle = await CaseBattle.findOne({ battleId: battle.battleId });
+                if (updatedBattle && updatedBattle.status === 'waiting' && updatedBattle.players.length < updatedBattle.maxPlayers) {
+                    await updatedBattle.addBots();
+                    await updatedBattle.startCaseOpening();
                     
-                    for (let i = 0; i < caseData.quantity; i++) {
-                        const wonItem = caseItem.getRandomItem();
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.emit('battle-starting', { battleId: updatedBattle.battleId });
                         
-                        // Find player in battle and add item
-                        const battlePlayer = battle.players.find(p => p.userId.toString() === player.userId.toString());
-                        battlePlayer.items.push({
-                            itemName: wonItem.name,
-                            itemValue: wonItem.value,
-                            itemImage: wonItem.image,
-                            itemRarity: wonItem.rarity,
-                            caseSource: caseItem.name,
-                            isLimited: wonItem.isLimited
-                        });
-
-                        // Add to user inventory
-                        let userInventory = await UserInventory.findOne({ userId: player.userId });
-                        if (!userInventory) {
-                            userInventory = new UserInventory({ userId: player.userId });
-                        }
-
-                        await userInventory.addItem({
-                            name: wonItem.name,
-                            caseSource: caseItem.name,
-                            value: wonItem.value,
-                            isLimited: wonItem.isLimited,
-                            image: wonItem.image,
-                            rarity: wonItem.rarity
-                        });
+                        setTimeout(() => {
+                            processBattleCaseOpening(updatedBattle.battleId, io);
+                        }, 2000);
                     }
                 }
-            }
-
-            await battle.complete();
-            
-            // Emit battle completed event
-            const io = req.app.get('io');
-            io.emit('battle-completed', battle);
-            
-            // Notify all players
-            battle.players.forEach(player => {
-                io.to(player.userId.toString()).emit('battle-result', {
-                    battleId: battle.battleId,
-                    won: player.isWinner,
-                    items: player.items,
-                    totalValue: player.totalValue
-                });
-            });
+            }, 30000);
         }
 
         res.json({
@@ -352,4 +334,109 @@ router.get('/battle/:battleId', async (req, res) => {
     }
 });
 
+
 module.exports = router;  
+
+// Process battle case opening with animations
+async function processBattleCaseOpening(battleId, io) {
+    try {
+        const battle = await CaseBattle.findOne({ battleId });
+        if (!battle || battle.battleProgress !== 'opening_cases') return;
+
+        const totalCases = battle.cases.reduce((sum, c) => sum + c.quantity, 0);
+        
+        for (let caseIndex = 0; caseIndex < totalCases; caseIndex++) {
+            let currentCaseData = null;
+            let caseCount = 0;
+            
+            for (const caseItem of battle.cases) {
+                if (caseIndex < caseCount + caseItem.quantity) {
+                    currentCaseData = caseItem;
+                    break;
+                }
+                caseCount += caseItem.quantity;
+            }
+            
+            if (!currentCaseData) continue;
+            
+            const caseItem = await Case.findById(currentCaseData.caseId);
+            
+            for (const player of battle.players) {
+                const wonItem = caseItem.getRandomItem();
+                
+                // Add item to battle results
+                battle.caseOpeningResults.push({
+                    playerId: player.userId,
+                    caseIndex: caseIndex,
+                    item: {
+                        itemName: wonItem.name,
+                        itemValue: wonItem.value,
+                        itemImage: wonItem.image,
+                        itemRarity: wonItem.rarity
+                    }
+                });
+                
+                // Add to player items
+                player.items.push({
+                    itemName: wonItem.name,
+                    itemValue: wonItem.value,
+                    itemImage: wonItem.image,
+                    itemRarity: wonItem.rarity,
+                    caseSource: caseItem.name,
+                    isLimited: wonItem.isLimited
+                });
+                
+                // Add to user inventory if not bot
+                if (!player.isBot) {
+                    let userInventory = await UserInventory.findOne({ userId: player.userId });
+                    if (!userInventory) {
+                        userInventory = new UserInventory({ userId: player.userId });
+                    }
+                    
+                    await userInventory.addItem({
+                        name: wonItem.name,
+                        caseSource: caseItem.name,
+                        value: wonItem.value,
+                        isLimited: wonItem.isLimited,
+                        image: wonItem.image,
+                        rarity: wonItem.rarity
+                    });
+                }
+            }
+            
+            battle.currentCaseIndex = caseIndex;
+            await battle.save();
+            
+            if (io) {
+                io.emit('case-opening-progress', {
+                    battleId: battle.battleId,
+                    caseIndex: caseIndex,
+                    totalCases: totalCases,
+                    results: battle.caseOpeningResults.filter(r => r.caseIndex === caseIndex)
+                });
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+        
+        await battle.complete();
+        await battle.scheduleCleanup();
+        
+        // Emit battle completed
+        if (io) {
+            io.emit('battle-completed', battle);
+        }
+        
+        setTimeout(async () => {
+            await CaseBattle.findOneAndDelete({ battleId: battle.battleId });
+            if (io) {
+                io.emit('battle-cleanup', { battleId: battle.battleId });
+            }
+        }, 2 * 60 * 1000);
+        
+    } catch (error) {
+        console.error('Error processing battle case opening:', error);
+    }
+}
+
+module.exports = router;     
