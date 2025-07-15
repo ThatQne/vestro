@@ -6755,10 +6755,14 @@ function displayBattles(battles) {
                     `<div class="battle-case">${caseItem.caseName} x${caseItem.quantity}</div>`
                 ).join('') : ''}
             </div>
-            <button class="battle-join-btn" onclick="joinBattle('${battle.battleId}')" 
-                    ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
-                ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
-            </button>
+            <div class="battle-actions">
+                <button class="battle-join-btn" onclick="joinBattle('${battle.battleId}')" 
+                        ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
+                    ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
+                </button>
+                ${battle.players.length > 0 && battle.players[0].userId === currentUser?.id && battle.players.length < battle.maxPlayers ? 
+                    `<button class="battle-bots-btn" onclick="callBots('${battle.battleId}')">Call Bots</button>` : ''}
+            </div>
         `;
         battlesGrid.appendChild(battleCard);
     });
@@ -6792,6 +6796,33 @@ async function joinBattle(battleId) {
         showNotification(error.message || 'Error joining battle', 'error');
     }
 }
+
+async function callBots(battleId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${battleId}/call-bots`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to call bots');
+        }
+        
+        const data = await response.json();
+        
+        // Refresh battles
+        loadBattles();
+        
+        showNotification('Bots added to battle!', 'success');
+    } catch (error) {
+        console.error('Error calling bots:', error);
+        showNotification(error.message || 'Error calling bots', 'error');
+    }
+}
+
 
 function showCreateBattleModal() {
     const modal = document.getElementById('create-battle-modal');
@@ -6851,8 +6882,14 @@ function displayBattleCases(cases) {
 function toggleCaseSelection(caseItem) {
     const existingIndex = selectedCasesForBattle.findIndex(c => c._id === caseItem._id);
     
+    // Check if we've reached the 25 case limit
+    const totalSelectedCases = selectedCasesForBattle.reduce((sum, c) => sum + 1, 0);
+    
     if (existingIndex > -1) {
         selectedCasesForBattle.splice(existingIndex, 1);
+    } else if (totalSelectedCases >= 25) {
+        showNotification('Maximum of 25 cases allowed per battle', 'error');
+        return;
     } else {
         selectedCasesForBattle.push(caseItem);
     }
@@ -7276,6 +7313,11 @@ function handleBattleCreated(data) {
 
 function handleBattleCompleted(data) {
     loadBattles();
+    
+    // Show animation for the completed battle
+    showBattleAnimation(data);
+    
+    // Show notification
     showNotification(`Battle completed! Winner: ${data.winnerUsername}`, 'success');
 }
 
@@ -7285,6 +7327,207 @@ function handleBattleResult(data) {
     } else {
         showNotification(`Battle completed. Total value: $${data.totalValue.toFixed(2)}`, 'info');
     }
+// Battle animation state
+let currentBattleAnimation = {
+    battleId: null,
+    currentCaseIndex: 0,
+    players: [],
+    cases: [],
+    isAnimating: false,
+    timeoutId: null
+};
+
+function showBattleAnimation(battle) {
+    const modal = document.getElementById('battle-animation-modal');
+    const title = document.getElementById('battle-animation-title');
+    const playersContainer = document.getElementById('battle-animation-players');
+    const casesContainer = document.getElementById('battle-animation-cases');
+    
+    if (!modal) return;
+    
+    // Setup animation state
+    currentBattleAnimation = {
+        battleId: battle.battleId,
+        currentCaseIndex: 0,
+        players: battle.players,
+        cases: battle.cases,
+        isAnimating: true,
+        timeoutId: null
+    };
+    
+    modal.classList.remove('hidden');
+    
+    title.textContent = `${battle.mode} Battle`;
+    
+    // Setup players
+    playersContainer.innerHTML = '';
+    battle.players.forEach(player => {
+        const playerEl = document.createElement('div');
+        playerEl.className = 'battle-animation-player';
+        playerEl.innerHTML = `
+            <div class="player-name">${player.username}</div>
+            <div class="player-items" id="player-items-${player.userId}"></div>
+            <div class="player-total">$0.00</div>
+        `;
+        playersContainer.appendChild(playerEl);
+    });
+    
+    // Start animation
+    startBattleAnimation();
+}
+
+function startBattleAnimation() {
+    if (!currentBattleAnimation.isAnimating) return;
+    
+    const { players, cases, currentCaseIndex } = currentBattleAnimation;
+    
+    if (currentCaseIndex >= cases.reduce((sum, c) => sum + c.quantity, 0)) {
+        // Animation complete, show results
+        showBattleResults();
+        return;
+    }
+    
+    let caseToOpen = null;
+    let caseIndex = 0;
+    let quantityCount = 0;
+    
+    for (const caseItem of cases) {
+        if (currentCaseIndex < quantityCount + caseItem.quantity) {
+            caseToOpen = caseItem;
+            caseIndex = currentCaseIndex - quantityCount;
+            break;
+        }
+        quantityCount += caseItem.quantity;
+    }
+    
+    if (!caseToOpen) return;
+    
+    // Animate case opening for each player
+    animatePlayerCaseOpening(players, caseToOpen, caseIndex);
+    
+    currentBattleAnimation.currentCaseIndex++;
+    
+    // Schedule next animation
+    currentBattleAnimation.timeoutId = setTimeout(startBattleAnimation, 2000);
+}
+
+function animatePlayerCaseOpening(players, caseItem, caseIndex) {
+    players.forEach((player, playerIndex) => {
+        const playerItemsContainer = document.getElementById(`player-items-${player.userId}`);
+        if (!playerItemsContainer) return;
+        
+        // Calculate which item to show based on case index
+        const itemIndex = caseIndex + playerIndex * caseItem.quantity;
+        const item = player.items[itemIndex];
+        
+        if (!item) return;
+        
+        // Create item element
+        const itemEl = document.createElement('div');
+        itemEl.className = `battle-item ${item.itemRarity}`;
+        itemEl.innerHTML = `
+            <div class="item-name">${item.itemName}</div>
+            <div class="item-value">$${item.itemValue.toFixed(2)}</div>
+        `;
+        
+        // Add to container with animation
+        playerItemsContainer.appendChild(itemEl);
+        
+        // Update player total
+        const playerTotal = playerItemsContainer.parentElement.querySelector('.player-total');
+        const currentTotal = parseFloat(playerTotal.textContent.replace('$', '')) || 0;
+        const newTotal = currentTotal + item.itemValue;
+        playerTotal.textContent = `$${newTotal.toFixed(2)}`;
+        
+        if (item.itemValue > caseItem.casePrice * 2) {
+            itemEl.classList.add('highlight');
+            playSound('win');
+        } else {
+            playSound('item');
+        }
+    });
+}
+
+function showBattleResults() {
+    const { players } = currentBattleAnimation;
+    
+    // Find winner (player with highest total value)
+    const winner = players.reduce((prev, current) => 
+        (prev.totalValue > current.totalValue) ? prev : current
+    );
+    
+    const winnerEl = document.getElementById(`player-items-${winner.userId}`);
+    if (winnerEl) {
+        winnerEl.parentElement.classList.add('winner');
+    }
+    
+    const resultsEl = document.createElement('div');
+    resultsEl.className = 'battle-results';
+    resultsEl.innerHTML = `
+        <div class="winner-banner">
+            <div class="winner-name">${winner.username} WINS!</div>
+            <div class="winner-value">$${winner.totalValue.toFixed(2)}</div>
+        </div>
+        <button class="close-btn" onclick="closeBattleAnimation()">Close</button>
+    `;
+    
+    document.getElementById('battle-animation-modal').appendChild(resultsEl);
+    
+    // Stop animation
+    currentBattleAnimation.isAnimating = false;
+    if (currentBattleAnimation.timeoutId) {
+        clearTimeout(currentBattleAnimation.timeoutId);
+    }
+    
+    playSound('jackpot');
+}
+
+function closeBattleAnimation() {
+    const modal = document.getElementById('battle-animation-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        
+        // Clear animation state
+        currentBattleAnimation = {
+            battleId: null,
+            currentCaseIndex: 0,
+            players: [],
+            cases: [],
+            isAnimating: false,
+            timeoutId: null
+        };
+        
+        // Remove any results elements
+        const resultsEl = modal.querySelector('.battle-results');
+        if (resultsEl) {
+            resultsEl.remove();
+        }
+    }
+}
+
+// Helper function to play sounds
+function playSound(type) {
+    // Check if audio is supported and enabled
+    if (!window.Audio || !currentUser?.settings?.soundEnabled) return;
+    
+    const sounds = {
+        'win': 'win.mp3',
+        'item': 'item.mp3',
+        'jackpot': 'jackpot.mp3'
+    };
+    
+    if (!sounds[type]) return;
+    
+    try {
+        const audio = new Audio(`/sounds/${sounds[type]}`);
+        audio.volume = 0.5;
+        audio.play().catch(e => console.log('Sound play error:', e));
+    } catch (error) {
+        console.error('Error playing sound:', error);
+    }
+}
+
+
     loadInventory();
 }
 
