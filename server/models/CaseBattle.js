@@ -259,7 +259,13 @@ caseBattleSchema.methods.getSummary = function() {
         winnerUsername: this.winnerUsername,
         totalPrizeValue: this.totalPrizeValue,
         createdAt: this.createdAt,
-        expiresAt: this.expiresAt
+        expiresAt: this.expiresAt,
+        players: this.players.map(p => ({
+            userId: p.userId,
+            username: p.username,
+            isBot: p.isBot
+        })),
+        cases: this.cases
     };
 };
 
@@ -270,4 +276,4 @@ caseBattleSchema.index({ 'players.userId': 1 });
 caseBattleSchema.index({ createdAt: -1 });
 caseBattleSchema.index({ expiresAt: 1 });
 
-module.exports = mongoose.model('CaseBattle', caseBattleSchema);  
+module.exports = mongoose.model('CaseBattle', caseBattleSchema);    
