@@ -7922,6 +7922,10 @@ async function showBattleDetailModal(battleId) {
         
         const modal = document.getElementById('battle-detail-modal');
         if (modal) {
+            // Ensure modal is positioned correctly in the DOM (fix for container constraints)
+            if (modal.parentElement !== document.body) {
+                document.body.appendChild(modal);
+            }
             modal.classList.remove('hidden');
         } else {
             console.error('Battle detail modal element not found');
