@@ -19,7 +19,12 @@ async function cleanupBattles() {
             viewingPeriodEndsAt: { $lt: now, $ne: null }
         });
         
-        console.log(`Found ${pastViewingPeriod.length} battles past viewing period`);
+        for (const battle of pastViewingPeriod) {
+            await CaseBattle.deleteOne({ _id: battle._id });
+            console.log(`Removed battle past viewing period: ${battle.battleId}`);
+        }
+        
+        console.log(`Cleaned up ${expiredBattles.length} expired battles and ${pastViewingPeriod.length} battles past viewing period`);
     } catch (error) {
         console.error('Error in battle cleanup job:', error);
     }

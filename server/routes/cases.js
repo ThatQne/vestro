@@ -259,7 +259,16 @@ router.post('/battle/join/:battleId', auth, async (req, res) => {
         // Check if battle is full and start it
         if (battle.players.length >= battle.maxPlayers) {
             await battle.start();
-            processCompleteBattle(battle, req.app.get('io'));
+            
+            // Emit battle started event
+            const io = req.app.get('io');
+            io.emit('battle-started', battle.getSummary());
+            
+            processCompleteBattle(battle, io);
+        } else {
+            // Emit battle joined event
+            const io = req.app.get('io');
+            io.emit('battle-joined', battle.getSummary());
         }
 
         res.json({
@@ -278,10 +287,12 @@ router.post('/battle/join/:battleId', auth, async (req, res) => {
 // Get active battles
 router.get('/battles/active', async (req, res) => {
     try {
+        const now = new Date();
         const battles = await CaseBattle.find({ 
-            status: 'waiting',
-            isPrivate: false,
-            expiresAt: { $gt: new Date() }
+            $or: [
+                { status: 'waiting', isPrivate: false, expiresAt: { $gt: now } },
+                { status: 'completed', viewingPeriodEndsAt: { $gt: now } }
+            ]
         }).sort({ createdAt: -1 }).limit(20);
 
         res.json({ success: true, battles: battles.map(b => b.getSummary()) });
@@ -296,6 +307,16 @@ router.get('/battle/:battleId', async (req, res) => {
     try {
         const battle = await CaseBattle.findOne({ battleId: req.params.battleId });
         if (!battle) {
+            return res.status(404).json({ success: false, message: 'Battle not found' });
+        }
+
+        res.json({ success: true, battle: battle.getSummary() });
+    } catch (error) {
+        console.error('Error fetching battle:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
     try {
         const battle = await CaseBattle.findOne({ battleId: req.params.battleId });
@@ -313,7 +334,16 @@ router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
         
         if (battle.players.length >= battle.maxPlayers) {
             await battle.start();
-            processCompleteBattle(battle, req.app.get('io'));
+            
+            // Emit battle started event
+            const io = req.app.get('io');
+            io.emit('battle-started', battle.getSummary());
+            
+            processCompleteBattle(battle, io);
+        } else {
+            // Emit battle updated event
+            const io = req.app.get('io');
+            io.emit('battle-updated', battle.getSummary());
         }
         
         res.json({ message: 'Bots added successfully', battle: battle.getSummary() });
@@ -326,7 +356,10 @@ router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
 // Process a complete battle (separate function for reuse)
 async function processCompleteBattle(battle, io) {
     try {
-        // Process all case openings
+        // Emit battle processing started
+        io.emit('battle-processing-started', { battleId: battle.battleId });
+        
+        // Process all case openings with delays for animation
         for (const player of battle.players) {
             if (player.isBot) {
                 const botUtils = require('../utils/botUtils');
@@ -343,14 +376,30 @@ async function processCompleteBattle(battle, io) {
                     for (let i = 0; i < battleCase.quantity; i++) {
                         const wonItem = caseItem.getRandomItem();
                         caseItems.push(wonItem);
-                        player.items.push({
+                        
+                        const itemData = {
                             itemName: wonItem.name,
                             itemValue: wonItem.value,
                             itemImage: wonItem.image || 'default-item.png',
                             itemRarity: wonItem.rarity,
                             caseSource: caseItem.name,
                             isLimited: wonItem.isLimited || false
+                        };
+                        
+                        player.items.push(itemData);
+                        
+                        // Emit case opened event for real-time animation
+                        io.emit('case-opened', {
+                            battleId: battle.battleId,
+                            playerId: player.userId,
+                            playerUsername: player.username,
+                            item: itemData,
+                            caseIndex: i,
+                            caseName: battleCase.caseName
                         });
+                        
+                        // Add delay between case openings for animation
+                        await new Promise(resolve => setTimeout(resolve, 1500));
                     }
                 }
                 
@@ -424,16 +473,4 @@ async function addItemsToWinnerInventory(userId, items, battleId) {
     }
 }
 
-
-
-            return res.status(404).json({ success: false, message: 'Battle not found' });
-        }
-
-        res.json({ success: true, battle });
-    } catch (error) {
-        console.error('Error fetching battle:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-module.exports = router;          
+module.exports = router;            

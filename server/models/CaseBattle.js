@@ -230,7 +230,7 @@ caseBattleSchema.methods.addBots = async function() {
         const botName = `${botNames[i % botNames.length]}_${Math.floor(Math.random() * 1000)}`;
         
         this.players.push({
-            userId: mongoose.Types.ObjectId(), // Generate a random ID for the bot
+            userId: new mongoose.Types.ObjectId(), // Generate a random ObjectId for the bot
             username: botName,
             isBot: true,
             items: [],
@@ -276,4 +276,4 @@ caseBattleSchema.index({ 'players.userId': 1 });
 caseBattleSchema.index({ createdAt: -1 });
 caseBattleSchema.index({ expiresAt: 1 });
 
-module.exports = mongoose.model('CaseBattle', caseBattleSchema);      
+module.exports = mongoose.model('CaseBattle', caseBattleSchema);        

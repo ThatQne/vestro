@@ -1309,6 +1309,57 @@
     </div>
 </div>
 
+    <!-- Battle Detail Modal -->
+    <div id="battle-detail-modal" class="modal-overlay hidden">
+        <div class="modal-content battle-detail-content">
+            <div class="modal-header">
+                <h2 id="battle-detail-title">Battle Details</h2>
+                <button class="modal-close" onclick="closeBattleDetailModal()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            
+            <div class="battle-detail-container">
+                <div class="battle-info">
+                    <div class="battle-mode-display" id="battle-detail-mode">1v1</div>
+                    <div class="battle-cost-display" id="battle-detail-cost">$0.00</div>
+                    <div class="battle-status" id="battle-detail-status">Waiting for players</div>
+                </div>
+                
+                <div class="battle-cases-display" id="battle-detail-cases">
+                    <!-- Cases will be displayed here -->
+                </div>
+                
+                <div class="battle-players-display" id="battle-detail-players">
+                    <!-- Players will be displayed here -->
+                </div>
+                
+                <div class="battle-actions-container" id="battle-detail-actions">
+                    <button id="battle-join-btn" class="btn-primary" onclick="joinBattleFromModal()">Join Battle</button>
+                    <button id="battle-bots-btn" class="btn-secondary" onclick="callBotsFromModal()">Call Bots</button>
+                    <button id="battle-watch-btn" class="btn-secondary" onclick="watchBattle()">Watch Battle</button>
+                </div>
+                
+                <div class="battle-progress" id="battle-progress" style="display: none;">
+                    <div class="progress-title">Battle in Progress...</div>
+                    <div class="progress-players" id="progress-players">
+                        <!-- Live battle progress will be shown here -->
+                    </div>
+                </div>
+                
+                <div class="battle-results-summary" id="battle-results-summary" style="display: none;">
+                    <div class="results-title">Battle Complete!</div>
+                    <div class="winner-display" id="winner-display">
+                        <!-- Winner information will be shown here -->
+                    </div>
+                    <div class="all-items-display" id="all-items-display">
+                        <!-- All items from battle will be shown here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
                 <div class="form-group">
                     <div class="battle-cost">
@@ -1399,4 +1450,4 @@
         lucide.createIcons();
     </script>
 </body>
-</html>      
+</html>        
