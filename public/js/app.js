@@ -6790,7 +6790,7 @@ function displayBattles(battles) {
                         ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
                     ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
                 </button>
-                ${battle.players.length > 0 && battle.players[0].userId === currentUser?.id && battle.players.length < battle.maxPlayers ? 
+                ${battle.players.length > 0 && battle.players[0].userId === currentUser?._id && battle.players.length < battle.maxPlayers ? 
                     `<button class="battle-bots-btn" onclick="event.stopPropagation(); callBots('${battle.battleId}')">Call Bots</button>` : ''}
             </div>
         `;
@@ -7368,7 +7368,7 @@ function closeCaseDetailsModal() {
 // Socket event handlers
 function handleCaseOpened(data) {
     // Update balance if it's for current user
-    if (data.userId === currentUser?.id) {
+    if (data.userId === currentUser?._id) {
         updateBalanceDisplay(data.newBalance);
         loadInventory();
     }
@@ -7708,99 +7708,6 @@ function handleBattleCaseOpened(data) {
     }
 }
 
-function displayBattleDetailModal(battle) {
-    document.getElementById('battle-detail-title').textContent = `${battle.mode} Battle`;
-    document.getElementById('battle-detail-mode').textContent = battle.mode;
-    document.getElementById('battle-detail-cost').textContent = `$${battle.totalCost.toFixed(2)}`;
-    
-    const statusEl = document.getElementById('battle-detail-status');
-    if (battle.status === 'waiting') {
-        statusEl.textContent = `Waiting for players (${battle.currentPlayers}/${battle.maxPlayers})`;
-        statusEl.style.color = '#fbbf24';
-    } else if (battle.status === 'in_progress') {
-        statusEl.textContent = 'Battle in progress';
-        statusEl.style.color = '#10b981';
-    } else if (battle.status === 'completed') {
-        statusEl.textContent = 'Battle completed';
-        statusEl.style.color = '#6b7280';
-    }
-    
-    const casesContainer = document.getElementById('battle-detail-cases');
-    casesContainer.innerHTML = '';
-    battle.cases.forEach(caseItem => {
-        const caseEl = document.createElement('div');
-        caseEl.className = 'battle-case-item';
-        caseEl.textContent = `${caseItem.caseName} x${caseItem.quantity}`;
-        casesContainer.appendChild(caseEl);
-    });
-    
-    const playersContainer = document.getElementById('battle-detail-players');
-    playersContainer.innerHTML = '';
-    
-    for (let i = 0; i < battle.maxPlayers; i++) {
-        const player = battle.players[i];
-        const playerSlot = document.createElement('div');
-        playerSlot.className = `battle-player-slot ${player ? 'filled' : 'empty'}`;
-        
-        if (player) {
-            playerSlot.innerHTML = `
-                <div class="player-avatar">${player.username.charAt(0).toUpperCase()}</div>
-                <div class="player-name">${player.username}</div>
-                <div class="player-status">${player.isBot ? 'Bot' : 'Player'}</div>
-            `;
-        } else {
-            playerSlot.innerHTML = `
-                <div class="player-avatar">?</div>
-                <div class="player-name">Waiting...</div>
-                <div class="player-status">Empty slot</div>
-            `;
-        }
-        
-        playersContainer.appendChild(playerSlot);
-    }
-    
-    updateBattleDetailActions(battle);
-    
-    const progressEl = document.getElementById('battle-progress');
-    const resultsEl = document.getElementById('battle-results-summary');
-    
-    if (battle.status === 'in_progress') {
-        progressEl.style.display = 'block';
-        resultsEl.style.display = 'none';
-        setupBattleProgressDisplay(battle);
-    } else if (battle.status === 'completed') {
-        progressEl.style.display = 'none';
-        resultsEl.style.display = 'block';
-        displayBattleResults(battle);
-    } else {
-        progressEl.style.display = 'none';
-        resultsEl.style.display = 'none';
-    }
-}
-
-function updateBattleDetailActions(battle) {
-    const joinBtn = document.getElementById('battle-join-btn');
-    const botsBtn = document.getElementById('battle-bots-btn');
-    const watchBtn = document.getElementById('battle-watch-btn');
-    
-    const isUserInBattle = battle.players.some(p => p.userId === currentUser?.id);
-    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?.id;
-    const isFull = battle.currentPlayers >= battle.maxPlayers;
-    
-    if (battle.status === 'waiting') {
-        joinBtn.style.display = isUserInBattle || isFull ? 'none' : 'block';
-        botsBtn.style.display = isCreator && !isFull ? 'block' : 'none';
-        watchBtn.style.display = 'none';
-        
-        joinBtn.disabled = isFull;
-        joinBtn.textContent = isFull ? 'Battle Full' : 'Join Battle';
-    } else {
-        joinBtn.style.display = 'none';
-        botsBtn.style.display = 'none';
-        watchBtn.style.display = battle.status === 'in_progress' ? 'block' : 'none';
-    }
-}
-
 function setupBattleProgressDisplay(battle) {
     const progressPlayersContainer = document.getElementById('progress-players');
     progressPlayersContainer.innerHTML = '';
@@ -8013,8 +7920,8 @@ function updateBattleDetailActions(battle) {
     const botsBtn = document.getElementById('battle-bots-btn');
     const watchBtn = document.getElementById('battle-watch-btn');
     
-    const isUserInBattle = battle.players.some(p => p.userId === currentUser?.id);
-    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?.id;
+    const isUserInBattle = battle.players.some(p => p.userId === currentUser?._id);
+    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?._id;
     const isFull = battle.currentPlayers >= battle.maxPlayers;
     
     if (battle.status === 'waiting') {
