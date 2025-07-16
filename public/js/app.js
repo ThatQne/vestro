@@ -6964,34 +6964,7 @@ function refreshBattleCasesDisplay() {
 }
 
 function updateSelectedCasesDisplay() {
-    const container = document.getElementById('selected-cases');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    const totalCases = Object.values(selectedCasesForBattle).reduce((sum, qty) => sum + qty, 0);
-    if (totalCases > 0) {
-        const clearBtn = document.createElement('button');
-        clearBtn.className = 'clear-selection-btn';
-        clearBtn.textContent = 'Clear All';
-        clearBtn.onclick = clearCaseSelection;
-        container.appendChild(clearBtn);
-    }
-    
-    Object.entries(selectedCasesForBattle).forEach(([caseId, quantity]) => {
-        const caseData = window.availableCases?.find(c => c._id === caseId);
-        if (!caseData) return;
-        
-        const selectedCase = document.createElement('div');
-        selectedCase.className = 'selected-case';
-        selectedCase.innerHTML = `
-            <span class="case-name">${caseData.name}</span>
-            <span class="case-quantity">x${quantity}</span>
-            <span class="case-total">$${(caseData.price * quantity).toFixed(2)}</span>
-            <button class="remove-btn" onclick="removeCaseFromSelection('${caseId}')">×</button>
-        `;
-        container.appendChild(selectedCase);
-    });
+    return;
 }
 
 function clearCaseSelection() {
@@ -7031,7 +7004,7 @@ async function createBattle() {
     }
     
     const mode = document.getElementById('battle-mode-select').value;
-    const isPrivate = document.getElementById('battle-private-checkbox').checked;
+    const isPrivate = false; // Private battles feature removed
     
     const battleData = {
         cases: Object.entries(selectedCasesForBattle).map(([caseId, quantity]) => ({
