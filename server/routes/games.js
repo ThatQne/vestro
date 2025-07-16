@@ -294,7 +294,7 @@ router.post('/mines/reveal', authenticateToken, async (req, res) => {
 });
 
 // Mines cash out endpoint
-router.post('/mines/cashout', authenticateToken, async (req, res) => {
+router.post('/mines/cashout', authenticateToken, fetchUserWithSession, async (req, res) => {
     try {
         const result = await withTransaction(async (session) => {
             const { gameId, revealedTiles, currentMultiplier } = req.body;
@@ -765,4 +765,4 @@ router.post('/blackjack/double', authenticateToken, fetchUserWithSession, async 
     }
 });
 
-module.exports = router;                
+module.exports = router;                  
