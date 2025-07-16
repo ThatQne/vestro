@@ -6216,6 +6216,12 @@ function showCaseOpeningModal(caseName, wonItem, caseItems) {
     title.textContent = `Opening ${caseName}`;
     modal.classList.remove('hidden');
     
+    // Reset skip button to be visible for new case opening
+    const skipBtn = document.getElementById('skip-animation-btn');
+    if (skipBtn) {
+        skipBtn.style.display = 'flex';
+    }
+    
     // Hide result initially and remove any previous classes
     result.classList.add('hidden');
     result.classList.remove('show-result');
@@ -6441,6 +6447,11 @@ function showCaseOpeningModal(caseName, wonItem, caseItems) {
             
             // Handle item image/icon with robust fallback
             const wonItemImage = document.getElementById('won-item-image');
+            
+            // Clear any existing icon containers first
+            const existingIcons = wonItemImage.parentNode.querySelectorAll('.item-icon-large');
+            existingIcons.forEach(icon => icon.remove());
+            
             const imagePath = wonItem.image && wonItem.image !== 'default-item.png' ? 
                 (wonItem.image.startsWith('http') ? wonItem.image : `/images/${wonItem.image}`) : null;
             
@@ -6547,6 +6558,11 @@ function skipCaseAnimation() {
     
     // Handle item image/icon with robust fallback
     const wonItemImage = document.getElementById('won-item-image');
+    
+    // Clear any existing icon containers first
+    const existingIcons = wonItemImage.parentNode.querySelectorAll('.item-icon-large');
+    existingIcons.forEach(icon => icon.remove());
+    
     const imagePath = wonItem.image && wonItem.image !== 'default-item.png' ? 
         (wonItem.image.startsWith('http') ? wonItem.image : `/images/${wonItem.image}`) : null;
     
@@ -6696,6 +6712,12 @@ function closeCaseOpeningModal() {
         // Clean up any icon containers
         const iconContainers = modal.querySelectorAll('.item-icon-large');
         iconContainers.forEach(container => container.remove());
+        
+        const wonItemImage = document.getElementById('won-item-image');
+        if (wonItemImage) {
+            wonItemImage.src = '';
+            wonItemImage.style.display = 'none';
+        }
         
         // Reset last won item
         lastWonItem = null;
@@ -7116,11 +7138,7 @@ function displayInventory(inventory) {
         
         itemCard.innerHTML = `
             <div class="item-image">
-                ${imagePath ? 
-                    `<img src="${imagePath}" alt="${item.itemName}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" onload="this.style.display='block'; this.nextElementSibling.style.display='none';">` : 
-                    ''
-                }
-                <div class="item-icon rarity-${item.rarity}" style="${imagePath ? 'display: flex;' : 'display: flex;'}">
+                <div class="item-icon rarity-${item.rarity}" style="display: flex;">
                     <i data-lucide="${rarityIcons[item.rarity] || 'package'}"></i>
                 </div>
             </div>
