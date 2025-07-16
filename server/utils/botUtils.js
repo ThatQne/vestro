@@ -6,7 +6,7 @@ function generateBotPlayer(index) {
     const botName = `${botNames[index % botNames.length]}_${Math.floor(Math.random() * 1000)}`;
     
     return {
-        userId: mongoose.Types.ObjectId(), // Generate a random ID for the bot
+        userId: new mongoose.Types.ObjectId(), // Generate a random ObjectId for the bot
         username: botName,
         isBot: true,
         joinedAt: new Date(),

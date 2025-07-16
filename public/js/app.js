@@ -5993,6 +5993,11 @@ function initializeCaseSystem() {
     if (socket) {
         socket.on('case-opened', handleCaseOpened);
         socket.on('battle-created', handleBattleCreated);
+        socket.on('battle-joined', handleBattleJoined);
+        socket.on('battle-started', handleBattleStarted);
+        socket.on('battle-updated', handleBattleUpdated);
+        socket.on('battle-processing-started', handleBattleProcessingStarted);
+        socket.on('case-opened', handleBattleCaseOpened);
         socket.on('battle-completed', handleBattleCompleted);
         socket.on('battle-result', handleBattleResult);
         socket.on('item-sold', handleItemSold);
@@ -6759,6 +6764,9 @@ function displayBattles(battles) {
     battles.forEach(battle => {
         const battleCard = document.createElement('div');
         battleCard.className = 'battle-card';
+        battleCard.style.cursor = 'pointer';
+        battleCard.onclick = () => showBattleDetailModal(battle.battleId);
+        
         battleCard.innerHTML = `
             <div class="battle-header">
                 <div class="battle-mode">${battle.mode}</div>
@@ -6778,12 +6786,12 @@ function displayBattles(battles) {
                 ).join('') : ''}
             </div>
             <div class="battle-actions">
-                <button class="battle-join-btn" onclick="joinBattle('${battle.battleId}')" 
+                <button class="battle-join-btn" onclick="event.stopPropagation(); joinBattle('${battle.battleId}')" 
                         ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
                     ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
                 </button>
                 ${battle.players.length > 0 && battle.players[0].userId === currentUser?.id && battle.players.length < battle.maxPlayers ? 
-                    `<button class="battle-bots-btn" onclick="callBots('${battle.battleId}')">Call Bots</button>` : ''}
+                    `<button class="battle-bots-btn" onclick="event.stopPropagation(); callBots('${battle.battleId}')">Call Bots</button>` : ''}
             </div>
         `;
         battlesGrid.appendChild(battleCard);
@@ -7038,6 +7046,9 @@ async function createBattle() {
         // Close modal and refresh battles
         closeCreateBattleModal();
         loadBattles();
+        
+        // Auto-open battle details modal
+        setTimeout(() => showBattleDetailModal(data.battle.battleId), 100);
         
         showNotification('Battle created successfully!', 'success');
     } catch (error) {
@@ -7624,6 +7635,794 @@ function updateBalanceDisplay(newBalance) {
 function initializeCasesPage() {
     if (currentPage === 'cases') {
         initializeCaseSystem();
+    }
+// Battle detail modal state
+let currentBattleDetail = null;
+
+function handleBattleJoined(data) {
+    loadBattles();
+    
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        currentBattleDetail = data;
+        displayBattleDetailModal(data);
+    }
+    
+    showNotification(`Player joined ${data.mode} battle!`, 'info');
+}
+
+function handleBattleStarted(data) {
+    loadBattles();
+    
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        currentBattleDetail = data;
+        displayBattleDetailModal(data);
+    }
+    
+    showNotification(`${data.mode} battle started!`, 'success');
+}
+
+function handleBattleUpdated(data) {
+    loadBattles();
+    
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        currentBattleDetail = data;
+        displayBattleDetailModal(data);
+    }
+}
+
+function handleBattleProcessingStarted(data) {
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        const progressEl = document.getElementById('battle-progress');
+        progressEl.style.display = 'block';
+        
+        const progressTitle = progressEl.querySelector('.progress-title');
+        progressTitle.textContent = 'Opening cases...';
+    }
+}
+
+function handleBattleCaseOpened(data) {
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        const playerItemsContainer = document.getElementById(`progress-items-${data.playerId}`);
+        const playerTotalContainer = document.getElementById(`progress-total-${data.playerId}`);
+        
+        if (playerItemsContainer && playerTotalContainer) {
+            const itemEl = document.createElement('div');
+            itemEl.className = `progress-item new-item ${data.item.itemRarity}`;
+            itemEl.innerHTML = `
+                <span>${data.item.itemName}</span>
+                <span>$${data.item.itemValue.toFixed(2)}</span>
+            `;
+            
+            playerItemsContainer.appendChild(itemEl);
+            
+            const currentTotal = parseFloat(playerTotalContainer.textContent.replace('$', '')) || 0;
+            const newTotal = currentTotal + data.item.itemValue;
+            playerTotalContainer.textContent = `$${newTotal.toFixed(2)}`;
+            
+            setTimeout(() => {
+                itemEl.classList.remove('new-item');
+            }, 500);
+            
+            playerItemsContainer.scrollTop = playerItemsContainer.scrollHeight;
+        }
+    }
+}
+
+function displayBattleDetailModal(battle) {
+    document.getElementById('battle-detail-title').textContent = `${battle.mode} Battle`;
+    document.getElementById('battle-detail-mode').textContent = battle.mode;
+    document.getElementById('battle-detail-cost').textContent = `$${battle.totalCost.toFixed(2)}`;
+    
+    const statusEl = document.getElementById('battle-detail-status');
+    if (battle.status === 'waiting') {
+        statusEl.textContent = `Waiting for players (${battle.currentPlayers}/${battle.maxPlayers})`;
+        statusEl.style.color = '#fbbf24';
+    } else if (battle.status === 'in_progress') {
+        statusEl.textContent = 'Battle in progress';
+        statusEl.style.color = '#10b981';
+    } else if (battle.status === 'completed') {
+        statusEl.textContent = 'Battle completed';
+        statusEl.style.color = '#6b7280';
+    }
+    
+    const casesContainer = document.getElementById('battle-detail-cases');
+    casesContainer.innerHTML = '';
+    battle.cases.forEach(caseItem => {
+        const caseEl = document.createElement('div');
+        caseEl.className = 'battle-case-item';
+        caseEl.textContent = `${caseItem.caseName} x${caseItem.quantity}`;
+        casesContainer.appendChild(caseEl);
+    });
+    
+    const playersContainer = document.getElementById('battle-detail-players');
+    playersContainer.innerHTML = '';
+    
+    for (let i = 0; i < battle.maxPlayers; i++) {
+        const player = battle.players[i];
+        const playerSlot = document.createElement('div');
+        playerSlot.className = `battle-player-slot ${player ? 'filled' : 'empty'}`;
+        
+        if (player) {
+            playerSlot.innerHTML = `
+                <div class="player-avatar">${player.username.charAt(0).toUpperCase()}</div>
+                <div class="player-name">${player.username}</div>
+                <div class="player-status">${player.isBot ? 'Bot' : 'Player'}</div>
+            `;
+        } else {
+            playerSlot.innerHTML = `
+                <div class="player-avatar">?</div>
+                <div class="player-name">Waiting...</div>
+                <div class="player-status">Empty slot</div>
+            `;
+        }
+        
+        playersContainer.appendChild(playerSlot);
+    }
+    
+    updateBattleDetailActions(battle);
+    
+    const progressEl = document.getElementById('battle-progress');
+    const resultsEl = document.getElementById('battle-results-summary');
+    
+    if (battle.status === 'in_progress') {
+        progressEl.style.display = 'block';
+        resultsEl.style.display = 'none';
+        setupBattleProgressDisplay(battle);
+    } else if (battle.status === 'completed') {
+        progressEl.style.display = 'none';
+        resultsEl.style.display = 'block';
+        displayBattleResults(battle);
+    } else {
+        progressEl.style.display = 'none';
+        resultsEl.style.display = 'none';
+    }
+}
+
+function updateBattleDetailActions(battle) {
+    const joinBtn = document.getElementById('battle-join-btn');
+    const botsBtn = document.getElementById('battle-bots-btn');
+    const watchBtn = document.getElementById('battle-watch-btn');
+    
+    const isUserInBattle = battle.players.some(p => p.userId === currentUser?.id);
+    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?.id;
+    const isFull = battle.currentPlayers >= battle.maxPlayers;
+    
+    if (battle.status === 'waiting') {
+        joinBtn.style.display = isUserInBattle || isFull ? 'none' : 'block';
+        botsBtn.style.display = isCreator && !isFull ? 'block' : 'none';
+        watchBtn.style.display = 'none';
+        
+        joinBtn.disabled = isFull;
+        joinBtn.textContent = isFull ? 'Battle Full' : 'Join Battle';
+    } else {
+        joinBtn.style.display = 'none';
+        botsBtn.style.display = 'none';
+        watchBtn.style.display = battle.status === 'in_progress' ? 'block' : 'none';
+    }
+}
+
+function setupBattleProgressDisplay(battle) {
+    const progressPlayersContainer = document.getElementById('progress-players');
+    progressPlayersContainer.innerHTML = '';
+    
+    battle.players.forEach(player => {
+        const playerEl = document.createElement('div');
+        playerEl.className = 'progress-player';
+        playerEl.id = `progress-player-${player.userId}`;
+        
+        playerEl.innerHTML = `
+            <div class="progress-player-name">${player.username}</div>
+            <div class="progress-player-items" id="progress-items-${player.userId}"></div>
+            <div class="progress-player-total" id="progress-total-${player.userId}">$0.00</div>
+        `;
+        
+        progressPlayersContainer.appendChild(playerEl);
+    });
+}
+
+function displayBattleResults(battle) {
+    const winnerDisplay = document.getElementById('winner-display');
+    const allItemsDisplay = document.getElementById('all-items-display');
+    
+    winnerDisplay.innerHTML = `
+        <div class="winner-name">${battle.winnerUsername} WINS!</div>
+        <div class="winner-value">Total Value: $${battle.totalPrizeValue.toFixed(2)}</div>
+    `;
+    
+    allItemsDisplay.innerHTML = '';
+    battle.players.forEach(player => {
+        if (player.items && player.items.length > 0) {
+            const playerItemsEl = document.createElement('div');
+            playerItemsEl.innerHTML = `
+                <h4>${player.username} - $${player.totalValue.toFixed(2)}</h4>
+                <div class="player-items-list">
+                    ${player.items.map(item => `
+                        <div class="result-item ${item.itemRarity}">
+                            ${item.itemName} - $${item.itemValue.toFixed(2)}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            allItemsDisplay.appendChild(playerItemsEl);
+        }
+    });
+}
+
+async function joinBattleFromModal() {
+    if (!currentBattleDetail) return;
+    
+    try {
+        await joinBattle(currentBattleDetail.battleId);
+    } catch (error) {
+        console.error('Error joining battle from modal:', error);
+    }
+}
+
+async function callBotsFromModal() {
+    if (!currentBattleDetail) return;
+    
+    try {
+        await callBots(currentBattleDetail.battleId);
+    } catch (error) {
+        console.error('Error calling bots from modal:', error);
+    }
+}
+
+function watchBattle() {
+    closeBattleDetailModal();
+    if (currentBattleDetail) {
+        showBattleAnimation(currentBattleDetail);
+    }
+}
+
+function closeBattleDetailModal() {
+    const modal = document.getElementById('battle-detail-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        currentBattleDetail = null;
+    }
+}
+
+
+}
+
+async function showBattleDetailModal(battleId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${battleId}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch battle details');
+        }
+        
+        const data = await response.json();
+        currentBattleDetail = data.battle;
+        
+        displayBattleDetailModal(currentBattleDetail);
+        
+        const modal = document.getElementById('battle-detail-modal');
+        modal.classList.remove('hidden');
+        
+    } catch (error) {
+        console.error('Error loading battle details:', error);
+        showNotification('Error loading battle details', 'error');
+    }
+}
+
+function displayBattleDetailModal(battle) {
+    document.getElementById('battle-detail-title').textContent = `${battle.mode} Battle`;
+    document.getElementById('battle-detail-mode').textContent = battle.mode;
+    document.getElementById('battle-detail-cost').textContent = `$${battle.totalCost.toFixed(2)}`;
+    
+    const statusEl = document.getElementById('battle-detail-status');
+    if (battle.status === 'waiting') {
+        statusEl.textContent = `Waiting for players (${battle.currentPlayers}/${battle.maxPlayers})`;
+        statusEl.style.color = '#fbbf24';
+    } else if (battle.status === 'in_progress') {
+        statusEl.textContent = 'Battle in progress';
+        statusEl.style.color = '#10b981';
+    } else if (battle.status === 'completed') {
+        statusEl.textContent = 'Battle completed';
+        statusEl.style.color = '#6b7280';
+    }
+    
+    const casesContainer = document.getElementById('battle-detail-cases');
+    casesContainer.innerHTML = '';
+    battle.cases.forEach(caseItem => {
+        const caseEl = document.createElement('div');
+        caseEl.className = 'battle-case-item';
+        caseEl.textContent = `${caseItem.caseName} x${caseItem.quantity}`;
+        casesContainer.appendChild(caseEl);
+    });
+    
+    const playersContainer = document.getElementById('battle-detail-players');
+    playersContainer.innerHTML = '';
+    
+    for (let i = 0; i < battle.maxPlayers; i++) {
+        const player = battle.players[i];
+        const playerSlot = document.createElement('div');
+        playerSlot.className = `battle-player-slot ${player ? 'filled' : 'empty'}`;
+        
+        if (player) {
+            playerSlot.innerHTML = `
+                <div class="player-avatar">${player.username.charAt(0).toUpperCase()}</div>
+                <div class="player-name">${player.username}</div>
+                <div class="player-status">${player.isBot ? 'Bot' : 'Player'}</div>
+            `;
+        } else {
+            playerSlot.innerHTML = `
+                <div class="player-avatar">?</div>
+                <div class="player-name">Waiting...</div>
+                <div class="player-status">Empty slot</div>
+            `;
+        }
+        
+        playersContainer.appendChild(playerSlot);
+    }
+    
+    updateBattleDetailActions(battle);
+    
+    const progressEl = document.getElementById('battle-progress');
+    const resultsEl = document.getElementById('battle-results-summary');
+    
+    if (battle.status === 'in_progress') {
+        progressEl.style.display = 'block';
+        resultsEl.style.display = 'none';
+        setupBattleProgressDisplay(battle);
+    } else if (battle.status === 'completed') {
+        progressEl.style.display = 'none';
+        resultsEl.style.display = 'block';
+        displayBattleResults(battle);
+    } else {
+        progressEl.style.display = 'none';
+        resultsEl.style.display = 'none';
+    }
+}
+
+function updateBattleDetailActions(battle) {
+    const joinBtn = document.getElementById('battle-join-btn');
+    const botsBtn = document.getElementById('battle-bots-btn');
+    const watchBtn = document.getElementById('battle-watch-btn');
+    
+    const isUserInBattle = battle.players.some(p => p.userId === currentUser?.id);
+    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?.id;
+    const isFull = battle.currentPlayers >= battle.maxPlayers;
+    
+    if (battle.status === 'waiting') {
+        joinBtn.style.display = isUserInBattle || isFull ? 'none' : 'block';
+        botsBtn.style.display = isCreator && !isFull ? 'block' : 'none';
+        watchBtn.style.display = 'none';
+        
+        joinBtn.disabled = isFull;
+        joinBtn.textContent = isFull ? 'Battle Full' : 'Join Battle';
+    } else {
+        joinBtn.style.display = 'none';
+        botsBtn.style.display = 'none';
+        watchBtn.style.display = battle.status === 'in_progress' ? 'block' : 'none';
+    }
+}
+
+function setupBattleProgressDisplay(battle) {
+    const progressPlayersContainer = document.getElementById('progress-players');
+    progressPlayersContainer.innerHTML = '';
+    
+    battle.players.forEach(player => {
+        const playerEl = document.createElement('div');
+        playerEl.className = 'progress-player';
+        playerEl.id = `progress-player-${player.userId}`;
+        
+        playerEl.innerHTML = `
+            <div class="progress-player-name">${player.username}</div>
+            <div class="progress-player-items" id="progress-items-${player.userId}"></div>
+            <div class="progress-player-total" id="progress-total-${player.userId}">$0.00</div>
+        `;
+        
+        progressPlayersContainer.appendChild(playerEl);
+    });
+}
+
+function displayBattleResults(battle) {
+    const winnerDisplay = document.getElementById('winner-display');
+    const allItemsDisplay = document.getElementById('all-items-display');
+    
+    winnerDisplay.innerHTML = `
+        <div class="winner-name">${battle.winnerUsername} WINS!</div>
+        <div class="winner-value">Total Value: $${battle.totalPrizeValue.toFixed(2)}</div>
+    `;
+    
+    allItemsDisplay.innerHTML = '';
+    battle.players.forEach(player => {
+        if (player.items && player.items.length > 0) {
+            const playerItemsEl = document.createElement('div');
+            playerItemsEl.innerHTML = `
+                <h4>${player.username} - $${player.totalValue.toFixed(2)}</h4>
+                <div class="player-items-list">
+                    ${player.items.map(item => `
+                        <div class="result-item ${item.itemRarity}">
+                            ${item.itemName} - $${item.itemValue.toFixed(2)}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            allItemsDisplay.appendChild(playerItemsEl);
+        }
+    });
+}
+
+async function joinBattleFromModal() {
+    if (!currentBattleDetail) return;
+    
+    try {
+        await joinBattle(currentBattleDetail.battleId);
+    } catch (error) {
+        console.error('Error joining battle from modal:', error);
+    }
+}
+
+async function callBotsFromModal() {
+    if (!currentBattleDetail) return;
+    
+    try {
+        await callBots(currentBattleDetail.battleId);
+    } catch (error) {
+        console.error('Error calling bots from modal:', error);
+    }
+}
+
+function watchBattle() {
+    closeBattleDetailModal();
+    if (currentBattleDetail) {
+        showBattleAnimation(currentBattleDetail);
+    }
+}
+
+function closeBattleDetailModal() {
+    const modal = document.getElementById('battle-detail-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        currentBattleDetail = null;
+    }
+}
+
+function handleBattleJoined(data) {
+    loadBattles();
+    
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        currentBattleDetail = data;
+        displayBattleDetailModal(data);
+    }
+    
+    showNotification(`Player joined ${data.mode} battle!`, 'info');
+}
+
+function handleBattleStarted(data) {
+    loadBattles();
+    
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        currentBattleDetail = data;
+        displayBattleDetailModal(data);
+    }
+    
+    showNotification(`${data.mode} battle started!`, 'success');
+}
+
+function handleBattleUpdated(data) {
+    loadBattles();
+    
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        currentBattleDetail = data;
+        displayBattleDetailModal(data);
+    }
+}
+
+function handleBattleProcessingStarted(data) {
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        const progressEl = document.getElementById('battle-progress');
+        progressEl.style.display = 'block';
+        
+        const progressTitle = progressEl.querySelector('.progress-title');
+        progressTitle.textContent = 'Opening cases...';
+    }
+}
+
+function handleBattleCaseOpened(data) {
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        const playerItemsContainer = document.getElementById(`progress-items-${data.playerId}`);
+        const playerTotalContainer = document.getElementById(`progress-total-${data.playerId}`);
+        
+        if (playerItemsContainer && playerTotalContainer) {
+            const itemEl = document.createElement('div');
+            itemEl.className = `progress-item new-item ${data.item.itemRarity}`;
+            itemEl.innerHTML = `
+                <span>${data.item.itemName}</span>
+                <span>$${data.item.itemValue.toFixed(2)}</span>
+            `;
+            
+            playerItemsContainer.appendChild(itemEl);
+            
+            const currentTotal = parseFloat(playerTotalContainer.textContent.replace('$', '')) || 0;
+            const newTotal = currentTotal + data.item.itemValue;
+            playerTotalContainer.textContent = `$${newTotal.toFixed(2)}`;
+            
+            setTimeout(() => {
+                itemEl.classList.remove('new-item');
+            }, 500);
+            
+            playerItemsContainer.scrollTop = playerItemsContainer.scrollHeight;
+        }
+    }
+}
+
+async function showBattleDetailModal(battleId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/battle/${battleId}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch battle details');
+        }
+        
+        const data = await response.json();
+        currentBattleDetail = data.battle;
+        
+        displayBattleDetailModal(currentBattleDetail);
+        
+        const modal = document.getElementById('battle-detail-modal');
+        modal.classList.remove('hidden');
+        
+    } catch (error) {
+        console.error('Error loading battle details:', error);
+        showNotification('Error loading battle details', 'error');
+    }
+}
+
+function displayBattleDetailModal(battle) {
+    document.getElementById('battle-detail-title').textContent = `${battle.mode} Battle`;
+    document.getElementById('battle-detail-mode').textContent = battle.mode;
+    document.getElementById('battle-detail-cost').textContent = `$${battle.totalCost.toFixed(2)}`;
+    
+    const statusEl = document.getElementById('battle-detail-status');
+    if (battle.status === 'waiting') {
+        statusEl.textContent = `Waiting for players (${battle.currentPlayers}/${battle.maxPlayers})`;
+        statusEl.style.color = '#fbbf24';
+    } else if (battle.status === 'in_progress') {
+        statusEl.textContent = 'Battle in progress';
+        statusEl.style.color = '#10b981';
+    } else if (battle.status === 'completed') {
+        statusEl.textContent = 'Battle completed';
+        statusEl.style.color = '#6b7280';
+    }
+    
+    const casesContainer = document.getElementById('battle-detail-cases');
+    casesContainer.innerHTML = '';
+    battle.cases.forEach(caseItem => {
+        const caseEl = document.createElement('div');
+        caseEl.className = 'battle-case-item';
+        caseEl.textContent = `${caseItem.caseName} x${caseItem.quantity}`;
+        casesContainer.appendChild(caseEl);
+    });
+    
+    const playersContainer = document.getElementById('battle-detail-players');
+    playersContainer.innerHTML = '';
+    
+    for (let i = 0; i < battle.maxPlayers; i++) {
+        const player = battle.players[i];
+        const playerSlot = document.createElement('div');
+        playerSlot.className = `battle-player-slot ${player ? 'filled' : 'empty'}`;
+        
+        if (player) {
+            playerSlot.innerHTML = `
+                <div class="player-avatar">${player.username.charAt(0).toUpperCase()}</div>
+                <div class="player-name">${player.username}</div>
+                <div class="player-status">${player.isBot ? 'Bot' : 'Player'}</div>
+            `;
+        } else {
+            playerSlot.innerHTML = `
+                <div class="player-avatar">?</div>
+                <div class="player-name">Waiting...</div>
+                <div class="player-status">Empty slot</div>
+            `;
+        }
+        
+        playersContainer.appendChild(playerSlot);
+    }
+    
+    updateBattleDetailActions(battle);
+    
+    const progressEl = document.getElementById('battle-progress');
+    const resultsEl = document.getElementById('battle-results-summary');
+    
+    if (battle.status === 'in_progress') {
+        progressEl.style.display = 'block';
+        resultsEl.style.display = 'none';
+        setupBattleProgressDisplay(battle);
+    } else if (battle.status === 'completed') {
+        progressEl.style.display = 'none';
+        resultsEl.style.display = 'block';
+        displayBattleResults(battle);
+    } else {
+        progressEl.style.display = 'none';
+        resultsEl.style.display = 'none';
+    }
+}
+
+function updateBattleDetailActions(battle) {
+    const joinBtn = document.getElementById('battle-join-btn');
+    const botsBtn = document.getElementById('battle-bots-btn');
+    const watchBtn = document.getElementById('battle-watch-btn');
+    
+    const isUserInBattle = battle.players.some(p => p.userId === currentUser?.id);
+    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?.id;
+    const isFull = battle.currentPlayers >= battle.maxPlayers;
+    
+    if (battle.status === 'waiting') {
+        joinBtn.style.display = isUserInBattle || isFull ? 'none' : 'block';
+        botsBtn.style.display = isCreator && !isFull ? 'block' : 'none';
+        watchBtn.style.display = 'none';
+        
+        joinBtn.disabled = isFull;
+        joinBtn.textContent = isFull ? 'Battle Full' : 'Join Battle';
+    } else {
+        joinBtn.style.display = 'none';
+        botsBtn.style.display = 'none';
+        watchBtn.style.display = battle.status === 'in_progress' ? 'block' : 'none';
+    }
+}
+
+function setupBattleProgressDisplay(battle) {
+    const progressPlayersContainer = document.getElementById('progress-players');
+    progressPlayersContainer.innerHTML = '';
+    
+    battle.players.forEach(player => {
+        const playerEl = document.createElement('div');
+        playerEl.className = 'progress-player';
+        playerEl.id = `progress-player-${player.userId}`;
+        
+        playerEl.innerHTML = `
+            <div class="progress-player-name">${player.username}</div>
+            <div class="progress-player-items" id="progress-items-${player.userId}"></div>
+            <div class="progress-player-total" id="progress-total-${player.userId}">$0.00</div>
+        `;
+        
+        progressPlayersContainer.appendChild(playerEl);
+    });
+}
+
+function displayBattleResults(battle) {
+    const winnerDisplay = document.getElementById('winner-display');
+    const allItemsDisplay = document.getElementById('all-items-display');
+    
+    winnerDisplay.innerHTML = `
+        <div class="winner-name">${battle.winnerUsername} WINS!</div>
+        <div class="winner-value">Total Value: $${battle.totalPrizeValue.toFixed(2)}</div>
+    `;
+    
+    allItemsDisplay.innerHTML = '';
+    battle.players.forEach(player => {
+        if (player.items && player.items.length > 0) {
+            const playerItemsEl = document.createElement('div');
+            playerItemsEl.innerHTML = `
+                <h4>${player.username} - $${player.totalValue.toFixed(2)}</h4>
+                <div class="player-items-list">
+                    ${player.items.map(item => `
+                        <div class="result-item ${item.itemRarity}">
+                            ${item.itemName} - $${item.itemValue.toFixed(2)}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            allItemsDisplay.appendChild(playerItemsEl);
+        }
+    });
+}
+
+async function joinBattleFromModal() {
+    if (!currentBattleDetail) return;
+    
+    try {
+        await joinBattle(currentBattleDetail.battleId);
+    } catch (error) {
+        console.error('Error joining battle from modal:', error);
+    }
+}
+
+async function callBotsFromModal() {
+    if (!currentBattleDetail) return;
+    
+    try {
+        await callBots(currentBattleDetail.battleId);
+    } catch (error) {
+        console.error('Error calling bots from modal:', error);
+    }
+}
+
+function watchBattle() {
+    closeBattleDetailModal();
+    if (currentBattleDetail) {
+        showBattleAnimation(currentBattleDetail);
+    }
+}
+
+function closeBattleDetailModal() {
+    const modal = document.getElementById('battle-detail-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        currentBattleDetail = null;
+    }
+}
+
+function handleBattleJoined(data) {
+    loadBattles();
+    
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        currentBattleDetail = data;
+        displayBattleDetailModal(data);
+    }
+    
+    showNotification(`Player joined ${data.mode} battle!`, 'info');
+}
+
+function handleBattleStarted(data) {
+    loadBattles();
+    
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        currentBattleDetail = data;
+        displayBattleDetailModal(data);
+    }
+    
+    showNotification(`${data.mode} battle started!`, 'success');
+}
+
+function handleBattleUpdated(data) {
+    loadBattles();
+    
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        currentBattleDetail = data;
+        displayBattleDetailModal(data);
+    }
+}
+
+function handleBattleProcessingStarted(data) {
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        const progressEl = document.getElementById('battle-progress');
+        progressEl.style.display = 'block';
+        
+        const progressTitle = progressEl.querySelector('.progress-title');
+        progressTitle.textContent = 'Opening cases...';
+    }
+}
+
+function handleBattleCaseOpened(data) {
+    if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
+        const playerItemsContainer = document.getElementById(`progress-items-${data.playerId}`);
+        const playerTotalContainer = document.getElementById(`progress-total-${data.playerId}`);
+        
+        if (playerItemsContainer && playerTotalContainer) {
+            const itemEl = document.createElement('div');
+            itemEl.className = `progress-item new-item ${data.item.itemRarity}`;
+            itemEl.innerHTML = `
+                <span>${data.item.itemName}</span>
+                <span>$${data.item.itemValue.toFixed(2)}</span>
+            `;
+            
+            playerItemsContainer.appendChild(itemEl);
+            
+            const currentTotal = parseFloat(playerTotalContainer.textContent.replace('$', '')) || 0;
+            const newTotal = currentTotal + data.item.itemValue;
+            playerTotalContainer.textContent = `$${newTotal.toFixed(2)}`;
+            
+            setTimeout(() => {
+                itemEl.classList.remove('new-item');
+            }, 500);
+            
+            playerItemsContainer.scrollTop = playerItemsContainer.scrollHeight;
+        }
     }
 }
 
