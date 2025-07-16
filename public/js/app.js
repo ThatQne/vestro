@@ -6790,7 +6790,7 @@ function displayBattles(battles) {
                         ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
                     ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
                 </button>
-                ${battle.players.length > 0 && battle.players[0].userId === currentUser?.id && battle.players.length < battle.maxPlayers ? 
+                ${battle.players.length > 0 && battle.players[0].userId === currentUser?._id && battle.players.length < battle.maxPlayers ? 
                     `<button class="battle-bots-btn" onclick="event.stopPropagation(); callBots('${battle.battleId}')">Call Bots</button>` : ''}
             </div>
         `;
@@ -7368,7 +7368,7 @@ function closeCaseDetailsModal() {
 // Socket event handlers
 function handleCaseOpened(data) {
     // Update balance if it's for current user
-    if (data.userId === currentUser?.id) {
+    if (data.userId === currentUser?._id) {
         updateBalanceDisplay(data.newBalance);
         loadInventory();
     }
@@ -7783,8 +7783,8 @@ function updateBattleDetailActions(battle) {
     const botsBtn = document.getElementById('battle-bots-btn');
     const watchBtn = document.getElementById('battle-watch-btn');
     
-    const isUserInBattle = battle.players.some(p => p.userId === currentUser?.id);
-    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?.id;
+    const isUserInBattle = battle.players.some(p => p.userId === currentUser?._id);
+    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?._id;
     const isFull = battle.currentPlayers >= battle.maxPlayers;
     
     if (battle.status === 'waiting') {
@@ -8013,8 +8013,8 @@ function updateBattleDetailActions(battle) {
     const botsBtn = document.getElementById('battle-bots-btn');
     const watchBtn = document.getElementById('battle-watch-btn');
     
-    const isUserInBattle = battle.players.some(p => p.userId === currentUser?.id);
-    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?.id;
+    const isUserInBattle = battle.players.some(p => p.userId === currentUser?._id);
+    const isCreator = battle.players.length > 0 && battle.players[0].userId === currentUser?._id;
     const isFull = battle.currentPlayers >= battle.maxPlayers;
     
     if (battle.status === 'waiting') {
