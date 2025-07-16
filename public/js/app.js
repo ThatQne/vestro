@@ -7887,24 +7887,46 @@ function closeBattleDetailModal() {
 }
 
 async function showBattleDetailModal(battleId) {
+    if (!battleId) {
+        console.error('No battleId provided to showBattleDetailModal');
+        showNotification('Invalid battle ID', 'error');
+        return;
+    }
+    
     try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            console.error('No authentication token found');
+            showNotification('Please log in to view battle details', 'error');
+            return;
+        }
+        
         const response = await fetch(`${API_BASE_URL}/api/cases/battle/${battleId}`, {
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${token}`
             }
         });
         
         if (!response.ok) {
-            throw new Error('Failed to fetch battle details');
+            throw new Error(`Failed to fetch battle details: ${response.status}`);
         }
         
         const data = await response.json();
+        if (!data.battle) {
+            throw new Error('Invalid battle data received');
+        }
+        
         currentBattleDetail = data.battle;
         
         displayBattleDetailModal(currentBattleDetail);
         
         const modal = document.getElementById('battle-detail-modal');
-        modal.classList.remove('hidden');
+        if (modal) {
+            modal.classList.remove('hidden');
+        } else {
+            console.error('Battle detail modal element not found');
+            showNotification('Modal display error', 'error');
+        }
         
     } catch (error) {
         console.error('Error loading battle details:', error);
