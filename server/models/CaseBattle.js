@@ -35,7 +35,7 @@ const caseBattleSchema = new mongoose.Schema({
             type: Number,
             default: 1,
             min: 1,
-            max: 1 // Changed from 10 to 1 since we'll allow up to 25 total cases
+            max: 25 // Allow up to 25 cases per individual case type
         }
     }],
     totalCost: {
@@ -276,4 +276,4 @@ caseBattleSchema.index({ 'players.userId': 1 });
 caseBattleSchema.index({ createdAt: -1 });
 caseBattleSchema.index({ expiresAt: 1 });
 
-module.exports = mongoose.model('CaseBattle', caseBattleSchema);    
+module.exports = mongoose.model('CaseBattle', caseBattleSchema);      
