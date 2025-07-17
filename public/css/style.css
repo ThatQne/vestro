@@ -6064,6 +6064,25 @@ input, textarea {
     text-align: center;
 }
 
+.winner-highlight {
+    background: linear-gradient(135deg, #ffd700, #ffed4e);
+    color: #000;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.crown-icon {
+    font-size: 1.2em;
+    margin-right: 0.5rem;
+}
+
+.battle-player-slot.winner {
+    border: 2px solid #ffd700;
+    background: rgba(255, 215, 0, 0.1);
+}
+
 .results-title {
     font-size: 1.5rem;
     font-weight: bold;
@@ -6542,6 +6561,25 @@ input, textarea {
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     text-align: center;
+}
+
+.winner-highlight {
+    background: linear-gradient(135deg, #ffd700, #ffed4e);
+    color: #000;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.crown-icon {
+    font-size: 1.2em;
+    margin-right: 0.5rem;
+}
+
+.battle-player-slot.winner {
+    border: 2px solid #ffd700;
+    background: rgba(255, 215, 0, 0.1);
 }
 
 .results-title {
