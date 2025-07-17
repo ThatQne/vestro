@@ -7395,8 +7395,6 @@ function handleBattleResult(data) {
     } else {
         showNotification(`Battle completed. Total value: $${data.totalValue.toFixed(2)}`, 'info');
     }
-}
-
 // Battle animation state
 let currentBattleAnimation = {
     battleId: null,
@@ -7482,53 +7480,40 @@ function startBattleAnimation() {
 }
 
 function animatePlayerCaseOpening(players, caseItem, caseIndex) {
-    const animationPromises = players.map((player, playerIndex) => {
-        return new Promise((resolve) => {
-            const playerItemsContainer = document.getElementById(`player-items-${player.userId}`);
-            if (!playerItemsContainer) {
-                resolve();
-                return;
-            }
-            
-            // Calculate which item to show based on case index
-            const itemIndex = caseIndex + playerIndex * caseItem.quantity;
-            const item = player.items[itemIndex];
-            
-            if (!item) {
-                resolve();
-                return;
-            }
-            
-            // Create item element
-            const itemEl = document.createElement('div');
-            itemEl.className = `battle-item ${item.itemRarity}`;
-            itemEl.innerHTML = `
-                <div class="item-name">${item.itemName}</div>
-                <div class="item-value">$${item.itemValue.toFixed(2)}</div>
-            `;
-            
-            // Add to container with animation
-            playerItemsContainer.appendChild(itemEl);
-            
-            // Update player total
-            const playerTotal = playerItemsContainer.parentElement.querySelector('.player-total');
-            const currentTotal = parseFloat(playerTotal.textContent.replace('$', '')) || 0;
-            const newTotal = currentTotal + item.itemValue;
-            playerTotal.textContent = `$${newTotal.toFixed(2)}`;
-            
-            if (item.itemValue > caseItem.casePrice * 2) {
-                itemEl.classList.add('highlight');
-                if (typeof playSound === 'function') playSound('win');
-            } else {
-                if (typeof playSound === 'function') playSound('item');
-            }
-            
-            resolve();
-        });
+    players.forEach((player, playerIndex) => {
+        const playerItemsContainer = document.getElementById(`player-items-${player.userId}`);
+        if (!playerItemsContainer) return;
+        
+        // Calculate which item to show based on case index
+        const itemIndex = caseIndex + playerIndex * caseItem.quantity;
+        const item = player.items[itemIndex];
+        
+        if (!item) return;
+        
+        // Create item element
+        const itemEl = document.createElement('div');
+        itemEl.className = `battle-item ${item.itemRarity}`;
+        itemEl.innerHTML = `
+            <div class="item-name">${item.itemName}</div>
+            <div class="item-value">$${item.itemValue.toFixed(2)}</div>
+        `;
+        
+        // Add to container with animation
+        playerItemsContainer.appendChild(itemEl);
+        
+        // Update player total
+        const playerTotal = playerItemsContainer.parentElement.querySelector('.player-total');
+        const currentTotal = parseFloat(playerTotal.textContent.replace('$', '')) || 0;
+        const newTotal = currentTotal + item.itemValue;
+        playerTotal.textContent = `$${newTotal.toFixed(2)}`;
+        
+        if (item.itemValue > caseItem.casePrice * 2) {
+            itemEl.classList.add('highlight');
+            playSound('win');
+        } else {
+            playSound('item');
+        }
     });
-    
-    // Wait for all animations to complete
-    return Promise.all(animationPromises);
 }
 
 function showBattleResults() {
@@ -7610,6 +7595,10 @@ function playSound(type) {
     }
 }
 
+
+    loadInventory();
+}
+
 function handleItemSold(data) {
     updateBalanceDisplay(data.newBalance);
     loadInventory();
@@ -7678,7 +7667,6 @@ function handleBattleUpdated(data) {
     if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
         currentBattleDetail = data;
         displayBattleDetailModal(data);
-        updateBattleDetailActions(data);
     }
 }
 
@@ -7744,10 +7732,7 @@ function displayBattleResults(battle) {
     const allItemsDisplay = document.getElementById('all-items-display');
     
     winnerDisplay.innerHTML = `
-        <div class="winner-name winner-highlight">
-            <span class="crown-icon">👑</span>
-            ${battle.winnerUsername} WINS!
-        </div>
+        <div class="winner-name">${battle.winnerUsername} WINS!</div>
         <div class="winner-value">Total Value: $${battle.totalPrizeValue.toFixed(2)}</div>
     `;
     
@@ -7785,8 +7770,6 @@ async function callBotsFromModal() {
     
     try {
         await callBots(currentBattleDetail.battleId);
-        currentBattleDetail.botsAdded = true;
-        updateBattleDetailActions(currentBattleDetail);
     } catch (error) {
         console.error('Error calling bots from modal:', error);
     }
@@ -7924,10 +7907,7 @@ function displayBattleDetailModal(battle) {
         setupBattleProgressDisplay(battle);
     } else if (battle.status === 'completed') {
         progressEl.style.display = 'none';
-        // Show results but keep them compact to not hide items
         resultsEl.style.display = 'block';
-        resultsEl.style.maxHeight = '200px';
-        resultsEl.style.overflow = 'auto';
         displayBattleResults(battle);
     } else {
         progressEl.style.display = 'none';
@@ -7946,7 +7926,7 @@ function updateBattleDetailActions(battle) {
     
     if (battle.status === 'waiting') {
         joinBtn.style.display = isUserInBattle || isFull ? 'none' : 'block';
-        botsBtn.style.display = isCreator && !isFull && !battle.botsAdded ? 'block' : 'none';
+        botsBtn.style.display = isCreator && !isFull ? 'block' : 'none';
         watchBtn.style.display = 'none';
         
         joinBtn.disabled = isFull;
@@ -7982,10 +7962,7 @@ function displayBattleResults(battle) {
     const allItemsDisplay = document.getElementById('all-items-display');
     
     winnerDisplay.innerHTML = `
-        <div class="winner-name winner-highlight">
-            <span class="crown-icon">👑</span>
-            ${battle.winnerUsername} WINS!
-        </div>
+        <div class="winner-name">${battle.winnerUsername} WINS!</div>
         <div class="winner-value">Total Value: $${battle.totalPrizeValue.toFixed(2)}</div>
     `;
     
@@ -8023,8 +8000,6 @@ async function callBotsFromModal() {
     
     try {
         await callBots(currentBattleDetail.battleId);
-        currentBattleDetail.botsAdded = true;
-        updateBattleDetailActions(currentBattleDetail);
     } catch (error) {
         console.error('Error calling bots from modal:', error);
     }
@@ -8073,7 +8048,6 @@ function handleBattleUpdated(data) {
     if (currentBattleDetail && currentBattleDetail.battleId === data.battleId) {
         currentBattleDetail = data;
         displayBattleDetailModal(data);
-        updateBattleDetailActions(data);
     }
 }
 
