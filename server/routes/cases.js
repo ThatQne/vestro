@@ -332,6 +332,7 @@ router.post('/battle/:battleId/call-bots', auth, async (req, res) => {
         
         await battle.addBots();
         
+        
         if (battle.players.length >= battle.maxPlayers) {
             await battle.start();
             

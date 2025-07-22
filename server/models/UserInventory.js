@@ -112,16 +112,16 @@ userInventorySchema.methods.addItem = function(itemData) {
         }
     } else {
         // Item doesn't exist, add new entry
-        this.items.push({
-            itemName: itemData.name,
-            caseSource: itemData.caseSource,
-            value: itemData.value,
-            isLimited: itemData.isLimited,
-            image: itemData.image,
-            rarity: itemData.rarity,
+    this.items.push({
+        itemName: itemData.name,
+        caseSource: itemData.caseSource,
+        value: itemData.value,
+        isLimited: itemData.isLimited,
+        image: itemData.image,
+        rarity: itemData.rarity,
             count: 1,
-            currentPrice: itemData.isLimited ? itemData.value : 0
-        });
+        currentPrice: itemData.isLimited ? itemData.value : 0
+    });
     }
     
     return this.save();
@@ -140,7 +140,7 @@ userInventorySchema.methods.removeItem = function(itemId, count = 1) {
         item.count -= count;
     } else {
         // Remove entire item entry
-        this.items = this.items.filter(item => item._id.toString() !== itemId);
+    this.items = this.items.filter(item => item._id.toString() !== itemId);
     }
     
     return this.save();

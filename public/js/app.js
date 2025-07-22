@@ -5075,8 +5075,6 @@ function populatePlayerDetailModal(player) {
     }
 }
 
-// Old player chart function removed - now using unified chart system
-
 // Handle mouse/touch events for player chart
 function handlePlayerChartMouseDown(event) {
     const canvas = document.getElementById('player-balance-chart');
@@ -5289,8 +5287,6 @@ function initializePlayerChart() {
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 }
-
-// ... existing code ...
 
 // Start leaderboard timer
 function startLeaderboardTimer() {
@@ -6787,9 +6783,9 @@ function displayBattles(battles) {
             </div>
             <div class="battle-actions">
                 <button class="battle-join-btn" onclick="event.stopPropagation(); joinBattle('${battle.battleId}')" 
-                        ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
-                    ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
-                </button>
+                    ${battle.currentPlayers >= battle.maxPlayers ? 'disabled' : ''}>
+                ${battle.currentPlayers >= battle.maxPlayers ? 'Full' : 'Join Battle'}
+            </button>
                 ${battle.players.length > 0 && battle.players[0].userId === currentUser?._id && battle.players.length < battle.maxPlayers ? 
                     `<button class="battle-bots-btn" onclick="event.stopPropagation(); callBots('${battle.battleId}')">Call Bots</button>` : ''}
             </div>
@@ -6917,8 +6913,8 @@ function displayBattleCases(cases) {
                 <i data-lucide="${caseIcon.icon}" style="color: white; width: 20px; height: 20px;"></i>
             </div>
             <div class="case-info">
-                <div class="case-name">${caseItem.name}</div>
-                <div class="case-price">$${caseItem.price.toFixed(2)}</div>
+            <div class="case-name">${caseItem.name}</div>
+            <div class="case-price">$${caseItem.price.toFixed(2)}</div>
                 <div class="case-quantity-controls">
                     <button class="quantity-btn minus" onclick="adjustCaseQuantity('${caseItem._id}', -1)" ${currentQuantity === 0 ? 'disabled' : ''}>-</button>
                     <span class="quantity-display">${currentQuantity}</span>
@@ -7438,6 +7434,8 @@ function showBattleAnimation(battle) {
             <div class="player-total">$0.00</div>
         `;
         playersContainer.appendChild(playerEl);
+        // Ensure items array exists for all players
+        if (!player.items) player.items = [];
     });
     
     // Start animation
@@ -7527,19 +7525,33 @@ function showBattleResults() {
     const winnerEl = document.getElementById(`player-items-${winner.userId}`);
     if (winnerEl) {
         winnerEl.parentElement.classList.add('winner');
+        // Add crown icon to winner's name
+        const nameEl = winnerEl.parentElement.querySelector('.player-name');
+        if (nameEl && !nameEl.querySelector('.crown-icon')) {
+            nameEl.innerHTML = `<span class="crown-icon" style="color: gold; font-size: 1.2em; vertical-align: middle;">&#x1F451;</span> ` + nameEl.textContent;
+        }
+        // Highlight winner's container gold
+        winnerEl.parentElement.style.background = 'rgba(255, 215, 0, 0.15)';
+        winnerEl.parentElement.style.border = '2px solid gold';
     }
     
+    // Remove or minimize the large battle-results overlay
+    const modal = document.getElementById('battle-animation-modal');
+    const oldResults = modal.querySelector('.battle-results');
+    if (oldResults) oldResults.remove();
+    
+    // Show a small winner banner instead
     const resultsEl = document.createElement('div');
-    resultsEl.className = 'battle-results';
+    resultsEl.className = 'battle-results-minimal';
     resultsEl.innerHTML = `
-        <div class="winner-banner">
-            <div class="winner-name">${winner.username} WINS!</div>
-            <div class="winner-value">$${winner.totalValue.toFixed(2)}</div>
+        <div class="winner-banner-minimal">
+            <span class="crown-icon" style="color: gold; font-size: 1.2em; vertical-align: middle;">&#x1F451;</span>
+            <span class="winner-name">${winner.username} WINS!</span>
+            <span class="winner-value">$${winner.totalValue.toFixed(2)}</span>
         </div>
         <button class="close-btn" onclick="closeBattleAnimation()">Close</button>
     `;
-    
-    document.getElementById('battle-animation-modal').appendChild(resultsEl);
+    modal.appendChild(resultsEl);
     
     // Stop animation
     currentBattleAnimation.isAnimating = false;
@@ -7948,10 +7960,14 @@ function setupBattleProgressDisplay(battle) {
         playerEl.id = `progress-player-${player.userId}`;
         
         playerEl.innerHTML = `
-            <div class="progress-player-name">${player.username}</div>
+            <div class="progress-player-name">${player.username}${battle.winnerUserId === player.userId ? '<span class="crown-icon" style="color: gold; font-size: 1.2em; vertical-align: middle;">&#x1F451;</span>' : ''}</div>
             <div class="progress-player-items" id="progress-items-${player.userId}"></div>
             <div class="progress-player-total" id="progress-total-${player.userId}">$0.00</div>
         `;
+        
+        if (battle.status === 'completed' && battle.winnerUserId === player.userId) {
+            playerEl.classList.add('winner');
+        }
         
         progressPlayersContainer.appendChild(playerEl);
     });

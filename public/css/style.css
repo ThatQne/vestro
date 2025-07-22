@@ -5130,12 +5130,12 @@ input, textarea {
     color: #6b7280;
 }
 
-.badge-item.secret.earned {
+.badge-item.earned {
     background: rgba(59, 130, 246, 0.1);
 }
 
-.badge-item.secret.earned .badge-name,
-.badge-item.secret.earned .badge-description {
+.badge-item.earned .badge-name,
+.badge-item.earned .badge-description {
     color: #3b82f6;
 }
 
@@ -7824,3 +7824,77 @@ input, textarea {
     --legendary-color: #f59e0b;
     --mythical-color: #ef4444;
 }
+
+/* Minimal battle results banner */
+.battle-results-minimal {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 215, 0, 0.95);
+  color: #222;
+  border-radius: 8px;
+  padding: 8px 24px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  font-weight: bold;
+  font-size: 1.1em;
+  gap: 8px;
+}
+.winner-banner-minimal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: bold;
+  font-size: 1.1em;
+}
+.crown-icon {
+  margin-right: 4px;
+  color: gold;
+  font-size: 1.2em;
+  vertical-align: middle;
+}
+.battle-animation-player.winner {
+  background: rgba(255, 215, 0, 0.15) !important;
+  border: 2px solid gold !important;
+}
+.battle-animation-player .player-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+#battle-bots-btn[style*="display: none"] {
+  display: none !important;
+}
+
+.battle-player-slot.winner {
+  border: 2px solid gold !important;
+  background: rgba(255, 215, 0, 0.15) !important;
+  animation: winnerPulse 2s infinite;
+}
+.crown-icon {
+  margin-right: 4px;
+  color: gold;
+  font-size: 1.2em;
+  vertical-align: middle;
+}
+.battle-results-minimal {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 215, 0, 0.95);
+  color: #222;
+  border-radius: 8px;
+  padding: 8px 24px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  font-weight: bold;
+  font-size: 1.1em;
+  gap: 8px;
+}
+#battle-results-summary { display: none !important; }
