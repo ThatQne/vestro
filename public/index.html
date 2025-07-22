@@ -265,6 +265,65 @@
                         </div>
                     </div>
                 </div>
+                <div class="game-card" onclick="showPage('limbo-game')">
+                    <div class="game-icon">
+                        <i data-lucide="activity"></i>
+                    </div>
+                    <div class="game-info">
+                        <h3>Limbo</h3>
+                        <p>Set your multiplier and test your luck</p>
+                        <div class="game-stats">
+                            <span class="game-payout">Up to 1,000,000x</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Limbo Game Page -->
+        <div id="limbo-game-page" class="page-content hidden">
+            <div class="game-page-header">
+                <button onclick="showPage('games')" class="back-btn">
+                    <i data-lucide="arrow-left"></i>
+                    <span>Back to Games</span>
+                </button>
+                <h1>Limbo</h1>
+            </div>
+            <div class="limbo-game-container">
+                <div class="limbo-game-header">
+                    <h3 class="limbo-game-title"><i data-lucide="activity"></i> Limbo</h3>
+                    <div class="limbo-game-stats">
+                        <span>Multiplier: <span id="limbo-multiplier-display" class="formatted-number">2.00x</span></span>
+                        <span>Win Chance: <span id="limbo-chance-display" class="formatted-number">49.50%</span></span>
+                    </div>
+                </div>
+                <div class="limbo-game-body">
+                    <div class="limbo-visual">
+                        <div class="limbo-result" id="limbo-result">--</div>
+                        <div class="limbo-animation-track" id="limbo-animation-track"></div>
+                    </div>
+                    <div class="limbo-controls">
+                        <div class="control-group">
+                            <label class="control-label">Bet Amount</label>
+                            <input type="number" id="limbo-bet-amount" class="bet-input" placeholder="0.00" min="0.01" step="0.01">
+                            <div class="bet-buttons">
+                                <button class="bet-btn" onclick="setLimboAmount('half')">½</button>
+                                <button class="bet-btn" onclick="setLimboAmount('double')">2x</button>
+                                <button class="bet-btn" onclick="setLimboAmount('max')">Max</button>
+                                <button class="bet-btn" onclick="setLimboAmount('clear')">Clear</button>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label class="control-label">Multiplier</label>
+                            <input type="number" id="limbo-multiplier" class="bet-input" placeholder="2.00" min="1.01" step="0.01" value="2.00" oninput="updateLimboStats()">
+                        </div>
+                        <div class="action-buttons">
+                            <button class="roll-btn" id="play-limbo-btn" onclick="playLimbo()">
+                                <span id="play-limbo-btn-text">Play Limbo</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 

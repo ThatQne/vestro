@@ -1948,7 +1948,7 @@ function setupPlinkoGame() {
                     const guidanceForce = Math.sign(dx) * guidanceStrength * body.mass;
                     Body.applyForce(body, body.position, { x: guidanceForce, y: 0 });
                     
-                                        // Additional strong guidance when close to bottom
+                    // Additional strong guidance when close to bottom
                     if (body.position.y > plinkoCanvas.height * 0.7) {
                         const strongGuidance = Math.sign(dx) * 0.0003 * body.mass;
                         Body.applyForce(body, body.position, { x: strongGuidance, y: 0 });
@@ -7802,6 +7802,157 @@ function closeBattleDetailModal() {
     }
 }
 
+// Limbo game state
+let limboState = {
+    isPlaying: false,
+    lastResult: null
+};
+
+function initializeLimboGame() {
+    updateLimboStats();
+    document.getElementById('limbo-result').textContent = '--';
+    document.getElementById('limbo-animation-track').innerHTML = '';
+    limboState.isPlaying = false;
+    limboState.lastResult = null;
+}
+
+function updateLimboStats() {
+    const multiplierInput = document.getElementById('limbo-multiplier');
+    const display = document.getElementById('limbo-multiplier-display');
+    const chanceDisplay = document.getElementById('limbo-chance-display');
+    let mult = parseFloat(multiplierInput.value);
+    if (isNaN(mult) || mult < 1.01) mult = 1.01;
+    display.textContent = mult.toFixed(2) + 'x';
+    // Calculate win chance (99% RTP)
+    const winChance = 0.99 / mult * 100;
+    chanceDisplay.textContent = winChance.toFixed(2) + '%';
+}
+
+function setLimboAmount(action) {
+    const betInput = document.getElementById('limbo-bet-amount');
+    if (!betInput) return;
+    const currentBalance = currentUser ? Math.round(currentUser.balance * 100) / 100 : 0;
+    let currentBet = Math.round(parseFloat(betInput.value || 0) * 100) / 100;
+    switch(action) {
+        case 'half':
+            betInput.value = Math.max(0.01, Math.round((currentBet / 2) * 100) / 100).toFixed(2);
+            break;
+        case 'double':
+            betInput.value = Math.min(currentBet * 2, currentBalance).toFixed(2);
+            break;
+        case 'max':
+            betInput.value = currentBalance.toFixed(2);
+            break;
+        case 'clear':
+            betInput.value = '';
+            break;
+    }
+}
+
+async function playLimbo() {
+    if (!currentUser || limboState.isPlaying) return;
+    const betInput = document.getElementById('limbo-bet-amount');
+    const multInput = document.getElementById('limbo-multiplier');
+    let betAmount = parseFloat(betInput.value);
+    let userMultiplier = parseFloat(multInput.value);
+    if (isNaN(betAmount) || betAmount < 0.01) {
+        showError('Minimum bet amount is $0.01');
+        return;
+    }
+    if (isNaN(userMultiplier) || userMultiplier < 1.01) {
+        showError('Minimum multiplier is 1.01x');
+        return;
+    }
+    if (betAmount > currentUser.balance) {
+        showError('Insufficient balance');
+        return;
+    }
+    betAmount = Math.round(betAmount * 100) / 100;
+    betInput.value = betAmount.toFixed(2);
+    limboState.isPlaying = true;
+    const playBtn = document.getElementById('play-limbo-btn');
+    const playBtnText = document.getElementById('play-limbo-btn-text');
+    playBtn.disabled = true;
+    playBtnText.textContent = 'Playing...';
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/games/play`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                gameType: 'limbo',
+                betAmount: betAmount,
+                playerChoice: userMultiplier.toString()
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            animateLimboResult(data.result);
+        } else {
+            showError(data.message || 'Failed to play Limbo');
+            limboState.isPlaying = false;
+            playBtn.disabled = false;
+            playBtnText.textContent = 'Play Limbo';
+        }
+    } catch (error) {
+        showError('Connection error. Please try again.');
+        limboState.isPlaying = false;
+        playBtn.disabled = false;
+        playBtnText.textContent = 'Play Limbo';
+    }
+}
+
+function animateLimboResult(result) {
+    const resultDiv = document.getElementById('limbo-result');
+    const track = document.getElementById('limbo-animation-track');
+    resultDiv.textContent = '--';
+    track.innerHTML = '';
+    // Animate the multiplier rising up to the rolledMultiplier
+    const target = result.gameResult.rolledMultiplier;
+    let current = 1.00;
+    const step = (target - 1.00) / 60; // 1 second animation
+    let frame = 0;
+    function animate() {
+        if (frame < 60) {
+            current += step;
+            resultDiv.textContent = current.toFixed(2) + 'x';
+            frame++;
+            requestAnimationFrame(animate);
+        } else {
+            resultDiv.textContent = target.toFixed(2) + 'x';
+            // Show win/lose
+            if (result.won) {
+                resultDiv.classList.add('win');
+                showGameNotification(true, result.winAmount - result.betAmount);
+            } else {
+                resultDiv.classList.remove('win');
+                showGameNotification(false, -result.betAmount);
+            }
+            // Update balance and chart
+            fetchUserProfile(true);
+            drawBalanceChart();
+            limboState.isPlaying = false;
+            const playBtn = document.getElementById('play-limbo-btn');
+            const playBtnText = document.getElementById('play-limbo-btn-text');
+            playBtn.disabled = false;
+            playBtnText.textContent = 'Play Limbo';
+        }
+    }
+    animate();
+}
+
+// Register Limbo in showPage
+const oldShowPage = showPage;
+showPage = function(pageId) {
+    oldShowPage(pageId);
+    if (pageId === 'limbo-game') {
+        setTimeout(() => {
+            initializeLimboGame();
+        }, 100);
+    }
+};
 
 }
 

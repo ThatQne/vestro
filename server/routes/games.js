@@ -10,6 +10,7 @@ const { handleDice } = require('../utils/gameHandlers/dice');
 const { handlePlinko } = require('../utils/gameHandlers/plinko');
 const { handleMines, calculateMinesMultiplier } = require('../utils/gameHandlers/mines');
 const { dealBlackjack, hitBlackjack, standBlackjack, doubleBlackjack } = require('../utils/gameHandlers/blackjack');
+const { handleLimbo } = require('../utils/gameHandlers/limbo');
 
 // Import utilities
 const {
@@ -32,7 +33,8 @@ const GAME_HANDLERS = {
     coinflip: handleCoinflip,
     dice: handleDice,
     plinko: handlePlinko,
-    mines: handleMines
+    mines: handleMines,
+    limbo: handleLimbo
 };
 
 // Play a game
