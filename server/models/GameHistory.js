@@ -9,7 +9,7 @@ const gameHistorySchema = new mongoose.Schema({
     gameType: {
         type: String,
         required: true,
-        enum: ['coinflip', 'dice', 'roulette', 'blackjack', 'plinko', 'mines', 'limbo']
+        enum: ['coinflip', 'dice', 'roulette', 'blackjack', 'plinko', 'mines']
     },
     betAmount: {
         type: Number,
